@@ -22,7 +22,13 @@
   }
   *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent;}
   html,body{height:100%;overflow:hidden;background:#02030c;font-family:var(--display);color:var(--txt);}
-  #app{position:fixed;top:0;left:50%;transform:translateX(-50%);height:100%;width:100%;max-width:520px;overflow:hidden;background:var(--bg);touch-action:none;user-select:none;-webkit-user-select:none;}
+  /* aspect-locked playfield: height/width clamped to [1.6, 2.16] so board length —
+     and therefore difficulty — is the same on any window. Tall desktop windows
+     letterbox to phone proportions; short windows shrink the column instead. */
+  #app{position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);
+    width:min(520px,100vw,calc(100vh/1.6));
+    height:min(100vh,calc(min(520px,100vw,100vh/1.6)*2.16));
+    overflow:hidden;background:var(--bg);touch-action:none;user-select:none;-webkit-user-select:none;}
   #cv{position:absolute;inset:0;width:100%;height:100%;display:block;}
 
   /* ---- back to arcade ---- */
@@ -142,7 +148,7 @@
     <button class="btn ghost" id="confirmEnd">EXIT TO ARCADE</button>
   </div>
 
-  <div class="ver">v0.7.3</div>
+  <div class="ver">v0.8.0</div>
 </div>
 
 <script>
