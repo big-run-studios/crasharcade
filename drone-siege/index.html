@@ -142,7 +142,7 @@
     <button class="btn ghost" id="confirmEnd">EXIT TO ARCADE</button>
   </div>
 
-  <div class="ver">v0.7.1</div>
+  <div class="ver">v0.7.3</div>
 </div>
 
 <script>
@@ -225,9 +225,10 @@ const C={
   hero:'#86d8ff', heroLite:'#cdeeff', sig:'#ff3d9a', gold:'#ffc233',
   boltCore:'#eaf9ff', eBolt:'#ff5d7a',
   skyTop:'#09061c', skyMid1:'#100a26', skyMid2:'#190d33', skyGlow:'#271149', skyBase:'#070b22',
-  policeBody:'#232c3e', policeArm:'#161d2c', strobeR:'#ff3d5e', strobeB:'#3d7bff',
-  fedBody:'#2e2030', fedWing:'#1e1520', fedEye:'#ff3d5e',
-  bossBody:'#2a1c4a', bossHurt:'#1c1230', bossEye:'#ffb347',
+  policeBody:'#3d4f70', policeArm:'#28344c', strobeR:'#ff3d5e', strobeB:'#3d7bff',
+  fedBody:'#4f3a56', fedWing:'#3a2c40', fedEye:'#ff3d5e',
+  bossBody:'#453380', bossHurt:'#322254', bossEye:'#ffb347',
+  rim:'#a8c8ee',      // one cool moonlight source rims every enemy's top edge
 };
 
 /* ---------- tunables ---------- */
@@ -455,6 +456,12 @@ function updateEnemy(e,dt){
     const v=Math.min(d,240*dt); e.x+=dx/d*v; e.y+=dy/d*v;
   }
 }
+/* moonlight rim: a glowing pale edge along the top of a body — separates dark drones from the dark sky */
+function rimLight(x,y,w){
+  ctx.shadowBlur=5; ctx.shadowColor='rgba(168,200,238,.9)';
+  ctx.fillStyle=C.rim; ctx.fillRect(x,y,w,2);
+  ctx.shadowBlur=0;
+}
 function drawEnemy(e){
   if(e.state==='wait')return;
   ctx.save(); ctx.translate(e.x,e.y); ctx.rotate(e.angle);
@@ -465,7 +472,8 @@ function drawEnemy(e){
     for(const [rx,ry] of [[-13,-9],[13,-9],[-13,9],[13,9]]){ ctx.save(); ctx.translate(rx,ry); ctx.rotate(spin);
       ctx.fillStyle='rgba(150,170,200,.4)'; ctx.fillRect(-6,-1,12,2); ctx.rotate(Math.PI/2); ctx.fillRect(-6,-1,12,2); ctx.restore(); }
     ctx.fillStyle=C.policeBody; ctx.fillRect(-11,-7,22,14);
-    ctx.fillStyle='#0d1119'; ctx.fillRect(-7,-4,14,8);
+    rimLight(-11,-8,22);
+    ctx.fillStyle='#18223a'; ctx.fillRect(-7,-4,14,8);
     const red=Math.floor(T*4)%2===0;                    // strobe = the hot read, like taillights
     ctx.shadowBlur=8; ctx.shadowColor=red?C.strobeR:C.strobeB; ctx.fillStyle=red?C.strobeR:C.strobeB;
     ctx.fillRect(red?-8:2,5,6,3); ctx.shadowBlur=0;
@@ -473,16 +481,17 @@ function drawEnemy(e){
     ctx.fillStyle=C.fedWing; ctx.beginPath(); ctx.moveTo(-18,2); ctx.lineTo(-6,-6); ctx.lineTo(-6,7); ctx.closePath(); ctx.fill();
     ctx.beginPath(); ctx.moveTo(18,2); ctx.lineTo(6,-6); ctx.lineTo(6,7); ctx.closePath(); ctx.fill();
     ctx.fillStyle=C.fedBody; ctx.fillRect(-8,-9,16,19);
-    ctx.fillStyle='#191019'; ctx.fillRect(-5,-6,10,9);
+    rimLight(-8,-10,16);
+    ctx.fillStyle='#281c2e'; ctx.fillRect(-5,-6,10,9);
     ctx.shadowBlur=8; ctx.shadowColor=C.fedEye; ctx.fillStyle=C.fedEye; ctx.fillRect(-6,4,12,3); ctx.shadowBlur=0;
   } else if(e.type==='heavy2'||e.type==='heavy4'){ // multi-slot gunships (wave 3+/4+)
     const w=e.type==='heavy2'?74:152, hw=w/2, hurt=e.hp<=e.maxHp/2;
     for(const rx of (e.type==='heavy2'?[-hw+8,hw-8]:[-hw+10,-hw/3,hw/3,hw-10])){
       ctx.save(); ctx.translate(rx,-10); ctx.rotate(spin*.7);
       ctx.fillStyle='rgba(150,150,190,.35)'; ctx.fillRect(-8,-1,16,2); ctx.rotate(Math.PI/2); ctx.fillRect(-8,-1,16,2); ctx.restore(); }
-    ctx.fillStyle=hurt?'#171026':'#241a3e'; ctx.fillRect(-hw,-12,w,24);       // hull
-    ctx.fillStyle='#0c081c'; ctx.fillRect(-hw+8,-7,w-16,12);                  // belly
-    ctx.fillStyle='#3a3f5c'; ctx.fillRect(-hw,-14,w,3);                       // top rim
+    ctx.fillStyle=hurt?'#2b1e4d':'#3a2c66'; ctx.fillRect(-hw,-12,w,24);       // hull
+    ctx.fillStyle='#181230'; ctx.fillRect(-hw+8,-7,w-16,12);                  // belly
+    rimLight(-hw,-14,w);                                                      // moonlit top edge
     for(let x=-hw+8;x<hw-4;x+=18){                                            // strobe row
       ctx.fillStyle=Math.floor(T*4+x)%2?C.strobeR:'rgba(255,61,94,.25)'; ctx.fillRect(x,9,5,3); }
     if(e.type==='heavy4'){ ctx.shadowBlur=8; ctx.shadowColor=C.strobeR;       // behemoth gun pods
@@ -495,7 +504,8 @@ function drawEnemy(e){
       ctx.fillStyle='rgba(150,150,190,.38)'; ctx.fillRect(-7,-1,14,2); ctx.rotate(Math.PI/2); ctx.fillRect(-7,-1,14,2); ctx.restore(); }
     ctx.fillStyle=C.policeArm; ctx.fillRect(-21,-6,10,4); ctx.fillRect(11,-6,10,4);
     ctx.fillStyle=hurt?C.bossHurt:C.bossBody; ctx.fillRect(-14,-11,28,22);
-    ctx.fillStyle='#0c081c'; ctx.fillRect(-10,-7,20,10);
+    rimLight(-14,-12,28);
+    ctx.fillStyle='#1c1433'; ctx.fillRect(-10,-7,20,10);
     const ex=Math.sin(T*2.2+e.ox)*5, col=hurt?C.strobeR:C.bossEye;   // scanning eye goes red when hurt
     ctx.shadowBlur=10; ctx.shadowColor=col; ctx.fillStyle=col;
     ctx.beginPath(); ctx.arc(ex,6,3.4,0,7); ctx.fill(); ctx.shadowBlur=0;
@@ -506,8 +516,9 @@ function drawEnemy(e){
 /* bonus helicopter — gold accents read as payoff, not threat */
 function drawHeli(h){
   ctx.save(); ctx.translate(h.x,h.y); ctx.scale(h.dir,1);
-  ctx.fillStyle='#1a2030'; ctx.fillRect(-16,-6,30,12);
+  ctx.fillStyle='#324260'; ctx.fillRect(-16,-6,30,12);
   ctx.fillRect(-30,-3,16,5);
+  rimLight(-16,-7,30);
   ctx.fillStyle='#0d1119'; ctx.fillRect(2,-4,10,7);
   ctx.save(); ctx.translate(-2,-9); ctx.rotate(T*24);
   ctx.fillStyle='rgba(200,210,240,.45)'; ctx.fillRect(-19,-1,38,2); ctx.restore();
@@ -525,19 +536,21 @@ function drawBoss(){
   if(b.dead){ ctx.globalAlpha=Math.max(.25,b.dying/2.2); }
   for(const rx of [-200,-100,0,100,200]){ ctx.save(); ctx.translate(rx,-28); ctx.rotate(T*14+rx);
     ctx.fillStyle='rgba(150,150,190,.3)'; ctx.fillRect(-16,-1.5,32,3); ctx.rotate(Math.PI/2); ctx.fillRect(-16,-1.5,32,3); ctx.restore(); }
-  ctx.fillStyle='#151028'; ctx.fillRect(-b.hullW/2,-20,b.hullW,48);
-  ctx.fillStyle='#241a3e'; ctx.fillRect(-b.hullW/2+14,-32,b.hullW-28,34);
-  ctx.fillStyle='#0c081c'; ctx.fillRect(-b.hullW/2+30,-6,b.hullW-60,24);
+  ctx.fillStyle='#2a2050'; ctx.fillRect(-b.hullW/2,-20,b.hullW,48);
+  ctx.fillStyle='#3b2c66'; ctx.fillRect(-b.hullW/2+14,-32,b.hullW-28,34);
+  rimLight(-b.hullW/2+14,-33,b.hullW-28);                      // moonlit spine along the carrier
+  rimLight(-b.hullW/2,-21,15); rimLight(b.hullW/2-15,-21,15);  // lit wing shoulders
+  ctx.fillStyle='#181230'; ctx.fillRect(-b.hullW/2+30,-6,b.hullW-60,24);
   for(let x=-b.hullW/2+22;x<b.hullW/2-14;x+=36){
     ctx.fillStyle=Math.floor(T*3+x)%2?'rgba(255,61,94,.7)':'rgba(61,123,255,.55)'; ctx.fillRect(x,22,5,3); }
   for(const t of b.turrets){
-    if(!t.alive){ ctx.fillStyle='#0c081c'; ctx.fillRect(t.ox-12,24,24,10);   // burnt stub
+    if(!t.alive){ ctx.fillStyle='#181230'; ctx.fillRect(t.ox-12,24,24,10);   // burnt stub
       ctx.fillStyle='rgba(255,120,80,.35)'; ctx.fillRect(t.ox-4,26,8,4); continue; }
     if(t.hurtFx>0) ctx.globalAlpha=.6+.4*Math.sin(T*40);
-    ctx.fillStyle='#2a1c4a'; ctx.fillRect(t.ox-16,20,32,20);
+    ctx.fillStyle='#3b2a68'; ctx.fillRect(t.ox-16,20,32,20);
     const a=Math.atan2(playerY()-(b.y+34), player.x-(bx+t.ox));
     ctx.save(); ctx.translate(t.ox,34); ctx.rotate(a);
-    ctx.fillStyle='#3a3f5c'; ctx.fillRect(0,-3,20,6); ctx.restore();
+    ctx.fillStyle='#4d5478'; ctx.fillRect(0,-3,20,6); ctx.restore();
     ctx.shadowBlur=8; ctx.shadowColor=C.strobeR; ctx.fillStyle=C.strobeR; ctx.fillRect(t.ox-4,26,8,4); ctx.shadowBlur=0;
     ctx.globalAlpha=1;
     ctx.fillStyle='rgba(255,255,255,.3)';
@@ -546,7 +559,7 @@ function drawBoss(){
   const c=b.core;
   if(c.open){
     if(c.hurtFx>0) ctx.globalAlpha=.6+.4*Math.sin(T*40);
-    ctx.fillStyle='#0c081c'; ctx.fillRect(-36,22,72,32);
+    ctx.fillStyle='#241c42'; ctx.fillRect(-36,22,72,32);
     const g=.6+.4*Math.sin(T*6);
     ctx.shadowBlur=18; ctx.shadowColor='#ff5d7a'; ctx.fillStyle='rgba(255,93,122,'+g+')';
     ctx.beginPath(); ctx.arc(0,40,14,0,7); ctx.fill(); ctx.shadowBlur=0;
@@ -554,8 +567,8 @@ function drawBoss(){
     ctx.fillStyle='rgba(255,255,255,.25)'; ctx.fillRect(-30,58,60,3);        // core hp bar
     ctx.fillStyle='#ff5d7a'; ctx.fillRect(-30,58,60*Math.max(0,c.hp/c.max),3);
   } else {
-    ctx.fillStyle='#1a1332'; ctx.fillRect(-30,20,60,24);
-    ctx.fillStyle='#3a3f5c'; ctx.fillRect(-30,30,60,3);
+    ctx.fillStyle='#2a2050'; ctx.fillRect(-30,20,60,24);
+    ctx.fillStyle='#4d5478'; ctx.fillRect(-30,30,60,3);
   }
   ctx.restore(); ctx.globalAlpha=1;
 }
