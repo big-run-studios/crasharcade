@@ -1,0 +1,186 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
+<title>SkillzArcade</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@500;600;700&family=Orbitron:wght@600;700;900&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --navy:#05071a; --navy2:#0b1238; --panel:#111a40;
+    --cyan:#5fe0ff; --gold:#ffc233; --magenta:#ff3d9a; --ice:#bcd4ff; --green:#39ffa0;
+    --txt:#eaf2ff; --dim:#8fa0d6;
+    --display:'Orbitron',sans-serif; --body:'Fredoka','Arial Rounded MT Bold',sans-serif;
+  }
+  *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent;}
+  html,body{height:100%;}
+  body{
+    font-family:var(--body);color:var(--txt);overflow-x:hidden;min-height:100%;
+    background:
+      radial-gradient(120% 70% at 50% -10%, rgba(43,155,255,.18), transparent 60%),
+      radial-gradient(90% 60% at 90% 10%, rgba(255,61,154,.12), transparent 55%),
+      linear-gradient(180deg,#080b22 0%, var(--navy) 40%, #04050f 100%);
+    background-attachment:fixed;
+  }
+  /* faint grid texture */
+  body::before{content:"";position:fixed;inset:0;pointer-events:none;opacity:.25;
+    background-image:linear-gradient(rgba(95,224,255,.06) 1px,transparent 1px),linear-gradient(90deg,rgba(95,224,255,.06) 1px,transparent 1px);
+    background-size:38px 38px;mask-image:radial-gradient(120% 80% at 50% 0,#000,transparent 75%);}
+
+  .wrap{max-width:1100px;margin:0 auto;padding:0 18px 40px;position:relative;}
+
+  /* ---- top bar ---- */
+  header{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:18px 2px 6px;}
+  .logo{font-family:var(--display);font-weight:900;font-size:clamp(18px,5.2vw,28px);letter-spacing:1px;line-height:1;flex:none;}
+  .logo span{color:var(--gold);text-shadow:0 0 14px rgba(255,194,51,.6);}
+  .logo b{color:#fff;text-shadow:0 0 14px rgba(95,224,255,.5);}
+  .logo small{display:block;font-family:var(--display);font-weight:600;font-size:10px;letter-spacing:5px;color:var(--cyan);margin-top:4px;opacity:.85;}
+  .bal{display:flex;gap:8px;align-items:center;flex:none;}
+  .chip{font-family:var(--display);font-weight:700;font-size:12px;letter-spacing:.3px;padding:7px 10px;border-radius:999px;
+    background:rgba(17,26,64,.8);border:1.5px solid #2b3a7a;display:flex;align-items:center;gap:5px;white-space:nowrap;}
+  .chip.cash{color:var(--green);border-color:rgba(57,255,160,.4);}
+  .chip.crowns{color:var(--gold);border-color:rgba(255,194,51,.4);}
+  .chip .plus{color:#fff;background:#27a8ff;border-radius:50%;width:18px;height:18px;display:inline-flex;align-items:center;justify-content:center;font-size:13px;margin-left:2px;}
+
+  /* ---- hero strip ---- */
+  .hero{margin:18px 0 8px;padding:18px 20px;border-radius:20px;position:relative;overflow:hidden;
+    background:linear-gradient(105deg,rgba(43,155,255,.18),rgba(255,61,154,.14));border:1.5px solid rgba(95,224,255,.3);
+    box-shadow:0 0 30px rgba(43,155,255,.18) inset;}
+  .hero h1{font-family:var(--display);font-weight:900;font-size:clamp(20px,5vw,30px);letter-spacing:1px;color:#fff;text-shadow:0 0 16px rgba(95,224,255,.5);}
+  .hero p{color:var(--ice);font-size:13px;font-weight:500;margin-top:4px;}
+
+  /* ---- row ---- */
+  .rowlabel{display:flex;align-items:center;gap:10px;margin:26px 4px 14px;font-family:var(--display);font-weight:700;font-size:15px;letter-spacing:2px;color:var(--txt);}
+  .rowlabel .dot{width:8px;height:8px;border-radius:50%;background:var(--cyan);box-shadow:0 0 10px var(--cyan);}
+
+  .grid{display:grid;grid-template-columns:repeat(2,1fr);gap:14px;}
+  @media(min-width:640px){.grid{grid-template-columns:repeat(3,1fr);}}
+  @media(min-width:900px){.grid{grid-template-columns:repeat(4,1fr);}}
+
+  .tile{position:relative;aspect-ratio:1/1;border-radius:18px;overflow:hidden;cursor:pointer;text-decoration:none;display:block;
+    border:1.5px solid rgba(95,224,255,.22);box-shadow:0 8px 24px rgba(0,0,0,.45);
+    transition:transform .12s ease, box-shadow .12s ease, border-color .12s ease;}
+  .tile:hover{transform:translateY(-4px) scale(1.02);border-color:var(--cyan);box-shadow:0 14px 32px rgba(0,0,0,.55),0 0 26px rgba(95,224,255,.35);}
+  .tile:active{transform:translateY(0) scale(.99);}
+  .tile .art{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;}
+  .tile .icon{font-size:clamp(48px,16vw,86px);filter:drop-shadow(0 6px 14px rgba(0,0,0,.5));position:relative;z-index:1;}
+  .tile .meta{position:absolute;left:0;right:0;bottom:0;padding:34px 14px 12px;z-index:2;
+    background:linear-gradient(180deg,transparent,rgba(4,6,18,.92));}
+  .tile h3{font-family:var(--display);font-weight:800;font-size:clamp(13px,3.6vw,17px);letter-spacing:.5px;color:#fff;line-height:1.05;}
+  .status{display:inline-flex;align-items:center;gap:5px;margin-top:7px;font-family:var(--display);font-weight:700;font-size:11px;letter-spacing:1px;padding:4px 10px;border-radius:999px;}
+  .status.play{background:linear-gradient(180deg,#7fe9ff,#27a8ff);color:#06223a;box-shadow:0 0 14px rgba(43,155,255,.55);}
+  .status.new{background:linear-gradient(180deg,#ff8ac2,#ff3d9a);color:#2a041a;box-shadow:0 0 14px rgba(255,61,154,.55);}
+  .status.soon{background:rgba(255,194,51,.14);color:var(--gold);border:1px solid rgba(255,194,51,.5);}
+
+  /* tile art themes */
+  .art.chicken{background:
+      repeating-linear-gradient(118deg, rgba(255,194,51,.0) 0 26px, rgba(255,194,51,.16) 26px 28px),
+      repeating-linear-gradient(118deg, rgba(95,224,255,.0) 13px 38px, rgba(95,224,255,.14) 38px 40px),
+      radial-gradient(80% 70% at 50% 35%, #21306e, #0a0f30 75%);}
+  .art.spy{background:
+      repeating-linear-gradient(118deg, rgba(255,90,90,.0) 0 20px, rgba(255,90,90,.16) 20px 22px),
+      repeating-linear-gradient(118deg, rgba(255,255,255,.0) 10px 30px, rgba(255,255,255,.10) 30px 31px),
+      radial-gradient(80% 70% at 50% 35%, #2a1633, #0c0a1e 75%);}
+  .art.drone{background:
+      repeating-linear-gradient(0deg, rgba(134,216,255,.0) 0 24px, rgba(134,216,255,.13) 24px 26px),
+      repeating-linear-gradient(90deg, rgba(255,61,154,.0) 0 34px, rgba(255,61,154,.10) 34px 36px),
+      radial-gradient(80% 70% at 50% 35%, #241a3e, #09061c 75%);}
+  .art.boxing{background:
+      repeating-linear-gradient(0deg, rgba(183,107,255,.0) 0 28px, rgba(183,107,255,.14) 28px 30px),
+      repeating-linear-gradient(118deg, rgba(95,224,255,.0) 12px 34px, rgba(95,224,255,.10) 34px 36px),
+      radial-gradient(80% 70% at 50% 35%, #2c1240, #0a0518 75%);}
+  .art.soon{background:radial-gradient(80% 70% at 50% 35%, #161d44, #080b22 80%);}
+  .art .glow{position:absolute;width:130%;height:60%;top:8%;left:-15%;filter:blur(26px);opacity:.5;z-index:0;}
+  .art.chicken .glow{background:radial-gradient(closest-side, rgba(95,224,255,.6), transparent);}
+  .art.spy .glow{background:radial-gradient(closest-side, rgba(255,61,154,.5), transparent);}
+  .art.drone .glow{background:radial-gradient(closest-side, rgba(134,216,255,.55), transparent);}
+  .art.boxing .glow{background:radial-gradient(closest-side, rgba(183,107,255,.6), transparent);}
+
+  /* locked */
+  .tile.locked{cursor:default;}
+  .tile.locked .art{filter:grayscale(.35) brightness(.7);}
+  .tile.locked:hover{transform:none;border-color:rgba(95,224,255,.22);box-shadow:0 8px 24px rgba(0,0,0,.45);}
+  .lockbadge{position:absolute;top:10px;right:10px;z-index:3;background:rgba(8,11,34,.8);border:1px solid rgba(255,194,51,.5);
+    color:var(--gold);font-family:var(--display);font-weight:700;font-size:10px;letter-spacing:1px;padding:5px 9px;border-radius:999px;}
+  .tile.shake{animation:shake .35s;}
+  @keyframes shake{0%,100%{transform:translateX(0)}20%,60%{transform:translateX(-5px)}40%,80%{transform:translateX(5px)}}
+
+  .placeholder .icon{opacity:.4;}
+  .placeholder h3{color:var(--dim);}
+
+  footer{text-align:center;margin-top:34px;color:var(--dim);font-family:var(--display);font-size:10px;font-weight:600;letter-spacing:1px;opacity:.8;}
+
+  #toast{position:fixed;left:50%;bottom:30px;transform:translateX(-50%) translateY(20px);opacity:0;pointer-events:none;
+    background:rgba(17,26,64,.95);border:1.5px solid var(--gold);color:var(--gold);font-family:var(--display);font-weight:700;font-size:13px;
+    padding:12px 20px;border-radius:999px;box-shadow:0 0 24px rgba(255,194,51,.4);transition:all .25s;letter-spacing:.5px;}
+  #toast.show{opacity:1;transform:translateX(-50%) translateY(0);}
+</style>
+</head>
+<body>
+  <div class="wrap">
+    <header>
+      <div class="logo"><b>SKILLZ</b><span>ARCADE</span><small>BIG RUN</small></div>
+      <div class="bal">
+        <span class="chip crowns">👑 0</span>
+        <span class="chip cash">$0.00 <span class="plus">+</span></span>
+      </div>
+    </header>
+
+    <div class="hero">
+      <h1>Play skill games for real prizes</h1>
+      <p>Pick a game. Climb the multiplier. Cash out before you crash.</p>
+    </div>
+
+    <div class="rowlabel"><span class="dot"></span> SKILL GAMES</div>
+    <div class="grid">
+
+      <a class="tile" href="spy-runner/index.html">
+        <div class="art spy"><div class="glow"></div><div class="icon">🏎️</div></div>
+        <div class="meta"><h3>Spy Runner</h3><span class="status play">▶ PLAY</span></div>
+      </a>
+
+      <a class="tile" href="underground-circuit/index.html">
+        <div class="art boxing"><div class="glow"></div><div class="icon">🥊</div></div>
+        <div class="meta"><h3>Underground Circuit</h3><span class="status new">★ NEW</span></div>
+      </a>
+
+      <a class="tile" href="drone-siege/index.html">
+        <div class="art drone"><div class="glow"></div><div class="icon">🛸</div></div>
+        <div class="meta"><h3>Drone Siege</h3><span class="status play">▶ PLAY</span></div>
+      </a>
+
+      <a class="tile" href="go-chicken-go/index.html">
+        <div class="art chicken"><div class="glow"></div><div class="icon">🐔</div></div>
+        <div class="meta"><h3>Go Chicken Go!</h3><span class="status play">▶ PLAY</span></div>
+      </a>
+
+      <div class="tile locked placeholder" data-soon="New games are on the way 👀">
+        <div class="lockbadge">🔒 SOON</div>
+        <div class="art soon"><div class="icon">🎰</div></div>
+        <div class="meta"><h3>Coming Soon</h3><span class="status soon">IN THE LAB</span></div>
+      </div>
+
+    </div>
+
+    <footer>Big Run Studios — SkillzArcade · Internal Prototype · v0.1.0</footer>
+  </div>
+
+  <div id="toast"></div>
+
+  <script>
+    const toast = document.getElementById('toast');
+    let toastT=null;
+    function showToast(msg){
+      toast.textContent=msg; toast.classList.add('show');
+      clearTimeout(toastT); toastT=setTimeout(()=>toast.classList.remove('show'),1900);
+    }
+    document.querySelectorAll('.tile.locked').forEach(t=>{
+      t.addEventListener('click',()=>{
+        t.classList.remove('shake'); void t.offsetWidth; t.classList.add('shake');
+        showToast(t.dataset.soon || 'Coming soon');
+      });
+    });
+  </script>
+</body>
+</html>

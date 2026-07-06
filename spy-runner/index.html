@@ -1,0 +1,1031 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
+<title>Spy Runner — Prototype</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@600;700;900&family=Fredoka:wght@500;600;700&display=swap" rel="stylesheet">
+<style>
+  /* ===== Skin-driven UI variables (default: NEON / F-Zero) ===== */
+  :root{
+    --display:'Orbitron',sans-serif;
+    --bg:#04061a;
+    --panel:rgba(13,20,52,.82); --panel-bd:2px solid #5fe0ff; --panel-glow:0 0 20px rgba(95,224,255,.45),inset 0 0 14px rgba(43,155,255,.1);
+    --txt:#eaf2ff; --dim:#8fa0d6;
+    --score:#fff; --score-glow:0 0 8px #5fe0ff,0 0 20px rgba(95,224,255,.7);
+    --beat:#ffc233; --beat-glow:0 0 8px rgba(255,194,51,.6);
+    --btn:linear-gradient(180deg,#7fe9ff,#27a8ff); --btn-ink:#06223a; --btn-glow:0 0 24px rgba(43,155,255,.7),inset 0 0 0 2px rgba(255,255,255,.5);
+    --title:#eaf6ff; --title-glow:0 0 10px #5fe0ff,0 0 28px rgba(95,224,255,.8);
+    --title2:#ff3d9a; --title2-glow:0 0 10px #ff3d9a,0 0 28px rgba(255,61,154,.8);
+    --crash:#ff3d6e; --crash-glow:0 0 12px #ff3d6e,0 0 30px rgba(255,61,110,.7);
+    --m4:#ff2a66; --m2:#ff8424; --m15:#22a8ff; --m1:#ffe12a; --shoulder:#24ff93;
+    --ring-track:rgba(8,12,40,.7);
+    --skin-bg:rgba(13,20,52,.7); --skin-border:#2b3a7a; --skin-idle:#8fa0d6; --skin-active-bg:linear-gradient(180deg,#7fe9ff,#27a8ff); --skin-active-color:#06223a;
+  }
+  /* ----- skin selector ----- */
+  .skinpick{display:inline-flex;gap:0;margin:0 auto 16px;padding:4px;border-radius:999px;background:var(--skin-bg);border:1.5px solid var(--skin-border);}
+  .skinbtn{font-family:var(--display);font-weight:700;font-size:11px;letter-spacing:.5px;border:none;cursor:pointer;padding:8px 11px;border-radius:999px;background:transparent;color:var(--skin-idle);transition:all .12s;white-space:nowrap;}
+  .skinbtn.active{background:var(--skin-active-bg);color:var(--skin-active-color);}
+  /* ===== SPY HUNTER skin (classic arcade) ===== */
+  body.skin-spyhunter{
+    --bg:#0d1622;
+    --panel:rgba(30,42,60,.92); --panel-bd:2px solid #aebfcf; --panel-glow:0 4px 0 rgba(0,0,0,.35);
+    --txt:#eaf1f8; --dim:#8a9bb0;
+    --score:#fff; --score-glow:0 2px 0 rgba(0,0,0,.5);
+    --beat:#f2c33a; --beat-glow:none;
+    --btn:linear-gradient(180deg,#3a86e0,#1f5fb8); --btn-ink:#fff; --btn-glow:0 4px 0 #16407c,inset 0 0 0 2px rgba(255,255,255,.45);
+    --title:#fff; --title-glow:0 3px 0 #1f5fb8; --title2:#d94b3a; --title2-glow:0 3px 0 #7a1f15;
+    --crash:#d94b3a; --crash-glow:none;
+    --m4:#ff4d4d; --m2:#f2c33a; --m15:#4dd2ff; --m1:#ffffff;
+    --ring-track:rgba(10,16,28,.6);
+    --skin-bg:rgba(30,42,60,.8); --skin-border:#3a4d66; --skin-idle:#9fb0c4; --skin-active-bg:#3a86e0; --skin-active-color:#fff;
+  }
+  /* ===== BOOTLEGGER skin (southern swamp run) ===== */
+  body.skin-bootlegger{
+    --bg:#12180f;
+    --panel:rgba(34,30,18,.92); --panel-bd:2px solid #c9a23a; --panel-glow:0 0 18px rgba(201,162,58,.25);
+    --txt:#efe6cf; --dim:#9a8c6a;
+    --score:#fff4d8; --score-glow:0 2px 0 rgba(0,0,0,.5);
+    --beat:#e8b04a; --beat-glow:0 0 8px rgba(232,176,74,.5);
+    --btn:linear-gradient(180deg,#d99a3a,#a9701f); --btn-ink:#2a1c08; --btn-glow:0 0 18px rgba(217,154,58,.5),inset 0 0 0 2px rgba(255,240,200,.4);
+    --title:#f0d9a8; --title-glow:0 0 10px rgba(232,176,74,.6),0 3px 0 #5a3a12; --title2:#cf6a2a; --title2-glow:0 0 10px rgba(207,106,42,.6),0 3px 0 #5a2a10;
+    --crash:#e0552a; --crash-glow:0 0 12px rgba(224,85,42,.6);
+    --m4:#e8b04a; --m2:#cf8a3a; --m15:#9abf5a; --m1:#d8c9a0;
+    --ring-track:rgba(20,16,8,.6);
+    --skin-bg:rgba(40,32,18,.8); --skin-border:#5a4a22; --skin-idle:#b6a378; --skin-active-bg:#d99a3a; --skin-active-color:#2a1c08;
+  }
+  *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent;}
+  html,body{height:100%;overflow:hidden;background:#02030c;font-family:var(--display);color:var(--txt);}
+  /* Locked portrait play column — keeps the 3D view & UI from stretching/overflowing in landscape & on desktop */
+  #app{position:fixed;top:0;left:50%;transform:translateX(-50%);height:100%;width:100%;max-width:520px;overflow:hidden;background:var(--bg);}
+  #game{position:absolute;inset:0;}
+  canvas{display:block;}
+  .ui{position:absolute;inset:0;pointer-events:none;user-select:none;}
+  .ui *{pointer-events:auto;}
+
+  /* HUD */
+  #hud{opacity:0;transition:opacity .25s;}
+  #hud.show{opacity:1;}
+  #scorePill{position:absolute;top:max(16px,env(safe-area-inset-top));left:50%;transform:translateX(-50%);min-width:210px;text-align:center;
+    background:var(--panel);border:var(--panel-bd);border-radius:18px;backdrop-filter:blur(6px);padding:8px 24px 10px;box-shadow:var(--panel-glow);}
+  #scoreVal{font-size:34px;font-weight:800;letter-spacing:2px;color:var(--score);line-height:1;text-shadow:var(--score-glow);}
+  #scoreVal.pop{animation:pop .2s ease;}
+  @keyframes pop{0%{transform:scale(1)}45%{transform:scale(1.22)}100%{transform:scale(1)}}
+  #beat{margin-top:4px;font-size:12px;font-weight:700;letter-spacing:1px;color:var(--beat);text-shadow:var(--beat-glow);}
+  #beat b{color:#fff;}
+  /* heat / combo meter */
+  #heatBar{margin:7px auto 0;width:160px;height:7px;border-radius:6px;background:var(--ring-track);overflow:hidden;border:1px solid rgba(255,255,255,.16);}
+  #heatFill{height:100%;width:0;border-radius:6px;background:linear-gradient(90deg,var(--m15),var(--m2),var(--m4));box-shadow:0 0 8px var(--m4);transition:width .1s linear;}
+  #heatLabel{margin-top:3px;font-size:11px;font-weight:800;letter-spacing:1px;color:var(--beat);text-shadow:var(--beat-glow);}
+  /* near-miss popups */
+  #nmLayer{position:absolute;left:50%;top:44%;width:0;height:0;}
+  .nmpop{position:absolute;left:0;top:0;font-family:var(--display);font-weight:900;font-size:21px;letter-spacing:1px;color:var(--beat);text-shadow:0 0 10px var(--beat),0 0 22px rgba(255,194,51,.55);white-space:nowrap;animation:nmrise .82s ease-out forwards;}
+  @keyframes nmrise{0%{opacity:0;transform:translate(-50%,10px) scale(.8)}18%{opacity:1}100%{opacity:0;transform:translate(-50%,-46px) scale(1.12)}}
+  /* multiplier legend */
+  #lanes{position:absolute;top:max(134px,calc(env(safe-area-inset-top) + 118px));left:50%;transform:translateX(-50%);display:flex;gap:7px;}
+  .mchip{font-size:13px;font-weight:800;letter-spacing:.5px;padding:6px 11px;border-radius:10px;background:rgba(8,12,40,.6);border:1.5px solid rgba(95,224,255,.18);color:var(--dim);transition:all .12s;}
+  .mchip[data-l="0"].on{color:#06223a;background:var(--m4);border-color:var(--m4);box-shadow:0 0 16px var(--m4);}
+  .mchip[data-l="1"].on{color:#06223a;background:var(--m2);border-color:var(--m2);box-shadow:0 0 16px var(--m2);}
+  .mchip[data-l="2"].on{color:#06223a;background:var(--m15);border-color:var(--m15);box-shadow:0 0 16px var(--m15);}
+  .mchip[data-l="3"].on{color:#06223a;background:var(--m1);border-color:var(--m1);box-shadow:0 0 16px var(--m1);}
+
+  /* cash-out button removed — you cash out only by pulling into the right (green) shoulder lane */
+
+  #steerHint{position:absolute;left:50%;bottom:22%;transform:translateX(-50%);color:#bcd4ff;font-family:'Fredoka',sans-serif;font-weight:600;font-size:16px;text-shadow:0 0 10px rgba(95,224,255,.8);text-align:center;opacity:0;transition:opacity .4s;}
+  #steerHint.show{opacity:.95;}
+
+  #backArcade{position:absolute;top:max(16px,env(safe-area-inset-top));left:16px;z-index:25;width:46px;height:46px;border-radius:50%;border:var(--panel-bd);background:var(--panel);color:#fff;font-size:28px;font-weight:800;line-height:1;padding-bottom:4px;cursor:pointer;backdrop-filter:blur(6px);box-shadow:var(--panel-glow);display:flex;align-items:center;justify-content:center;}
+  #backArcade:active{transform:scale(.92);}
+  #muteBtn{position:absolute;top:max(16px,env(safe-area-inset-top));right:16px;z-index:25;width:46px;height:46px;border-radius:50%;border:var(--panel-bd);background:var(--panel);color:#fff;font-size:20px;line-height:1;cursor:pointer;backdrop-filter:blur(6px);box-shadow:var(--panel-glow);display:flex;align-items:center;justify-content:center;}
+  #muteBtn:active{transform:scale(.92);}
+  #confirmExit{z-index:30;}
+  #confirmExit .qicon{font-size:60px;line-height:1;}
+  #confirmExit .qtitle{font-size:34px;font-weight:900;letter-spacing:2px;color:var(--title);margin:10px 0 8px;text-shadow:var(--title-glow);}
+  #confirmExit .qmsg{font-family:'Fredoka',sans-serif;font-size:17px;font-weight:600;color:var(--txt);margin:0 14px 24px;line-height:1.35;}
+  #confirmExit .btn{margin:0 auto 12px;display:block;}
+  .btn.danger{background:linear-gradient(180deg,#ff6b6b,#e02748);color:#fff;box-shadow:0 0 22px rgba(224,39,72,.6),inset 0 0 0 2px rgba(255,255,255,.4);}
+  .btn.ghost{background:transparent;color:var(--txt);box-shadow:inset 0 0 0 2px rgba(255,255,255,.35);}
+
+  /* overlays */
+  .overlay{position:absolute;inset:0;display:none;flex-direction:column;align-items:center;justify-content:center;padding:24px;text-align:center;}
+  .overlay.show{display:flex;}
+  .scrim{position:absolute;inset:0;background:radial-gradient(120% 80% at 50% 26%,rgba(20,30,76,.5),rgba(4,6,20,.9));backdrop-filter:blur(3px);}
+  .card{position:relative;width:min(430px,92vw);}
+  .btn{border:none;cursor:pointer;font-family:var(--display);font-weight:800;color:var(--btn-ink);background:var(--btn);border-radius:999px;box-shadow:var(--btn-glow);padding:17px 30px;font-size:22px;letter-spacing:2px;width:100%;max-width:340px;transition:transform .06s;}
+  .btn:active{transform:translateY(3px);}
+  #menu .title{font-size:clamp(40px,13vw,76px);font-weight:900;line-height:1;letter-spacing:2px;color:var(--title);text-shadow:var(--title-glow);}
+  #menu .title span{color:var(--title2);text-shadow:var(--title2-glow);}
+  #menu .sub{color:var(--beat);font-weight:700;font-size:13px;letter-spacing:3px;margin:8px 0 20px;text-shadow:var(--beat-glow);}
+  .htp{background:var(--panel);border:var(--panel-bd);border-radius:18px;padding:18px;margin:0 auto 22px;text-align:left;backdrop-filter:blur(6px);box-shadow:var(--panel-glow);}
+  .htp .row{display:flex;gap:12px;align-items:flex-start;margin:11px 2px;font-family:'Fredoka',sans-serif;font-size:15px;font-weight:500;line-height:1.3;}
+  .htp .ico{font-size:20px;width:26px;text-align:center;flex:none;}
+  .htp b{color:#5fe0ff;}
+  .htp .warn{color:var(--crash);font-weight:700;}
+  #crash .big{font-size:40px;font-weight:900;letter-spacing:2px;color:var(--crash);margin:12px 0 2px;text-shadow:var(--crash-glow);}
+  #crash .reach{font-size:13px;font-weight:700;letter-spacing:2px;color:var(--dim);margin:8px 0 2px;}
+  #crash .zero{font-size:60px;font-weight:900;color:#fff;line-height:1;text-shadow:var(--score-glow);}
+  #crash .note{color:var(--beat);font-family:'Fredoka',sans-serif;font-weight:600;font-size:14px;margin:6px 22px 22px;}
+  #crash .boom{font-size:84px;line-height:1;}
+  #cashed .big{font-size:36px;font-weight:900;letter-spacing:2px;color:#7fe9ff;margin:8px 0 6px;text-shadow:var(--title-glow);}
+  #cashed .lbl{font-size:13px;font-weight:700;letter-spacing:2px;color:var(--dim);}
+  #cashed .pts{font-size:64px;font-weight:900;color:var(--beat);line-height:1;text-shadow:var(--beat-glow);}
+  #cashed .verdict{font-family:'Fredoka',sans-serif;font-size:18px;font-weight:700;margin:8px 0 22px;}
+  #cashed .verdict.win{color:#7fe9ff;} #cashed .verdict.lose{color:var(--beat);}
+  #cashed .crest{font-size:78px;}
+  .pb{font-family:'Fredoka',sans-serif;font-weight:700;font-size:14px;color:var(--dim);letter-spacing:1px;margin:2px 0 18px;}
+  .mathrow{font-family:var(--display);font-weight:800;font-size:14px;letter-spacing:1px;margin:2px 0 8px;}
+  .mathrow b{font-size:19px;}
+  .cashmath{color:var(--shoulder);text-shadow:0 0 8px var(--shoulder);}
+  .crashmath{color:var(--dim);}
+  .pb.newbest{color:var(--beat);text-shadow:var(--beat-glow);font-weight:800;font-size:15px;}
+  .brand{position:absolute;bottom:8px;left:50%;transform:translateX(-50%);color:var(--dim);font-size:10px;font-weight:600;letter-spacing:1px;opacity:.8;}
+  /* juice: full-screen impact/payoff flash + heat-bar pulse */
+  #fxFlash{position:absolute;inset:0;pointer-events:none;opacity:0;}
+  #fxFlash.go{animation:fxflash .34s ease-out;}
+  @keyframes fxflash{0%{opacity:.85}100%{opacity:0}}
+  #heatBar.flash{animation:heatflash .4s ease;}
+  @keyframes heatflash{0%,100%{box-shadow:none}35%{box-shadow:0 0 14px 3px rgba(120,255,200,.9)}}
+</style>
+</head>
+<body class="skin-neon">
+<div id="app">
+<div id="game"></div>
+<div id="fxFlash"></div>
+<audio id="music" src="neon-pulse.mp3" loop preload="auto"></audio>
+<audio id="wreck" src="wreck.mp3" preload="auto"></audio>
+
+<div class="ui">
+  <button id="backArcade" title="Back to arcade">‹</button>
+  <button id="muteBtn" title="Mute">🔊</button>
+  <div id="hud">
+    <div id="scorePill"><div id="scoreVal">0</div><div id="beat">Score to beat: <b id="beatVal">0</b></div>
+      <div id="heatBar"><div id="heatFill"></div></div>
+      <div id="heatLabel">HEAT <b id="heatVal">1.0×</b></div>
+    </div>
+    <div id="nmLayer"></div>
+    <div id="lanes">
+      <div class="mchip" data-l="0">4×</div><div class="mchip" data-l="1">2×</div><div class="mchip" data-l="2">1.5×</div><div class="mchip" data-l="3">1×</div>
+    </div>
+    <div id="steerHint">◄ Swipe or tap to steer ►</div>
+  </div>
+
+  <div id="menu" class="overlay show">
+    <div class="scrim"></div>
+    <div class="card">
+      <div class="title">SPY <span>RUNNER</span></div>
+      <div class="sub">Skill-based crash · prototype</div>
+      <div class="skinpick">
+        <button class="skinbtn" data-skin="neon">🌃 Neon</button>
+        <button class="skinbtn" data-skin="spyhunter">🕶️ Spy Hunter</button>
+        <button class="skinbtn" data-skin="bootlegger">🥃 Bootlegger</button>
+      </div>
+      <div class="htp">
+        <div class="row"><div class="ico">🏎️</div><div>You drive automatically — <b>steer left & right</b> (swipe, tap a side, or arrow keys) across 4 lanes.</div></div>
+        <div class="row"><div class="ico">✖️</div><div>Each lane banks points at its multiplier: <b style="color:var(--m4)">4×</b> · <b style="color:var(--m2)">2×</b> · <b style="color:var(--m15)">1.5×</b> · <b style="color:var(--m1)">1×</b>. Lanes to the left score more <b>and go faster</b> — riskier!</div></div>
+        <div class="row"><div class="ico">🅿️</div><div>Veer onto the right <b style="color:var(--shoulder)">green shoulder</b> to cash out — bank your score at <b style="color:var(--shoulder)">10×</b> & stop.</div></div>
+        <div class="row"><div class="ico">😎</div><div>Change lanes to <b style="color:var(--beat)">thread past traffic</b> — each close call banks a <b style="color:var(--beat)">NEAR MISS</b> bonus and spikes your heat. Play dangerously!</div></div>
+        <div class="row"><div class="ico">💥</div><div class="warn">Hit traffic and you only keep 1× — no cash-out bonus.</div> </div>
+      </div>
+      <button class="btn" id="startBtn">START</button>
+    </div>
+  </div>
+
+  <div id="crash" class="overlay">
+    <div class="scrim"></div>
+    <div class="card">
+      <div class="boom">💥</div>
+      <div class="big">WRECKED</div>
+      <div class="reach">YOU BANKED</div>
+      <div class="zero" id="crashScore">0</div>
+      <div class="mathrow crashmath" id="crashMath"></div>
+      <div class="note">Cash out next time for 10×!</div>
+      <div class="pb" id="crashBest">Personal best: 0</div>
+      <button class="btn" id="continueBtn">CONTINUE</button>
+    </div>
+  </div>
+
+  <div id="cashed" class="overlay">
+    <div class="scrim"></div>
+    <div class="card">
+      <div class="crest">🏆</div>
+      <div class="big">CASHED OUT</div>
+      <div class="lbl">YOUR SCORE</div>
+      <div class="pts" id="cashedPts">0</div>
+      <div class="mathrow cashmath" id="cashedMath"></div>
+      <div class="verdict" id="cashedVerdict"></div>
+      <div class="pb" id="cashedBest">Personal best: 0</div>
+      <button class="btn" id="againBtn">PLAY AGAIN</button>
+    </div>
+  </div>
+
+  <!-- Confirm exit -->
+  <div id="confirmExit" class="overlay">
+    <div class="scrim"></div>
+    <div class="card confirm">
+      <div class="qicon">🚪</div>
+      <div class="qtitle">END RUN?</div>
+      <div class="qmsg">Are you sure you want to end the game and score 0?</div>
+      <button class="btn danger" id="confirmEnd">END &amp; EXIT</button>
+      <button class="btn ghost" id="confirmStay">KEEP PLAYING</button>
+    </div>
+  </div>
+
+  <div class="brand">Big Run Studios — Internal Prototype · v0.9.17</div>
+</div>
+</div><!-- /#app -->
+
+<script src="https://unpkg.com/three@0.128.0/build/three.min.js"></script>
+<script src="https://unpkg.com/three@0.128.0/examples/js/shaders/CopyShader.js"></script>
+<script src="https://unpkg.com/three@0.128.0/examples/js/shaders/LuminosityHighPassShader.js"></script>
+<script src="https://unpkg.com/three@0.128.0/examples/js/postprocessing/EffectComposer.js"></script>
+<script src="https://unpkg.com/three@0.128.0/examples/js/postprocessing/RenderPass.js"></script>
+<script src="https://unpkg.com/three@0.128.0/examples/js/postprocessing/ShaderPass.js"></script>
+<script src="https://unpkg.com/three@0.128.0/examples/js/postprocessing/UnrealBloomPass.js"></script>
+<script>
+(function(){
+"use strict";
+
+/* localStorage throws SecurityError in sandboxed webviews (e.g. editor preview panels) —
+   one uncaught throw at init kills the whole script before any button gets its handler.
+   All storage goes through this guard so the game always boots; persistence just degrades. */
+const store={
+  get:k=>{ try{ return localStorage.getItem(k); }catch(e){ return null; } },
+  set:(k,v)=>{ try{ localStorage.setItem(k,v); }catch(e){} },
+};
+
+// ---------------------------------------------------------------- config
+const LW = 40;                                   // lane width
+const NLANE = 5;                                 // 4 driving + 1 shoulder
+const SHOULDER = 4;                              // rightmost index = shoulder
+const MULT = [4, 2, 1.5, 1, 0];                  // per-lane point multiplier
+const SPEED_MUL = [2.0, 1.66, 1.25, 1.0, 1.0];   // left lanes faster: 200/166/125/100%
+const START_LANE = 2;
+const laneX = i => -80 + i*LW;                   // 0..4 -> -80,-40,0,40,80
+const ROAD_L = -100, ROAD_R = 100;               // road edges in x
+const TLEN = 1600, BEHIND = 160;                 // scroll span
+const SPAWN_AHEAD = 1100, DESPAWN = -180;
+const PLAYER_HALF = 11;          // wreck-zone half-length along the road (trimmed for forgiving, non-clippy rear-ends)
+const PLAYER_HALFW = 6;          // wreck-zone half-width across lanes (X) — smaller = thread the needle mid-switch
+const HEAT_MAX = 5;                              // combo multiplier ceiling
+const HEAT_BUMP = 0.5;                           // heat gained per near-miss — the ONLY thing that fills the bar
+const NEARMISS_BONUS = 18;                       // base near-miss points (scaled by current heat)
+const NEARMISS_X = 20;                           // lateral grace just outside the wreck zone — wide so a committed lane-change next to traffic reliably scores
+const NEARMISS_Y = 40;                           // longitudinal grace just outside the wreck zone — the main "don't have to get so close" lever
+const NEARMISS_WINDOW = 0.8;                     // sec after a lane change that brushing traffic counts as a dodge
+// intro cutscene timeline (sec): run-in -> slide across hood -> hop into seat -> go
+const RUN_END=0.85, JUMP_END=2.1, COP_PEEL=2.6, CAM_CATCH=1.0, INTRO_DUR=3.6, LEFT_SEAT_X=-4, RIGHT_SEAT_X=4;   // longer leap = a beat to read the money-shot; still shorter than the original 4.2
+// road curvature (cosmetic ribbon): hills (vertical) + bends (horizontal), each on ~5s segments
+const SEG_LEN=2200;              // road distance per curve segment (~5s at cruising speed)
+const FLAT_LEN=5000;             // flat straightaway at the start (~10s) — clear orientation, and keeps the intro/cops on flat ground
+const CURVE_MIX=0.25;            // chance a segment curves each way (up/down, left/right); rest straight (~50%)
+const HILL_RISE=130, HILL_MAX=230;    // elevation step per up/down segment, and overall clamp — dramatic rolling hills
+const BEND_SHIFT=70, BEND_MAX=220;    // lateral step per left/right segment, and overall clamp — gentle sway, not hard turns
+const BG_PARALLAX=0.2;           // the distant city moves only ~20% of the camera's lateral pan (it's far away)...
+const BG_LAG=2.4;                // ...and eases toward that target (~0.4s time constant) so steering never jerks the skyline
+const UNITS_PER_M=6;                      // world units per "metre" — tunes how fast the roadside signs pass
+const RIGHT_SIGN_STEP=200*UNITS_PER_M;    // right shoulder: a "10× CASH OUT" sign every 200m
+const LEFT_SIGN_STEP=500*UNITS_PER_M;     // left verge: a distance marker every 500m (running odometer)
+const SIGN_VIEW=1500;                     // how far ahead signs are placed (≈ fog far, so they fade in from the haze)
+
+const mod=(n,m)=>((n%m)+m)%m, lerp=(a,b,t)=>a+(b-a)*t, rand=(a,b)=>a+Math.random()*(b-a), choice=a=>a[(Math.random()*a.length)|0];
+const shade=(hex,f)=>{const r=Math.min(255,((hex>>16)&255)*f)|0,g=Math.min(255,((hex>>8)&255)*f)|0,b=Math.min(255,(hex&255)*f)|0;return (r<<16)|(g<<8)|b;};
+
+function addBox(parent,w,d,h,color,x,y,z,o){o=o||{};const m=new THREE.Mesh(new THREE.BoxGeometry(w,d,h),new THREE.MeshLambertMaterial({color,emissive:o.emissive!=null?o.emissive:0,emissiveIntensity:o.emissiveIntensity!=null?o.emissiveIntensity:1,transparent:!!o.transparent,opacity:o.opacity==null?1:o.opacity}));m.position.set(x,y,z);m.castShadow=!!o.cast;m.receiveShadow=!!o.receive;parent.add(m);return m;}
+function addMetal(parent,w,d,h,color,x,y,z,o){o=o||{};const m=new THREE.Mesh(new THREE.BoxGeometry(w,d,h),new THREE.MeshPhongMaterial({color,specular:0xffffff,shininess:90,emissive:o.emissive!=null?o.emissive:0,emissiveIntensity:o.emissiveIntensity!=null?o.emissiveIntensity:1}));m.position.set(x,y,z);m.castShadow=o.cast!==false;parent.add(m);return m;}
+function disposeObj(o){o.traverse(n=>{if(n.geometry)n.geometry.dispose();if(n.material){Array.isArray(n.material)?n.material.forEach(m=>m.dispose()):n.material.dispose();}});}
+// flat contact shadow under a vehicle — grounds it ON the road instead of letting it float (a blocky shadow matches the blocky cars). Added as a child so it rides the curve with the car.
+function addShadow(parent,w,len){ const m=new THREE.Mesh(new THREE.PlaneGeometry(w,len), new THREE.MeshBasicMaterial({color:0x000000,transparent:true,opacity:0.34,depthWrite:false})); m.position.set(0,0,0.25); parent.add(m); return m; }
+
+// Cosmetic road curve: deterministic, lazily-generated schedule sampled by road distance.
+// Returns {x: lateral bend offset, z: hill elevation offset} for any distance s along the road.
+const Curve=(function(){
+  let hL=[0], bL=[0];   // hill/bend offset at each segment boundary (index k -> distance k*SEG_LEN)
+  const ss=t=>t*t*(3-2*t), clamp=(v,m)=>v<-m?-m:v>m?m:v;
+  const roll=step=>{ const r=Math.random(); return r<CURVE_MIX? step : r<CURVE_MIX*2? -step : 0; };
+  function ensure(k){ while(hL.length<=k){ const i=hL.length; hL[i]=clamp(hL[i-1]+roll(HILL_RISE),HILL_MAX); bL[i]=clamp(bL[i-1]+roll(BEND_SHIFT),BEND_MAX); } }
+  return {
+    at(s){ s-=FLAT_LEN; if(s<=0) return {x:0,z:0}; const k=Math.floor(s/SEG_LEN); ensure(k+1); const f=ss((s-k*SEG_LEN)/SEG_LEN); return { z:hL[k]+(hL[k+1]-hL[k])*f, x:bL[k]+(bL[k+1]-bL[k])*f }; },
+    reset(){ hL=[0]; bL=[0]; }
+  };
+})();
+
+// ================================================================ SKINS
+// To add a reskin: copy this object, give it a new id, and tweak palette +
+// model factories below. Everything visual lives here; game logic is skin-agnostic.
+const SKINS = {};
+SKINS.neon = {
+  id:'neon', label:'Neon', music:'neon-pulse.mp3', hover:true, seatZ:18,   // neon cars float; seatZ pins the riders' seat height independent of car geometry
+  bg:0x070b22, fog:{color:0x070b22, near:360, far:1500}, postFX:true, bloomPulse:true,
+  palette:{
+    road:0x060912, laneLT:0.16, shoulder:0x24ff93, divider:0xffffff, edge:0xff3d9a, edgeR:0xff3d6e,
+    laneTint:[0xff2a66,0xff8424,0x22a8ff,0xffe12a], horizon:0x2b9bff,   // L->R electric-neon: red, orange, blue, yellow; shoulder = neon-green cash-out lane
+    player:0x39c6ff, thruster:0xfff2a8,
+    traffic:[0xff3d9a,0x9b6dff,0x39ffa0,0xffc233,0xff7a33,0x5fe0ff],
+  },
+  setupLights(scene){
+    const all=[];
+    const hemi=new THREE.HemisphereLight(0x3550a0,0x05060f,0.6); scene.add(hemi); all.push(hemi);
+    const amb=new THREE.AmbientLight(0x33468f,0.7); scene.add(amb); all.push(amb);
+    const dir=new THREE.DirectionalLight(0xbcd4ff,0.45); dir.position.set(60,-120,260); scene.add(dir); all.push(dir);
+    return {all};
+  },
+  buildTrack(root){ bgGroup=buildNeonBackdrop(root); signsHandle=buildSigns(root); return stdTrack(root,this.palette,{glow:true, horizon:false, laneLines:true}); },  // distant city + roadside signage + segmented ribbon, neon glow, accent-coded lane guide-lines
+  playerCar(){
+    const g=new THREE.Group(), P=this.palette, F=5;   // hover height — neon cars all float (body bottom z≈9); traffic matches via its own F so the fleet floats consistently
+    const hero=0x86d8ff;                                                                       // bright, value-distinct hero cyan — still the lightest thing on track, but low emissive keeps its form instead of blowing out
+    addMetal(g,16,18,8,hero,0,-2,8+F,{emissive:hero,emissiveIntensity:0.2});                   // body
+    addMetal(g,9,16,6,hero,0,15,8+F,{emissive:hero,emissiveIntensity:0.2});                    // nose
+    addMetal(g,22,11,7,shade(hero,0.78),0,-12,8+F,{emissive:hero,emissiveIntensity:0.12});     // rear
+    // open-top convertible: low windshield + seat back instead of a canopy roof
+    addBox(g,12,1.6,5,0xcdeeff,0,7,14+F,{emissive:0xcdeeff,emissiveIntensity:0.25,cast:false}); // windshield
+    // two bucket seats the riders sit down into (driver left, partner right)
+    for(const sx of [LEFT_SEAT_X,RIGHT_SEAT_X]){
+      addMetal(g,7,3.5,5,0x1c2848,sx,-6,15+F,{emissive:0x14243f,emissiveIntensity:0.5});         // seat back — kept below shoulder height (lit, so the rider reads above & against it)
+      addBox(g,8,7,2,0x121a2c,sx,-1,16+F,{cast:false});                                            // seat cushion (under the hips)
+    }
+    addBox(g,13,2,6,0x0a1a30,0,5,12+F,{emissive:0x2ea8ff,emissiveIntensity:1.0,cast:false});     // dash glow — lit backdrop so the riders (incl. the black-tux spy) silhouette & read
+    // rear spoiler (aerofoil) — the hero's signature: a raised wing + hot neon trailing edge; reads as a supercar part, not an antenna
+    addBox(g,2.5,3,7,shade(hero,0.55),-10,-13,10+F,{cast:false});                                 // wing upright L
+    addBox(g,2.5,3,7,shade(hero,0.55),10,-13,10+F,{cast:false});                                  // wing upright R
+    addMetal(g,26,4,1.8,shade(hero,0.7),0,-14,15+F);                                              // wing blade
+    addBox(g,26,1.4,1.6,0xff3d9a,0,-15.6,15+F,{emissive:0xff3d9a,emissiveIntensity:1.3,cast:false}); // magenta neon trailing edge (hero's signature accent)
+    addBox(g,4,4,7,P.thruster,-7,-18,8+F,{emissive:P.thruster,emissiveIntensity:0.8,cast:false}); // thrusters
+    addBox(g,4,4,7,P.thruster,7,-18,8+F,{emissive:P.thruster,emissiveIntensity:0.8,cast:false});
+    for(const sx of [7,-7]) for(const sy of [9,-12]) addBox(g,3.5,3.5,4,0x0e2233,sx,sy,F-1,{emissive:0x39c6ff,emissiveIntensity:0.9,cast:false}); // hover-pods — corner masses (matches the fleet's hover read)
+    addShadow(g,30,46);                                                                        // shadow cast on the road below the hovering car (sells the float; no glowing underglow plate)
+    return g;
+  },
+  vehicle(klass,color){
+    const g=new THREE.Group();
+    const dims={bike:[10,24,8],car:[20,42,9],truck:[24,74,13]}[klass];
+    const [w,len,h]=dims, F=9;   // float to match the hero's hover (body bottom z≈9, neon-only); cosmetic, collision is X/Y only
+    const body=shade(color,0.72);                                                         // value lifted so the shape separates from the dark road (still subordinate to the hero)
+    addMetal(g,w,len,h,body,0,0,h/2+F,{emissive:body,emissiveIntensity:0.14});
+    addBox(g,w-3,len*0.9,1.4,shade(color,1.35),0,0,h+F,{emissive:shade(color,1.2),emissiveIntensity:0.3,cast:false});  // roof rim — a lit top edge reads the car's length against the road
+    addBox(g,w-4,len*0.34,h*0.7,0x27506e,0,len*0.08,h+F-1,{emissive:0x14314a,emissiveIntensity:0.45,cast:false});      // glassy greenhouse/cabin (reads as a windscreen, not a black hole)
+    addBox(g,w-3,3.5,4,0xff2a2a,0,-len/2+1,4+F,{emissive:0xff2a2a,emissiveIntensity:1.9,cast:false}); // taillights — the dominant "danger ahead" read
+    addBox(g,w-6,2.5,3,0xff6a4a,0,len/2-1,5+F,{emissive:0xff6a4a,emissiveIntensity:0.7,cast:false});  // headlights
+    for(const sx of [w/2-2,-(w/2-2)]) for(const sy of [len/2-6,-(len/2-6)]) addBox(g,3,3,4,0x11202c,sx,sy,F-1,{emissive:0x3aa0c8,emissiveIntensity:0.55,cast:false}); // hover-pods — corner masses that read as a vehicle & reinforce the float
+    addShadow(g,w*1.3,len*1.08);
+    return {group:g, halfLen:len/2-2, halfW:w/2};
+  },
+};
+
+// ---------- shared palette-driven builders for ground-vehicle reskins ----------
+// One continuous, deformable road surface — a grid mesh whose rows ride the curve every frame.
+// Being a single mesh, it can never show a seam/gap; the colored strips & lines ride on top of it.
+function buildRoadRibbon(root, P){
+  const ROWS=130, Y0=-BEHIND-30, Y1=1620, rowsN=ROWS+1;
+  const ys=[]; for(let r=0;r<rowsN;r++) ys.push(Y0+(Y1-Y0)*r/ROWS);
+  const toRGB=h=>[((h>>16)&255)/255,((h>>8)&255)/255,(h&255)/255];
+  const blend=(h1,h2,t)=>{ const a=toRGB(h1),b=toRGB(h2); return [a[0]+(b[0]-a[0])*t,a[1]+(b[1]-a[1])*t,a[2]+(b[2]-a[2])*t]; };
+  // contiguous colored regions across the road, all part of ONE continuous mesh — lanes are vertex-coloured, so there are no tile seams to tear
+  const LT=(P.laneLT==null?0.8:P.laneLT), regions=[
+    [-112,-100, toRGB(P.road)],
+    [-100,-60,  blend(P.road,P.laneTint[0],LT)],
+    [-60,-20,   blend(P.road,P.laneTint[1],LT)],
+    [-20,20,    blend(P.road,P.laneTint[2],LT)],
+    [20,60,     blend(P.road,P.laneTint[3],LT)],
+    [60,100,    toRGB(P.shoulder)],
+    [100,112,   toRGB(P.road)],
+  ];
+  const baseX=[], vrow=[], posA=[], colA=[], idx=[]; let v=0;
+  for(const [xL,xR,c] of regions){ const start=v;
+    for(let r=0;r<rowsN;r++){
+      baseX.push(xL); vrow.push(r); posA.push(xL,ys[r],-4); colA.push(c[0],c[1],c[2]);
+      baseX.push(xR); vrow.push(r); posA.push(xR,ys[r],-4); colA.push(c[0],c[1],c[2]);
+      v+=2;
+    }
+    for(let r=0;r<ROWS;r++){ const a=start+r*2; idx.push(a,a+2,a+1, a+1,a+2,a+3); }
+  }
+  const geo=new THREE.BufferGeometry(), p=new Float32Array(posA);
+  geo.setAttribute('position',new THREE.BufferAttribute(p,3));
+  geo.setAttribute('color',new THREE.BufferAttribute(new Float32Array(colA),3));
+  geo.setIndex(idx); geo.computeVertexNormals();
+  const mesh=new THREE.Mesh(geo,new THREE.MeshBasicMaterial({vertexColors:true,side:THREE.DoubleSide})); root.add(mesh);   // unlit so lanes stay vivid & uniform (still fogs into the distance)
+  const nV=baseX.length, dxA=new Float32Array(rowsN), dzA=new Float32Array(rowsN);
+  return { update(dist){ const b=Curve.at(dist);
+    for(let r=0;r<rowsN;r++){ const cur=Curve.at(dist+ys[r]); dxA[r]=cur.x-b.x; dzA[r]=cur.z-b.z; }
+    for(let i=0;i<nV;i++){ const r=vrow[i], j=i*3; p[j]=baseX[i]+dxA[r]; p[j+2]=-4+dzA[r]; }
+    geo.attributes.position.needsUpdate=true; } };
+}
+function stdTrack(root, P, o){
+  o=o||{}; const scrollers=[], glow=!!o.glow;
+  const em=(c,i)=> glow?{emissive:c,emissiveIntensity:(i==null?1:i),cast:false}:{cast:false};
+  // every scroller records its inherent x/z so the curve offset can be added on top each frame
+  const push=(m,y,up)=>{ scrollers.push({m,baseY:y,bx:m.position.x,bz:m.position.z,up:!!up}); return m; };
+  const ribbon=buildRoadRibbon(root, P);   // continuous gap-free road surface WITH lanes baked in (vertex colors) — no tile seams
+  const STEP=40, SEGD=STEP+14;   // overlapping slices for the rails/markers that ride on the ribbon
+  for(let y=0;y<TLEN;y+=STEP){
+    const zb=((y/STEP)&1)*0.04;   // tiny alternating depth bias so overlapping coplanar slices don't z-fight on flat road
+    if(o.ground!=null) push(addBox(root,1500,SEGD,6,o.ground,0,y,-7+zb,{receive:true}),y);
+    push(addBox(root,3,SEGD,7,P.edge,ROAD_L,y,3+zb,em(P.edge,1)),y);
+    push(addBox(root,3,SEGD,7,P.edgeR,ROAD_R,y,3+zb,em(P.edgeR,1)),y);
+    push(addBox(root,3,SEGD,5,0xdfe8ff,laneX(SHOULDER)-LW/2,y,1.5+zb,em(0xdfe8ff,0.35)),y);   // clean boundary into the green cash-out lane
+  }
+  // white boundary dashes — skipped on skins that use coloured per-lane guide-lines instead (neon), so we never stack two sets of dashes
+  if(!o.laneLines){ for(const dx of [laneX(0)+LW/2,laneX(1)+LW/2,laneX(2)+LW/2]){ for(let y=0;y<TLEN;y+=64) push(addBox(root,3,16,2.5,P.divider,dx,y,1.0,em(P.divider,0.3)),y); } }
+  // accent-coded road: ONE glowing guide-line down each driving lane in that lane's multiplier colour — the colour cue lives on the stripe, not the (now dark) lane fill, so the road recedes while the player & traffic pop
+  if(o.laneLines){ for(let li=0; li<4; li++){ const c=P.laneTint[li], cx=laneX(li); for(let y=0;y<TLEN;y+=46) push(addBox(root,5,26,2.5,c,cx,y,1.2,em(c,1.0)),y); } }
+  for(const rx of [ROAD_L,ROAD_R]){ for(let y=0;y<TLEN;y+=40){ const c=(rx<0)?P.edge:P.edgeR; push(addBox(root,5,16,9,c,rx,y,7,em(c,1.1)),y); } }
+  if(o.trees){ for(let y=0;y<TLEN;y+=80){ for(const side of [-1,1]){ const t=treeMesh(); t.position.set((side<0?ROAD_L:ROAD_R)+side*(28+(y%37)),y,0); root.add(t); push(t,y,true); } } }
+  if(P.horizon!=null && o.horizon!==false) addBox(root,760,5,72,P.horizon,0,1010,16,{emissive:P.horizon,emissiveIntensity:(o.horizonI==null?1.8:o.horizonI),cast:false});
+  // each slice also pitches/yaws to the local slope & bend so the ribbon reads as a smooth curve (trees stay upright)
+  return { scroll(dist){ ribbon.update(dist); const b=Curve.at(dist), D=STEP; for(const s of scrollers){ const wy=mod(s.baseY-dist,TLEN)-BEHIND, c=Curve.at(dist+wy); s.m.position.set(s.bx+(c.x-b.x), wy, s.bz+(c.z-b.z)); if(!s.up){ const c2=Curve.at(dist+wy+D); s.m.rotation.x=Math.atan2(c2.z-c.z,D); s.m.rotation.z=-Math.atan2(c2.x-c.x,D); } } } };
+}
+function stdCar(o){
+  const g=new THREE.Group(), lift=o.lift||0, add=(o.mat==='flat')?addBox:addMetal;
+  add(g,o.w,o.len,o.h,o.body,0,0,o.h/2+lift, o.glow?{emissive:o.body,emissiveIntensity:0.16}:undefined);
+  if(o.convertible){
+    // open cockpit: low windshield + seat back, no roof — for the driver to hop into
+    addBox(g,o.w-6,1.6,o.h*0.6,(o.win==null?0x223047:o.win),0,o.len*0.20,o.h+lift,{cast:false});   // windshield
+    addBox(g,o.w-7,o.len*0.16,o.h*0.65,0x141414,0,-o.len*0.14,o.h+lift-1,{cast:false});             // seat back
+  } else {
+    add(g,o.w-4,o.len*0.46,o.h*0.82,(o.cabin==null?shade(o.body,1.12):o.cabin),0,o.len*0.04,o.h+lift-1, o.glow?{emissive:(o.cabin==null?o.body:o.cabin),emissiveIntensity:0.12}:undefined);
+    addBox(g,o.w-6,o.len*0.34,o.h*0.55,(o.win==null?0x0d1018:o.win),0,o.len*0.05,o.h+lift,{cast:false});
+  }
+  addBox(g,o.w-6,2.5,3,(o.rearLight==null?0xff2a2a:o.rearLight),0,-o.len/2+1,4+lift,{emissive:(o.rearLight==null?0xff2a2a:o.rearLight),emissiveIntensity:1.2,cast:false});
+  addBox(g,o.w-7,2.5,3,(o.frontLight==null?0xfff2a8:o.frontLight),0,o.len/2-1,5+lift,{emissive:(o.frontLight==null?0xfff2a8:o.frontLight),emissiveIntensity:0.9,cast:false});
+  if(o.wheels){ const wr=7; for(const sx of [o.w/2-1,-(o.w/2-1)]) for(const sy of [o.len*0.30,-o.len*0.30]) addBox(g,4,wr,wr,0x0c0c0e,sx,sy,wr/2-1,{}); }
+  if(o.cop){ addBox(g,o.w*0.52,7,3,0x15171c,0,o.len*0.04,o.h+lift+3,{cast:false});
+    addBox(g,o.w*0.22,7,4,0xff2030,-o.w*0.14,o.len*0.04,o.h+lift+5,{emissive:0xff2030,emissiveIntensity:1.8,cast:false});
+    addBox(g,o.w*0.22,7,4,0x2554ff,o.w*0.14,o.len*0.04,o.h+lift+5,{emissive:0x2554ff,emissiveIntensity:1.8,cast:false}); }
+  addShadow(g,o.w*1.3,o.len*1.08);
+  return g;
+}
+function treeMesh(){ const g=new THREE.Group(); addBox(g,7,7,24,0x3a2a18,0,0,12,{}); const h=rand(28,48); addBox(g,30,30,h,0x21401c,0,0,24+h/2,{}); addBox(g,20,20,h*0.55,0x2c5226,0,0,24+h,{}); return g; }
+
+// ---- NEON backdrop: the desert-night city the player is racing toward ----
+// A static, very-distant layer (fog DISABLED so it reads through the haze). Built into worldRoot,
+// so it sits at a fixed world Y while the road scrolls underneath — i.e. it reads as infinitely far
+// (no scroll), and a distant city correctly does NOT swing when the road bends. Composed back-to-front
+// by Y depth: sky card > stars > moon > mesas > far skyline > near skyline (atmospheric perspective).
+function buildNeonBackdrop(root){
+  const grp=new THREE.Group(); root.add(grp);
+  const toRGB=h=>[((h>>16)&255)/255,((h>>8)&255)/255,(h&255)/255];
+  const flat=(c,o)=>{ const m=new THREE.MeshBasicMaterial({color:c,side:THREE.DoubleSide}); m.fog=false; if(o&&o.opacity!=null){m.transparent=true;m.opacity=o.opacity;} return m; };
+  // gradient sky: warm violet city-glow hugging the horizon -> near-black zenith. Bottom band == fog/bg
+  // colour so the fogged far road dissolves seamlessly into the sky with no hard horizon seam.
+  const SKY=[[-60,0x070b22],[70,0x070b22],[150,0x1b1138],[340,0x271149],[580,0x190d33],[840,0x100a26],[1160,0x09061c]];
+  (function(){ const X=1600, pos=[],col=[],idx=[];
+    for(let r=0;r<SKY.length;r++){ const z=SKY[r][0], c=toRGB(SKY[r][1]); pos.push(-X,1400,z, X,1400,z); col.push(c[0],c[1],c[2],c[0],c[1],c[2]); }
+    for(let r=0;r<SKY.length-1;r++){ const a=r*2; idx.push(a,a+1,a+2, a+2,a+1,a+3); }
+    const g=new THREE.BufferGeometry(); g.setAttribute('position',new THREE.BufferAttribute(new Float32Array(pos),3));
+    g.setAttribute('color',new THREE.BufferAttribute(new Float32Array(col),3)); g.setIndex(idx);
+    const m=new THREE.MeshBasicMaterial({vertexColors:true,side:THREE.DoubleSide}); m.fog=false; grp.add(new THREE.Mesh(g,m)); })();
+  // pale neon moon, low and off-centre (rule of thirds); skyline silhouettes read against it
+  for(const m of [[150,0x4a78b0,0.35],[120,0x9fd8ff,1]]){ const d=new THREE.Mesh(new THREE.CircleGeometry(m[0],44), flat(m[1],{opacity:m[2]})); d.rotation.x=Math.PI/2; d.position.set(-200,1397,470); grp.add(d); }   // rises behind the skyline, left third
+  // sparse stars in the dark upper sky
+  for(let i=0;i<40;i++){ const s=new THREE.Mesh(new THREE.BoxGeometry(3,1,3), flat(0xbfd0ff,{opacity:rand(0.4,0.9)})); s.position.set(rand(-1300,1300),1398,rand(700,1130)); grp.add(s); }
+  // desert mesas flanking the city — flat-topped warm silhouettes [x, base z, width, height]
+  for(const m of [[-1000,55,300,300],[-720,40,360,200],[780,55,300,240],[1060,80,560,360]]){
+    const me=new THREE.Mesh(new THREE.BoxGeometry(m[2],20,m[3]), flat(0x241526)); me.position.set(m[0],1360,m[1]+m[3]/2); grp.add(me); }
+  // two skyline rows; near row taller/brighter, far row smaller/dimmer/bluer = depth
+  const winC=[0xffd27a,0xffd27a,0x7fe0ff,0x7fe0ff,0xff5fae,0xbfeaff];
+  function row(y, count, baseC, hMin, hMax, wMin, wMax, winDim){
+    for(let i=0;i<count;i++){ const w=rand(wMin,wMax), h=rand(hMin,hMax), x=lerp(-1300,1300,i/(count-1))+rand(-40,40);
+      const b=new THREE.Mesh(new THREE.BoxGeometry(w,24,h), flat(baseC)); b.position.set(x,y,60+h/2); grp.add(b);
+      const cols=Math.max(2,Math.floor(w/18)), rowsW=Math.max(2,Math.floor(h/46));
+      for(let c=0;c<cols;c++) for(let rr=0;rr<rowsW;rr++){ if(Math.random()<0.5)continue;
+        const wm=new THREE.Mesh(new THREE.BoxGeometry(5,4,6), flat(choice(winC))); wm.material.color.multiplyScalar(winDim);
+        wm.position.set(x-w/2+9+c*(w-18)/Math.max(1,cols-1), y-13, 82+(h-34)*rr/Math.max(1,rowsW-1)); grp.add(wm); }
+    }
+  }
+  row(1335, 16, 0x0d0a26, 120, 300, 70, 150, 0.7);   // far row
+  row(1295, 11, 0x140e30, 180, 430, 90, 200, 1.0);   // near row
+  return grp;
+}
+
+// ---- roadside signage: a post + a canvas-textured panel. kind 'cash' (right, "10× CASH OUT") or 'dist' (left, distance marker) ----
+function makeSignMesh(kind){
+  const g=new THREE.Group(), isCash=(kind==='cash');
+  addBox(g,2.0,2.0,18,0x2a3550,0,0,9,{emissive:0x0e1626,emissiveIntensity:0.5,cast:false});   // post (smaller)
+  const cv=document.createElement('canvas'); cv.width=256; cv.height=128;
+  const ctx=cv.getContext('2d'), tex=new THREE.CanvasTexture(cv);
+  const panel=new THREE.Mesh(new THREE.PlaneGeometry(26,13), new THREE.MeshBasicMaterial({map:tex,transparent:true,side:THREE.DoubleSide}));
+  panel.rotation.x=Math.PI/2; panel.position.set(0,0,25); g.add(panel);   // stand the smaller panel upright, facing the road
+  function draw(text){
+    ctx.clearRect(0,0,256,128);
+    ctx.fillStyle = isCash ? 'rgba(6,26,16,0.96)' : 'rgba(8,14,34,0.96)'; ctx.fillRect(4,4,248,120);
+    ctx.lineWidth=9; ctx.strokeStyle = isCash ? '#24ff93' : '#5fe0ff'; ctx.strokeRect(9,9,238,110);
+    ctx.textAlign='center'; ctx.textBaseline='middle';
+    if(isCash){
+      ctx.fillStyle='#7dffc0'; ctx.font='900 60px Orbitron, Arial, sans-serif'; ctx.fillText('10×',128,46);
+      ctx.fillStyle='#eafff4'; ctx.font='800 34px Orbitron, Arial, sans-serif'; ctx.fillText('CASH OUT',128,94);
+    } else {
+      ctx.fillStyle='#eaf6ff'; ctx.font='900 62px Orbitron, Arial, sans-serif'; ctx.fillText(text,128,48);
+      ctx.fillStyle='#9fd8ff'; ctx.font='800 28px Orbitron, Arial, sans-serif'; ctx.fillText('METERS',128,96);
+    }
+    tex.needsUpdate=true;
+  }
+  g.userData={draw,lastText:null};
+  return g;
+}
+// Dynamic roadside-sign pool: positions signs at the upcoming 100m / 250m milestones each frame and
+// recycles them, so the left odometer keeps climbing (no TLEN wrap-repeat). Rides the curve like other roadside props.
+function buildSigns(root){
+  const RIGHT_X=ROAD_R+24, LEFT_X=ROAD_L-24, right=[], left=[];
+  for(let i=0;i<6;i++){ const s=makeSignMesh('cash'); s.userData.draw(''); s.visible=false; root.add(s); right.push(s); }   // identical — drawn once
+  for(let i=0;i<4;i++){ const s=makeSignMesh('dist'); s.visible=false; root.add(s); left.push(s); }
+  function place(pool, step, sideX, isCash, dist){
+    const b=Curve.at(dist); let pi=0;
+    for(let k=Math.max(1,Math.ceil((dist-BEHIND)/step)); pi<pool.length; k++){
+      const D=k*step, wy=D-dist; if(wy>SIGN_VIEW) break;
+      const s=pool[pi++], c=Curve.at(D);
+      s.position.set(sideX+(c.x-b.x), wy, c.z-b.z); s.visible=true;
+      if(!isCash){ const txt=''+(k*(step/UNITS_PER_M)); if(s.userData.lastText!==txt){ s.userData.draw(txt); s.userData.lastText=txt; } }   // metres = milestone index × metres-per-step (stays correct if spacing changes)
+    }
+    while(pi<pool.length) pool[pi++].visible=false;
+  }
+  return { update(dist){ place(right,RIGHT_SIGN_STEP,RIGHT_X,true,dist); place(left,LEFT_SIGN_STEP,LEFT_X,false,dist); } };
+}
+
+// blocky person with hip/shoulder-pivoted limbs (the driver and his partner)
+function buildPerson(o){
+  o=o||{}; const skin=o.skin||0xffc24d, shirt=o.shirt||0xff3d6e, pants=o.pants||0x16203f, shoe=0x0c0c0e, hair=o.hair||0x222222, EI=0.55;
+  const g=new THREE.Group();
+  addBox(g,7,4.5,7,shirt,0,0,11,{emissive:shirt,emissiveIntensity:EI,cast:false});                 // torso (self-lit so the riders pop against the car)
+  addBox(g,5.7,5.7,5.7,skin,0,0,16,{emissive:skin,emissiveIntensity:0.72,cast:false});            // head (brighter — the main readable mass of a black-clad figure seen from behind)
+  if(o.tux){   // black-tie: white shirt front + black bow tie (no collar band)
+    addBox(g,2.4,1.0,5.5,0xffffff,0,2.35,10.6,{emissive:0xffffff,emissiveIntensity:0.45,cast:false});   // shirt front
+    addBox(g,3.6,1.5,1.8,0x0a0a0c,0,2.7,13.4,{cast:false});                                              // bow tie
+  }
+  if(o.longHair){   // hair: top + back of head + ponytail — UNLIT so the bluish scene lights can't gray it out
+    const hairBox=(w,d,h,x,y,z)=>{ const m=new THREE.Mesh(new THREE.BoxGeometry(w,d,h), new THREE.MeshBasicMaterial({color:hair})); m.position.set(x,y,z); g.add(m); };
+    hairBox(6.2,6.2,2.6,0,0,18.9); hairBox(6,2.2,6,0,-2.7,16); hairBox(5,2.4,7,0,-3,12.5);
+  }
+  else addBox(g,5.9,5.6,2.8,hair,0,0,18.4,{emissive:hair,emissiveIntensity:0.3,cast:false});  // cap/hair — sunk over the head top so it can't z-fight/tear with the head
+  const mk=(x,z,bw,bh,col)=>{ const a=new THREE.Group(); a.position.set(x,0,z); addBox(a,bw,bw,bh,col,0,0,-bh/2,{emissive:col,emissiveIntensity:EI,cast:false}); g.add(a); return a; };
+  const armL=mk(-4.4,13.5,2.6,7,shirt), armR=mk(4.4,13.5,2.6,7,shirt);
+  for(const arm of [armL,armR]){
+    if(o.tux) addBox(arm,3,3,1.3,0xffffff,0,0,-5.7,{emissive:0xffffff,emissiveIntensity:0.5,cast:false});   // white shirt cuff
+    addBox(arm,2.9,2.9,2.2,skin,0,0,-7.1,{emissive:skin,emissiveIntensity:EI,cast:false});                  // skin hand (so it's not an all-black sleeve)
+  }
+  const legL=mk(-1.9,7.5,3,7.5,pants), legR=mk(1.9,7.5,3,7.5,pants);
+  addBox(legL,3.2,4.5,2,shoe,0,1,-7.2,{cast:false}); addBox(legR,3.2,4.5,2,shoe,0,1,-7.2,{cast:false});
+  // (no rim-light bands — they read as a clipping artifact from behind; the black-tux spy now reads via the lit seat-back + dash-glow silhouette and a brighter head)
+  g.userData={armL,armR,legL,legR};
+  g.scale.setScalar(0.68);                           // a touch larger so the leads read at gameplay distance
+  return g;
+}
+function buildGuy(){ return buildPerson({shirt:0x15161c, pants:0x101117, tux:true}); }                     // the driver — black tuxedo + bow tie
+function buildGal(){ return buildPerson({hair:0xf0cf5a, longHair:true, shirt:0xc44dff, skin:0xffd9a8}); }  // his partner (golden-blonde ponytail, neon-purple top to contrast the blue car)
+// seated pose (legs/arms folded forward into the cockpit) at a given seat x
+function seatPerson(grp,x){ if(!grp)return; const ud=grp.userData;
+  grp.visible=true; grp.position.set(x,-2,seatZ); grp.rotation.set(0,0,0);
+  ud.legL.rotation.x=-1.4; ud.legR.rotation.x=-1.4; ud.armL.rotation.x=-0.6; ud.armR.rotation.x=-0.6; }
+function setGuySeated(){ seatPerson(guyGroup, LEFT_SEAT_X); }
+// partner stands up in the driver seat, right arm raised, waving him over
+function standGalWaving(){ if(!galGroup)return; const ud=galGroup.userData;
+  galGroup.visible=true; galGroup.position.set(LEFT_SEAT_X,-2,seatZ-1); galGroup.rotation.set(0,0,0);
+  ud.legL.rotation.set(0,0,0); ud.legR.rotation.set(0,0,0);
+  ud.armL.rotation.set(0.2,0,0);
+  ud.armR.rotation.set(0,-2.2+Math.sin(introT*10)*0.4,0); }
+// pursuing cop car with a flashing light bar (red/blue refs in userData)
+function buildCop(lift){
+  lift=lift||0;   // hover skins (neon) pass a lift so the intro cops float with the rest of the fleet; grounded skins pass 0
+  const g=stdCar({w:20,len:42,h:9,body:0xf2f2f2,cabin:0x20242c,win:0x0d1018,rearLight:0xff3b3b,frontLight:0xfff6c0,wheels:false,mat:'flat',lift});
+  const red=addBox(g,5,7,4,0xff2030,-5,0,12+lift,{emissive:0xff2030,emissiveIntensity:2,cast:false});
+  const blue=addBox(g,5,7,4,0x2554ff,5,0,12+lift,{emissive:0x2554ff,emissiveIntensity:0.3,cast:false});
+  g.userData={red,blue};
+  return g;
+}
+function clearIntroCops(){ for(const c of introCops){ scene.remove(c.mesh); disposeObj(c.mesh); } introCops=[]; }
+
+// ===== SPY HUNTER (classic arcade) =====
+SKINS.spyhunter = {
+  id:'spyhunter', label:'Spy Hunter', music:'spyhunter.mp3',
+  bg:0x6fa8d6, fog:{color:0x6fa8d6,near:450,far:1750}, postFX:false,
+  palette:{ road:0x5a606b, shoulder:0x3f7d3a, divider:0xf5f5f5, edge:0xc4c8cc, edgeR:0xc4c8cc,
+    laneTint:[0x636974,0x5e646f,0x595f6a,0x545a64], horizon:0xbfe2f2,
+    traffic:[0xd94b3a,0x2f6fd0,0xf2c33a,0x222831,0xe6e6e6,0x3aa84a] },
+  setupLights(scene){ const all=[]; const h=new THREE.HemisphereLight(0xffffff,0x5a7d4a,1.05); scene.add(h); all.push(h);
+    const a=new THREE.AmbientLight(0xffffff,0.45); scene.add(a); all.push(a);
+    const d=new THREE.DirectionalLight(0xffffff,0.8); d.position.set(120,-100,300); scene.add(d); all.push(d); return {all}; },
+  buildTrack(root){ return stdTrack(root,this.palette,{glow:false,ground:0x4a9e3f,horizonI:1.0}); },
+  playerCar(){ return stdCar({w:18,len:32,h:9,body:0xf2f2f2,cabin:0xe6e6e6,win:0x2a3340,rearLight:0xff3b3b,frontLight:0xfff6c0,wheels:true,mat:'flat',convertible:true}); },
+  vehicle(klass,color){ const d={bike:[10,24,8],car:[20,42,9],truck:[24,74,13]}[klass];
+    const g=stdCar({w:d[0],len:d[1],h:d[2],body:color,wheels:true,mat:'flat'}); return {group:g,halfLen:d[1]/2-2,halfW:d[0]/2}; },
+};
+
+// ===== BOOTLEGGER (southern swamp run) =====
+SKINS.bootlegger = {
+  id:'bootlegger', label:'Bootlegger', music:'bootlegger.mp3',
+  bg:0x18220f, fog:{color:0x18220f,near:360,far:1550}, postFX:true, bloomStrength:0.4,
+  palette:{ road:0x33302a, shoulder:0x55501e, divider:0xc9a23a, edge:0x241c10, edgeR:0x3a2a12,
+    laneTint:[0x3a352c,0x363128,0x322d25,0x2e2a22], horizon:0xc06a1e,
+    traffic:[0x6b4a2a,0x3a4a2a,0x7a2a2a,0x4a4438,0x222222,0x8a6a3a] },
+  setupLights(scene){ const all=[]; const h=new THREE.HemisphereLight(0x5e7080,0x1c2614,0.9); scene.add(h); all.push(h);
+    const a=new THREE.AmbientLight(0x8a7450,0.8); scene.add(a); all.push(a);
+    const d=new THREE.DirectionalLight(0xffc878,0.85); d.position.set(-120,-60,200); scene.add(d); all.push(d); return {all}; },
+  buildTrack(root){ return stdTrack(root,this.palette,{glow:false,ground:0x1e2a16,trees:true,horizonI:2.2}); },
+  playerCar(){ return stdCar({w:18,len:34,h:9,body:0x141414,cabin:0x1c1c1c,win:0x2a2a2a,rearLight:0xff3b3b,frontLight:0xfff2c0,wheels:true,mat:'flat',convertible:true}); },
+  vehicle(klass,color){ const d={bike:[10,24,8],car:[20,42,9],truck:[24,74,13]}[klass];
+    const cop=(klass==='car'&&Math.random()<0.4);
+    const g=stdCar({w:d[0],len:d[1],h:d[2],body:cop?0xe8e8e8:color,cabin:cop?0x15171c:undefined,win:0x141414,wheels:true,mat:'flat',cop});
+    return {group:g,halfLen:d[1]/2-2,halfW:d[0]/2}; },
+};
+
+// ---------------------------------------------------------------- three / state
+const container=document.getElementById('game');
+let scene,camera,renderer,composer,bloomPass,trackHandle,playerGroup,lights,guyGroup=null,galGroup=null,bgGroup=null,signsHandle=null;
+let introT=0, introCops=[], carTopZ=18, seatZ=10, carPos=0, gapPeak=0, bgSmoothX=0, revved=false;
+let skin=SKINS.neon;
+const STATE={MENU:'menu',INTRO:'intro',PLAY:'play',CRASH:'crash',CASHED:'cashed'};
+let state=STATE.MENU;
+
+const player={lane:START_LANE, x:laneX(START_LANE)};
+let traffic=[];
+let score=0, scoreToBeat=0, elapsed=0, clockReal=0;
+let speed=300, dist=0, lastSpawn=0;
+let heat=1, lastGap=START_LANE, prevLane=START_LANE, dodgeTimer=0;
+let debris=[], shakeT=0, shakeMag=0, hitstopT=0, steerT=0, crashRevealTimer=null, cashRevealTimer=null;   // juice: voxel debris, screen-shake, hit-stop freeze-frame, lane-change squash
+let best=+store.get('sr_best')||0;
+const KLASSES=['bike','car','car','truck','car','bike'];
+
+function init(){
+  scene=new THREE.Scene();
+  const W=container.clientWidth||innerWidth, H=container.clientHeight||innerHeight;
+  camera=new THREE.PerspectiveCamera(60, W/H, 1, 2400);
+  camera.up.set(0,0,1);
+  renderer=new THREE.WebGLRenderer({antialias:true});
+  renderer.setPixelRatio(Math.min(devicePixelRatio,2));
+  renderer.setSize(W,H);
+  container.appendChild(renderer.domElement);
+  setupPostFX();
+  let saved=store.get('sr_skin')||'neon';
+  applySkin(SKINS[saved]?saved:'neon');
+  addEventListener('resize',onResize);
+  requestAnimationFrame(loop);
+}
+function setupPostFX(){
+  if(typeof THREE.EffectComposer!=='function'||typeof THREE.UnrealBloomPass!=='function'||typeof THREE.RenderPass!=='function')return;
+  composer=new THREE.EffectComposer(renderer);
+  composer.addPass(new THREE.RenderPass(scene,camera));
+  bloomPass=new THREE.UnrealBloomPass(new THREE.Vector2(container.clientWidth||innerWidth,container.clientHeight||innerHeight),0.6,0.55,0.74);   // dialed back (strength & threshold) — less washout
+  composer.addPass(bloomPass);
+  composer.setSize(container.clientWidth||innerWidth,container.clientHeight||innerHeight);
+}
+let worldRoot=null;
+function updateSkinUI(){ document.querySelectorAll('.skinbtn').forEach(b=>b.classList.toggle('active', b.dataset.skin===skin.id)); }
+function applySkin(id){
+  skin=SKINS[id]||SKINS.neon;
+  store.set('sr_skin', skin.id);
+  document.body.className='skin-'+skin.id;
+  if(music.getAttribute('src')!==skin.music){ music.src=skin.music; music.load(); }
+  scene.background=new THREE.Color(skin.bg);
+  scene.fog=skin.fog?new THREE.Fog(skin.fog.color,skin.fog.near,skin.fog.far):null;
+  if(lights){ lights.all.forEach(o=>scene.remove(o)); }
+  lights=skin.setupLights(scene);
+  if(worldRoot){ scene.remove(worldRoot); disposeObj(worldRoot); }
+  worldRoot=new THREE.Group(); scene.add(worldRoot);
+  bgGroup=null; signsHandle=null;                     // reset; neon's buildTrack re-assigns them, other skins have neither
+  trackHandle=skin.buildTrack(worldRoot);
+  if(playerGroup){ scene.remove(playerGroup); disposeObj(playerGroup); }
+  playerGroup=skin.playerCar(); scene.add(playerGroup);
+  playerGroup.updateMatrixWorld(true);
+  const _bb=new THREE.Box3().setFromObject(playerGroup); carTopZ=_bb.max.z||18;   // seat the driver relative to this car's height
+  seatZ = (skin.seatZ!=null ? skin.seatZ : carTopZ-8);   // explicit seat height when a skin sets one (neon), so incidental geometry (e.g. removing a fin) can't sink the riders
+  guyGroup=buildGuy(); playerGroup.add(guyGroup);                                 // driver rides in the open cockpit
+  galGroup=buildGal(); playerGroup.add(galGroup);                                 // his partner rides shotgun
+  setGuySeated(); seatPerson(galGroup, RIGHT_SEAT_X);
+  resetGame();
+  updateSkinUI();
+}
+function onResize(){ const W=container.clientWidth||innerWidth, H=container.clientHeight||innerHeight; camera.aspect=W/H; camera.updateProjectionMatrix(); renderer.setSize(W,H); if(composer)composer.setSize(W,H); }
+
+// ---------------------------------------------------------------- traffic
+function clearTraffic(){ for(const t of traffic){ worldRoot.remove(t.mesh); disposeObj(t.mesh); } traffic=[]; }
+// ---- juice: voxel crash debris (blocky chunks that burst from the car, tumble, and bounce off the road) ----
+function clearDebris(){ for(const d of debris){ scene.remove(d.m); disposeObj(d.m); } debris=[]; }
+function spawnDebris(){
+  clearDebris();
+  const cx=player.x, palette=[0x86d8ff,0x86d8ff,0xffffff,0xff3d9a,0x39c6ff,0xcdeeff];
+  for(let i=0;i<22;i++){
+    const s=2+Math.random()*4.5, col=palette[(Math.random()*palette.length)|0];
+    const m=new THREE.Mesh(new THREE.BoxGeometry(s,s,s), new THREE.MeshBasicMaterial({color:col}));
+    m.position.set(cx+rand(-7,7), rand(-8,6), 10+rand(-2,10)); scene.add(m);
+    debris.push({m, vx:rand(-80,80), vy:rand(-50,70), vz:rand(60,150), rx:rand(-9,9), ry:rand(-9,9), rz:rand(-9,9)});
+  }
+}
+function updateDebris(dt){
+  for(const d of debris){
+    d.vz-=280*dt;
+    d.m.position.x+=d.vx*dt; d.m.position.y+=d.vy*dt; d.m.position.z+=d.vz*dt;
+    d.m.rotation.x+=d.rx*dt; d.m.rotation.y+=d.ry*dt; d.m.rotation.z+=d.rz*dt;
+    if(d.m.position.z<0.5){ d.m.position.z=0.5; d.vz*=-0.42; d.vx*=0.6; d.vy*=0.6; }   // bounce off the road
+  }
+}
+// coin fountain for the cash-out payoff — gold blocky bits erupt upward, then rain down & bounce (reuses the debris updater)
+function spawnCoins(){
+  clearDebris();
+  const cx=player.x;
+  for(let i=0;i<20;i++){ const s=3+Math.random()*3;
+    const m=new THREE.Mesh(new THREE.BoxGeometry(s,s,1.6), new THREE.MeshBasicMaterial({color: Math.random()<0.8?0xffc233:0xffe9a8}));
+    m.position.set(cx+rand(-6,6), rand(-6,4), 12+rand(0,8)); scene.add(m);
+    debris.push({m, vx:rand(-55,55), vy:rand(-25,55), vz:rand(95,175), rx:rand(-13,13), ry:rand(-13,13), rz:rand(-13,13)});
+  }
+}
+// Fair wave spawner: the open "gap" lane drifts at most ±1 lane per wave, so a
+// skilled player can always reach it — never a random unavoidable wall of traffic.
+function spawnWave(){
+  lastGap = Math.max(0, Math.min(3, lastGap + ((Math.random()*3|0)-1)));
+  const count = Math.min(3, 1 + Math.floor(elapsed/22));   // 1 car early -> up to 3 (one lane always open)
+  const lanes=[0,1,2,3].filter(l=>l!==lastGap);
+  for(let k=lanes.length-1;k>0;k--){ const j=(Math.random()*(k+1))|0; [lanes[k],lanes[j]]=[lanes[j],lanes[k]]; }
+  for(const lane of lanes.slice(0,count)){
+    const v=skin.vehicle(choice(KLASSES), choice(skin.palette.traffic));
+    const y=SPAWN_AHEAD+rand(-28,28);                       // slight stagger so waves read organically
+    v.group.position.set(laneX(lane), y, 0);
+    worldRoot.add(v.group);
+    traffic.push({lane,relY:y,mesh:v.group,halfLen:v.halfLen,halfW:v.halfW,nm:false});
+  }
+}
+
+// ---------------------------------------------------------------- flow
+function resetGame(){
+  clearTraffic(); clearDebris(); shakeT=0; hitstopT=0; steerT=0; clearTimeout(crashRevealTimer); clearTimeout(cashRevealTimer);
+  player.lane=START_LANE; player.x=laneX(START_LANE);
+  score=0; elapsed=0; dist=0; speed=300; lastSpawn=0;
+  heat=1; lastGap=START_LANE; prevLane=START_LANE; dodgeTimer=0; carPos=0; gapPeak=0; bgSmoothX=0; Curve.reset();
+  scoreToBeat=120+(Math.random()*380|0);
+  document.getElementById('scoreVal').textContent='0';
+  document.getElementById('beatVal').textContent=scoreToBeat;
+  updateHeatHUD();
+  updateLaneChips();
+  if(playerGroup){ playerGroup.visible=true; playerGroup.position.set(player.x,0,0); playerGroup.rotation.set(0,0,0); playerGroup.scale.set(1,1,1); }
+  if(bgGroup) bgGroup.position.x=0;
+  setGuySeated(); seatPerson(galGroup, RIGHT_SEAT_X);
+  if(trackHandle) trackHandle.scroll(0);
+}
+const music=document.getElementById('music'); music.volume=0.4; let musicOn=true, paused=false;
+const wreck=document.getElementById('wreck'); wreck.volume=0.765; let crashTimer=null, wreckPrimed=false;
+// mute toggle (top-right) — silences both the loop track and the wreck stinger; persists across reloads
+let muted=store.get('sr_muted')==='1';
+const muteBtn=document.getElementById('muteBtn');
+function applyMute(){ music.muted=muted; wreck.muted=muted; muteBtn.textContent=muted?'🔇':'🔊'; muteBtn.title=muted?'Unmute':'Mute'; }
+muteBtn.addEventListener('click',()=>{ muted=!muted; store.set('sr_muted',muted?'1':'0'); applyMute(); });
+applyMute();
+
+// ---------------------------------------------------------------- haptics
+// Web Vibration API — patterns are [buzz, pause, buzz, ...] in ms. Works on
+// Android/Chrome; iOS Safari ignores navigator.vibrate (real haptics land in Unity).
+// Kept as a tunable map so each cue can be dialed & mirrored 1:1 in the Unity build.
+const canVibrate = typeof navigator!=='undefined' && typeof navigator.vibrate==='function';
+const HAPTICS = {
+  tap:        12,                                  // small, quick — every UI button press
+  laneChange: [14,24,14,24,14],                    // three super-fast pulses on a lane switch
+  driveOff:   [40,30,55,25,75,20,100,20,260],      // rev-up: pulses accelerate, then a long low-strong surge as the car peels out
+  wreck:      300,                                  // one strong hit on impact
+  cashOut:    [25,45,25,45,70],                     // quick celebratory flourish
+};
+function haptic(kind){ if(!canVibrate)return; const p=HAPTICS[kind]; if(p!=null){ try{ navigator.vibrate(p); }catch(e){} } }
+// small quick buzz on any UI button tap (capture so it fires before the button's own handler)
+document.addEventListener('pointerdown', e=>{ if(e.target.closest && e.target.closest('button, .btn, .skinbtn')) haptic('tap'); }, true);
+function syncMusic(){ if(musicOn&&(state===STATE.INTRO||state===STATE.PLAY||state===STATE.CASHED)&&!paused){const p=music.play();if(p&&p.catch)p.catch(()=>{});}else music.pause(); }
+function startIntro(){ resetGame(); paused=false; state=STATE.INTRO; introT=0; revved=false; hideAll(); document.getElementById('hud').classList.remove('show');
+  if(guyGroup){ guyGroup.visible=true; guyGroup.rotation.set(0,0,0); guyGroup.position.set(0,300,0); }   // driver starts down the road, on the run
+  standGalWaving();                                                                                       // partner is up in the driver seat, waving him over
+  clearIntroCops();                                                                                      // two cops give chase in the adjacent lanes
+  for(const bx of [laneX(1), laneX(3)]){ const m=buildCop(skin.hover?9:0); m.position.set(bx,560,0); m.rotation.z=Math.PI; scene.add(m); introCops.push({mesh:m, baseX:bx}); }
+  try{music.currentTime=0;}catch(e){} syncMusic();   // music kicks in the moment he starts running
+  // iOS/mobile only lets an <audio> play later if it was first played inside a user gesture.
+  // START is a tap, so silently prime the wreck stinger here — otherwise wreck.play() on crash is blocked on phones.
+  if(!wreckPrimed){ wreckPrimed=true; try{ wreck.volume=0; const pp=wreck.play(); if(pp&&pp.then) pp.then(()=>{ wreck.pause(); wreck.currentTime=0; wreck.volume=0.765; }).catch(()=>{ wreck.volume=0.765; }); else { wreck.pause(); wreck.currentTime=0; wreck.volume=0.765; } }catch(e){ wreck.volume=0.765; } }
+}
+function beginPlay(){ clearIntroCops(); setGuySeated(); seatPerson(galGroup, RIGHT_SEAT_X); if(playerGroup){ playerGroup.position.y=0; playerGroup.position.z=0; } paused=false; state=STATE.PLAY; hideAll(); document.getElementById('hud').classList.add('show'); const h=document.getElementById('steerHint'); h.classList.add('show'); setTimeout(()=>h.classList.remove('show'),2400); syncMusic(); }
+// intro cutscene: guy flees the cops, slides over the hood, hops in; cops swerve in and crash as he peels out
+function updateIntro(dt){
+  introT+=dt; const ud=guyGroup.userData;
+  // --- driver: run in, then a twisting flip up & over the windshield into the left seat ---
+  if(introT<RUN_END){
+    const p=introT/RUN_END, sw=Math.sin(introT*16)*0.95;
+    guyGroup.position.set(0, lerp(300,45,p), Math.abs(Math.sin(introT*16))*1.0);   // ends further back so he leaps in
+    guyGroup.rotation.set(0,0,0);
+    ud.legL.rotation.x=sw; ud.legR.rotation.x=-sw; ud.armL.rotation.x=-sw; ud.armR.rotation.x=sw;
+  } else if(introT<JUMP_END){
+    const p=(introT-RUN_END)/(JUMP_END-RUN_END);
+    const arc=4*p*(1-p);                          // ballistic parabola: hard launch, hang, fast drop (gravity feel)
+    const spin=1-(1-p)*(1-p)*(1-p);               // ease-out: whips around fast off the launch, then sticks the landing
+    // leap up & over the windshield (clears it at the apex), landing in the left seat
+    guyGroup.position.set(lerp(0,LEFT_SEAT_X,p), lerp(45,-2,p), lerp(0,seatZ,p)+arc*(seatZ*0.8+16));
+    guyGroup.rotation.x=spin*Math.PI*2;           // fast FRONT flip
+    guyGroup.rotation.z=spin*Math.PI;             // twist -> lands facing forward
+    const tuck=arc*-1.6;                           // tuck hard at the apex
+    ud.legL.rotation.x=tuck; ud.legR.rotation.x=tuck; ud.armL.rotation.x=tuck*1.4; ud.armR.rotation.x=tuck*1.4;
+  } else { setGuySeated(); }
+  // --- partner: stands in the driver seat waving him over, then sits & slides to the passenger seat ---
+  if(galGroup){
+    if(introT<RUN_END){ standGalWaving(); }
+    else if(introT<JUMP_END){ const gp=(introT-RUN_END)/(JUMP_END-RUN_END), ud=galGroup.userData;
+      galGroup.position.set(lerp(LEFT_SEAT_X,RIGHT_SEAT_X,gp), -2, lerp(seatZ-1,seatZ,gp)); galGroup.rotation.set(0,0,0);
+      ud.legL.rotation.x=lerp(0,-1.4,gp); ud.legR.rotation.x=lerp(0,-1.4,gp);
+      ud.armL.rotation.set(lerp(0.2,-0.6,gp),0,0); ud.armR.rotation.set(lerp(0,-0.6,gp),lerp(-2.2,0,gp),0);
+    }
+    else seatPerson(galGroup, RIGHT_SEAT_X);
+  }
+  // --- cops: chase down the adjacent lanes, then turn right & peel off screen as the player escapes (never a crash) ---
+  const fl=(Math.floor(introT*9)%2===0);
+  for(const c of introCops){
+    const m=c.mesh, bx=c.baseX;
+    if(m.userData.red){ m.userData.red.material.emissiveIntensity=fl?2.2:0.25; m.userData.blue.material.emissiveIntensity=fl?0.25:2.2; }
+    if(introT<COP_PEEL){                                  // chase down the adjacent lane, pulling alongside
+      const t01=Math.min(introT/COP_PEEL,1);
+      m.position.set(bx, lerp(560,14,t01), 0); m.rotation.z=Math.PI; m.scale.set(1,1,1);
+    } else {                                              // each cop turns INWARD (away from its own shoulder) and dives toward camera off-screen — never toward the shoulder or the car
+      const p=Math.min((introT-COP_PEEL)/0.55,1), inward=(bx<0?1:-1);
+      m.position.set(lerp(bx,bx*0.4,p), lerp(14,-120,p), 0);
+      m.rotation.z=Math.PI + inward*(Math.PI/2)*p;        // left cop turns right, right cop turns left
+    }
+  }
+  // --- player takeoff: the car drives off and NEVER stops; camera holds (road still) then rushes forward to catch up.
+  //     The road scroll is coupled to the car's return so the car always moves forward over the ground — no stop/reverse. ---
+  if(introT>JUMP_END){
+    if(!revved){ revved=true; haptic('driveOff'); }   // rev-up surge the moment the car peels out
+    const tt=introT-JUMP_END, total=INTRO_DUR-JUMP_END, playSpeed=300*SPEED_MUL[START_LANE];
+    const x=Math.min(tt/total,1), carSpeed=playSpeed*(1-(1-x)*(1-x));   // car accelerates 0 -> play speed, always forward
+    carPos += carSpeed*dt;                                             // its true forward progress
+    let carY;
+    if(introT<COP_PEEL){ carY=carPos; gapPeak=carPos; }                // camera parked: road stays put, the gap == the car's own progress
+    else { const a=Math.min((introT-COP_PEEL)/CAM_CATCH,1), s=a*a*(3-2*a); carY=gapPeak*(1-s); dist=carPos-carY; }  // camera gains: road scroll coupled so the car keeps moving forward
+    if(playerGroup){ playerGroup.position.y=carY; playerGroup.position.z=Math.sin(Math.min(tt/0.4,1)*Math.PI)*5; }
+  }
+  if(introT>=INTRO_DUR) beginPlay();
+}
+function recordBest(v){ if(v>best){ best=v; store.set('sr_best',best); return true; } return false; }
+function crash(){
+  if(state!==STATE.PLAY)return;
+  state=STATE.CRASH;
+  document.getElementById('hud').classList.remove('show');
+  // --- impact juice: a freeze-frame hit-stop, a screen shake, and a voxel burst where the car was ---
+  hitstopT=0.09; shakeT=0.6; shakeMag=17; spawnDebris(); haptic('wreck');   // one strong hit
+  flashScreen('radial-gradient(circle at 50% 58%, rgba(255,255,255,.95), rgba(255,120,170,0) 60%)');   // white impact pop
+  if(playerGroup) playerGroup.visible=false;         // the car shatters into the debris
+  try{ wreck.currentTime=0; const p=wreck.play(); if(p&&p.catch)p.catch(()=>{}); }catch(e){}
+  syncMusic();                                       // pauses the bg loop (state != PLAY)
+  // bank the score (1×) now, but let the crash PLAY for a beat before the WRECKED card slides in
+  const s=Math.floor(score);
+  document.getElementById('crashScore').textContent=s;
+  document.getElementById('crashMath').innerHTML=`${s} <b>× 1</b> &nbsp;·&nbsp; 1× SCORE`;
+  const nb=recordBest(s), cb=document.getElementById('crashBest');
+  cb.textContent = nb ? '★ NEW PERSONAL BEST! ★' : 'Personal best: '+best;
+  cb.classList.toggle('newbest', nb);
+  clearTimeout(crashRevealTimer);
+  crashRevealTimer=setTimeout(()=>{ if(state===STATE.CRASH) show('crash'); }, 720);   // the explosion reads first, then the card
+}
+function cashOut(){
+  if(state!==STATE.PLAY)return;
+  state=STATE.CASHED;
+  document.getElementById('hud').classList.remove('show');
+  const s=Math.floor(score), banked=s*10;            // cashing out pays 10× your score
+  document.getElementById('cashedPts').textContent=banked;
+  document.getElementById('cashedMath').innerHTML=`${s} <b>× 10</b> &nbsp;·&nbsp; 10× CASH-OUT BONUS!`;
+  const v=document.getElementById('cashedVerdict');
+  if(s>scoreToBeat){ v.textContent=`🎉 You beat ${scoreToBeat}!`; v.className='verdict win'; }
+  else { v.textContent=`Target was ${scoreToBeat} — keep practicing!`; v.className='verdict lose'; }
+  const nb=recordBest(banked), cb=document.getElementById('cashedBest');
+  cb.textContent = nb ? '★ NEW PERSONAL BEST! ★' : 'Personal best: '+best;
+  cb.classList.toggle('newbest', nb);
+  // payoff juice: a gold flash + a coin fountain, then the CASHED card slides in
+  flashScreen('radial-gradient(circle at 50% 55%, rgba(255,233,168,.9), rgba(255,176,32,0) 65%)');
+  spawnCoins(); shakeT=Math.max(shakeT,0.22); shakeMag=8; haptic('cashOut');   // quick celebratory flourish
+  syncMusic();
+  clearTimeout(cashRevealTimer);
+  cashRevealTimer=setTimeout(()=>{ if(state===STATE.CASHED) show('cashed'); }, 560);
+}
+function backToMenu(){ clearTimeout(crashTimer); clearTimeout(crashRevealTimer); clearTimeout(cashRevealTimer); try{wreck.pause();}catch(e){} state=STATE.MENU; clearDebris(); shakeT=0; hitstopT=0; if(playerGroup){playerGroup.visible=true;playerGroup.rotation.set(0,0,0);playerGroup.scale.set(1,1,1);} hideAll(); show('menu'); document.getElementById('hud').classList.remove('show'); resetGame(); syncMusic(); }
+
+// ---------------------------------------------------------------- steering
+function steer(dir){
+  if(state!==STATE.PLAY || paused)return;
+  const nl=player.lane+dir;
+  if(nl<0||nl>SHOULDER)return;
+  prevLane=player.lane;             // remember the lane we left — brushing it now counts as a dodge
+  player.lane=nl; steerT=0.18;      // steerT drives the quick lane-change squash-stretch
+  dodgeTimer=NEARMISS_WINDOW;       // open the dodge window: near-misses only credit during an active maneuver
+  haptic('laneChange');             // three super-fast pulses
+  updateLaneChips();
+}
+function updateLaneChips(){ document.querySelectorAll('.mchip').forEach(c=>c.classList.toggle('on', +c.dataset.l===player.lane)); }
+const nmLayer=document.getElementById('nmLayer');
+const fxFlash=document.getElementById('fxFlash');
+function flashScreen(bg){ if(!fxFlash)return; fxFlash.style.background=bg; fxFlash.classList.remove('go'); void fxFlash.offsetWidth; fxFlash.classList.add('go'); }
+const heatFill=document.getElementById('heatFill'), heatValEl=document.getElementById('heatVal');
+function updateHeatHUD(){ heatFill.style.width=((heat-1)/(HEAT_MAX-1)*100)+'%'; heatValEl.textContent=heat.toFixed(1)+'×'; }
+function nearMiss(){ heat=Math.min(HEAT_MAX, heat+HEAT_BUMP); const b=NEARMISS_BONUS*heat; score+=b; nmPop(b);
+  const hb=document.getElementById('heatBar'); if(hb){ hb.classList.remove('flash'); void hb.offsetWidth; hb.classList.add('flash'); } }   // heat-bar pulse on each near-miss
+function nmPop(b){ const d=document.createElement('div'); d.className='nmpop'; d.textContent='NEAR MISS +'+Math.round(b); nmLayer.appendChild(d); setTimeout(()=>d.remove(),840); }
+
+// ---------------------------------------------------------------- per-frame
+function update(dt){
+  if(hitstopT>0){ hitstopT-=dt; return; }              // freeze-frame: hold everything for a beat on impact
+  if(shakeT>0) shakeT-=dt;
+  if(steerT>0) steerT-=dt;
+  if(state===STATE.CRASH||state===STATE.CASHED) updateDebris(dt);
+  if(state===STATE.INTRO){ updateIntro(dt); }
+  if(state===STATE.PLAY && !paused){
+    elapsed+=dt;
+    if(dodgeTimer>0) dodgeTimer-=dt;
+    const baseSpeed=300+Math.min(elapsed*7,360);       // ramps 300 -> 660
+    speed=baseSpeed*SPEED_MUL[player.lane];            // left lanes faster (+10% per lane)
+    dist+=speed*dt;
+    // score = lane multiplier × heat (heat is filled ONLY by near-misses — see nearMiss())
+    score+=MULT[player.lane]*heat*dt*8;
+    const sv=document.getElementById('scoreVal'); const fs=Math.floor(score);
+    if(sv.textContent!==''+fs){ sv.textContent=fs; }
+    updateHeatHUD();
+    // shoulder = pull over & bank your points
+    if(player.lane===SHOULDER){ cashOut(); }
+    // spawn waves
+    const gap=lerp(360,230,Math.min(elapsed/80,1));
+    if(dist-lastSpawn>gap){ lastSpawn=dist; spawnWave(); }
+    // move traffic toward player, score near-misses, collide
+    const approach=speed*0.85, curveBase=Curve.at(dist);
+    for(let i=traffic.length-1;i>=0;i--){
+      const t=traffic[i];
+      t.relY-=approach*dt;
+      t.mesh.position.y=t.relY;
+      { const c=Curve.at(dist+t.relY), c2=Curve.at(dist+t.relY+40); t.mesh.position.x=laneX(t.lane)+(c.x-curveBase.x); t.mesh.position.z=c.z-curveBase.z; t.mesh.rotation.x=Math.atan2(c2.z-c.z,40); t.mesh.rotation.z=-Math.atan2(c2.x-c.x,40); }  // ride & tilt with the curved road (cosmetic; collision below stays on the straight logical track)
+      const dx=Math.abs(player.x-laneX(t.lane)), dy=Math.abs(t.relY);
+      const wx=t.halfW+PLAYER_HALFW, wy=t.halfLen+PLAYER_HALF;
+      if(dx<wx && dy<wy){ crash(); }
+      // near-miss = you committed a lane change and brushed a car in the lane you entered OR left, without hitting it
+      else if(!t.nm && dodgeTimer>0 && (t.lane===player.lane||t.lane===prevLane) && dx<wx+NEARMISS_X && dy<wy+NEARMISS_Y){ t.nm=true; nearMiss(); }
+      if(t.relY<DESPAWN){ worldRoot.remove(t.mesh); disposeObj(t.mesh); traffic.splice(i,1); }
+    }
+  }
+  // player visual x lerp
+  player.x += (laneX(player.lane)-player.x)*Math.min(dt*12,1);
+  if(playerGroup){
+    playerGroup.position.x=player.x;
+    if(state===STATE.PLAY){
+      playerGroup.position.z=Math.sin(clockReal*6)*0.8;
+      const c0=Curve.at(dist), cF=Curve.at(dist+30), bendSlope=(cF.x-c0.x)/30;
+      playerGroup.rotation.x=Math.atan2(cF.z-c0.z,30)*1.6;                          // pitch up/down with the hills
+      playerGroup.rotation.z=-bendSlope*1.8;                                        // turn to follow the bend
+      playerGroup.rotation.y=(laneX(player.lane)-player.x)*0.012 + bendSlope*0.9;   // lane-change lean + bank into the bend
+      const sq=Math.max(0,steerT)/0.18; playerGroup.scale.set(1+0.10*sq, 1-0.05*sq, 1+0.03*sq);   // quick squash-stretch pop on a lane change
+    }
+  }
+  // distant city: track the camera's lateral position (so it's mostly locked & never jerks) minus a small, eased parallax offset
+  if(bgGroup){ bgSmoothX += (player.x-bgSmoothX)*Math.min(dt*BG_LAG,1); bgGroup.position.x = player.x - BG_PARALLAX*bgSmoothX; }
+  if(trackHandle) trackHandle.scroll(dist);
+  if(signsHandle) signsHandle.update(dist);
+  updateCamera();
+  // disco-ish bloom pulse
+  if(bloomPass&&skin.postFX){ bloomPass.strength = skin.bloomPulse ? (0.4+0.08*Math.sin(clockReal*7)) : (skin.bloomStrength||0.42); }
+}
+function updateCamera(){
+  let ox=0,oz=0;
+  if(shakeT>0){ const k=shakeMag*shakeT; ox=rand(-k,k); oz=rand(-k,k); }   // screen shake (crash impact + a soft lane-change nudge)
+  camera.position.set(player.x+ox,-130,72+oz);
+  camera.lookAt(player.x, 250, 8);
+}
+
+// ---------------------------------------------------------------- (cash-out button + hold-to-cash removed — cashing out happens only by pulling into the right shoulder lane, see update())
+
+// ---------------------------------------------------------------- loop
+let lastTs=0;
+function renderFrame(){ if(composer&&skin.postFX)composer.render(); else renderer.render(scene,camera); }
+function frame(ts){ const dt=Math.min((ts-lastTs)/1000||0,0.05); lastTs=ts; clockReal+=dt; update(dt); renderFrame(); }
+function loop(ts){ frame(ts); requestAnimationFrame(loop); }
+// Safety net: if requestAnimationFrame is throttled (background/embedded preview tab),
+// keep the game rendering so the canvas is never black or frozen. dt is time-based -> no double-speed.
+setInterval(()=>{ const now=performance.now(); if(now-lastTs>150) frame(now); }, 250);
+
+// ---------------------------------------------------------------- input
+addEventListener('keydown',e=>{
+  if(state!==STATE.PLAY)return;
+  if(e.key==='ArrowLeft'||e.key==='a'||e.key==='A'){steer(-1);e.preventDefault();}
+  else if(e.key==='ArrowRight'||e.key==='d'||e.key==='D'){steer(1);e.preventDefault();}
+});
+function isUI(t){ return !!(t&&t.closest&&(t.closest('.overlay')||t.closest('button'))); }
+function tapSteer(e){ if(state!==STATE.PLAY||isUI(e.target))return; const r=container.getBoundingClientRect(); const x=(e.touches?e.touches[0]:e).clientX; if(x<r.left||x>r.right)return; steer(x < r.left+r.width/2 ? -1 : 1); }
+addEventListener('mousedown',tapSteer);   // desktop: click a side to steer
+// touch: SWIPE left/right (fires as soon as it crosses the threshold) OR tap a side (fires on release)
+const SWIPE_MIN=26; let tStartX=0,tStartY=0,tSteered=false,tActive=false;
+addEventListener('touchstart',e=>{ if(isUI(e.target))return; e.preventDefault(); const t=e.touches[0]; tStartX=t.clientX; tStartY=t.clientY; tSteered=false; tActive=true; },{passive:false});
+addEventListener('touchmove',e=>{ if(!tActive||tSteered||state!==STATE.PLAY)return; const t=e.touches[0], dx=t.clientX-tStartX, dy=t.clientY-tStartY; if(Math.abs(dx)>SWIPE_MIN && Math.abs(dx)>Math.abs(dy)){ steer(dx>0?1:-1); tSteered=true; } },{passive:false});
+addEventListener('touchend',e=>{ if(!tActive)return; tActive=false; if(tSteered||state!==STATE.PLAY)return;   // a swipe already steered — otherwise treat as a side tap
+  const r=container.getBoundingClientRect(), x=(e.changedTouches&&e.changedTouches[0])?e.changedTouches[0].clientX:tStartX; if(x<r.left||x>r.right)return; steer(x < r.left+r.width/2 ? -1 : 1); });
+
+document.getElementById('startBtn').addEventListener('click',startIntro);
+document.getElementById('continueBtn').addEventListener('click',backToMenu);
+document.getElementById('againBtn').addEventListener('click',startIntro);
+function exitArcade(){ location.href='../index.html'; }
+function onBack(){ if(state===STATE.PLAY){ paused=true; show('confirmExit'); syncMusic(); } else { exitArcade(); } }
+document.getElementById('backArcade').addEventListener('click', onBack);
+document.querySelectorAll('.skinbtn').forEach(b=>b.addEventListener('click',()=>{ if(b.dataset.skin!==skin.id) applySkin(b.dataset.skin); }));
+document.getElementById('confirmEnd').addEventListener('click', exitArcade);
+document.getElementById('confirmStay').addEventListener('click', ()=>{ paused=false; hide('confirmExit'); syncMusic(); });
+
+function show(id){ document.getElementById(id).classList.add('show'); }
+function hide(id){ document.getElementById(id).classList.remove('show'); }
+function hideAll(){ document.querySelectorAll('.overlay').forEach(o=>o.classList.remove('show')); }
+
+init();
+})();
+</script>
+</body>
+</html>
