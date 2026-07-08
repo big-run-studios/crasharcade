@@ -110,7 +110,7 @@
       <div class="title">BEND BALL <span>STRIKE</span></div>
       <div class="sub">DRAW IT · BEND IT · ONE GOAL · CASH OUT</div>
       <div class="htp">
-        <div class="row"><div class="ic">✍️</div><div class="tx"><b>Draw a line anywhere</b> — it starts at the ball. <b>Bend it</b> around defenders</div></div>
+        <div class="row"><div class="ic">✍️</div><div class="tx"><b>Draw anywhere</b> — your line becomes <b>one clean curve</b> from the ball: where you start, how hard you bend, where you end</div></div>
         <div class="row"><div class="ic">🏃</div><div class="tx">Your team <b>chases the ball</b> — first one there takes it. <i>So do they.</i> End the line in the <u>goal</u> to shoot</div></div>
         <div class="row"><div class="ic">📈</div><div class="tx">Passes grow the pot — and <u>every meter the ball travels</u> grows it faster. <i>Lose the ball and the pot crashes to 0</i></div></div>
         <div class="row"><div class="ic">🥅</div><div class="tx"><u>One goal cashes out the pot</u> — shoot past the jetpack keeper's dive. The clock only runs <b>while the ball moves</b>. <i>Time up = 0</i></div></div>
@@ -136,7 +136,7 @@
     </div>
   </div>
 
-  <div class="brand">SKILLZARCADE · BEND BALL STRIKE v0.4.0</div>
+  <div class="brand">SKILLZARCADE · BEND BALL STRIKE v0.5.0</div>
 </div>
 
 <script>
@@ -190,8 +190,11 @@ const BAR_Y=GOALY-BAR_H;
 /* ================= tuning ================= */
 const SESSION_T=45;                  // ball-motion budget (s) — clock only runs while the ball moves
 const READ_T=5, READ_MAX=1000;
-const KEEP_REACH=0.30;               // keeper dive radius = 30% of goal width, any direction
+const KEEP_REACH=0.30;               // keeper MAX dive TRAVEL = 30% of goal width (his ask); gloves reach a bit beyond
 const KEEP_CHEAT=0.8;                // keeper cheat speed toward ball side (goal-units/s)
+const K_TIP=22, K_CORE=13;           // keeper hitbox radii (px): gloves = parry, body = clean save
+const K_EXT=KEEP_REACH*2*POST_PX;    // max dive body-travel (≈52px); glove tip reaches K_EXT + K_TIP
+const K_SPD=105;                     // dive speed (px/s): he only reaches full stretch on slow shots — pace beats him
 const BASE_POT=500;
 const PASS_SPD=16;                   // ball speed along drawn path (m/s)
 const RUN_SPD=5.6, DEF_CHASE=5.0;    // chase speeds: attackers vs defenders (m/s)
@@ -258,7 +261,7 @@ let state='menu';            // menu | play | over
 let sub='live';              // live | flight | resolve
 let T=SESSION_T, banked=0, best=+(sget('bendball_best')||0);
 let chances=0, passes=0, totalDistM=0, potLost=0, endKind=null, endReason='';
-let att=[],def=[],keeper={kx:0,dive:0,divedir:0,dvx:0,dvy:0};
+let att=[],def=[],keeper={kx:0,ox:0,oy:0,tox:0,toy:0,bx:0,by:0,diveT:0};
 let ball={x:0,z:0,h:0,carrier:0};
 let pot=0, potEvents=[], scen=null, deck=[], deckI=0;
 let readClock=0, firstActionDone=false, readBonus=0;
@@ -291,7 +294,7 @@ function spawnChance(forceI){
   scen=SCEN[forceI!=null?forceI:deck[deckI++]];
   att=scen.att.map(a=>({x:a.x,z:a.z,run:a.run?[...a.run]:null,moveTo:null,bob:Math.random()*6}));
   def=scen.def.map(d=>({x:d.x,z:d.z,hx:d.x,hz:d.z,bob:Math.random()*6}));
-  keeper={kx:scen.kx,dive:0,divedir:0,dvx:0,dvy:0};
+  keeper={kx:scen.kx,ox:0,oy:0,tox:0,toy:0,bx:0,by:0,diveT:0};
   ball={x:att[0].x,z:att[0].z,h:0,carrier:0};
   pot=BASE_POT; potEvents=[{label:'GOAL CHANCE',pts:BASE_POT}];
   readClock=0; firstActionDone=false; readBonus=0;
@@ -331,14 +334,28 @@ function densify(path){ // subdivide world path so vertex spacing <= ~1.1m (chas
   for(let i=1;i<out.length;i++){s+=gdist(out[i-1].x,out[i-1].z,out[i].x,out[i].z);out[i].s=s;}
   return out;
 }
-function strokeInfo(){ // translate the raw stroke so it originates at the ball; split ground/shot
+function strokeInfo(){ // the drawn shape reduces to ONE smooth curve: where you started, how hard you bent it, where you ended
   if(!stroke||stroke.pts.length<2||stroke.lenPx<18)return{kind:'none'};
   const b=ballScreen(),o=stroke.pts[0];
-  const pts=stroke.pts.map(p=>({x:p.x+(b.x-o.x),y:p.y+(b.y-o.y)}));
+  const raw=stroke.pts.map(p=>({x:p.x+(b.x-o.x),y:p.y+(b.y-o.y)}));
+  const end=raw[raw.length-1];
+  const chx=end.x-b.x, chy=end.y-b.y;
+  const clen=Math.hypot(chx,chy)||1;
+  const nx=-chy/clen, ny=chx/clen;              // chord normal
+  let sev=0;                                     // mean signed deviation of the drawing from the chord
+  for(let i=1;i<raw.length-1;i++)sev+=(raw[i].x-b.x)*nx+(raw[i].y-b.y)*ny;
+  sev=raw.length>2?sev/(raw.length-2):0;
+  const h=clamp(3*sev,-0.9*clen,0.9*clen);       // quad-bezier control offset (mean dev of a quad = ctrl/3)
+  const cpx=(b.x+end.x)/2+nx*h, cpy=(b.y+end.y)/2+ny*h;
+  const N=26, pts=[];
+  for(let i=0;i<=N;i++){
+    const t=i/N, a=(1-t)*(1-t), m=2*t*(1-t), c2=t*t;
+    pts.push({x:a*b.x+m*cpx+c2*end.x, y:a*b.y+m*cpy+c2*end.y});
+  }
   const inGoal=p=>p.x>CX-POST_PX-16&&p.x<CX+POST_PX+16&&p.y<GOALY+4&&p.y>BAR_Y-24;
-  const last=pts[pts.length-1];
+  const last=pts[N];
   let gi=-1;
-  if(inGoal(last)){for(let i=1;i<pts.length;i++)if(inGoal(pts[i])){gi=i;break;}}
+  if(inGoal(last)){for(let i=1;i<=N;i++)if(inGoal(pts[i])){gi=i;break;}}
   const groundPts=gi>0?pts.slice(0,gi):pts;
   let path=[];
   for(const p of groundPts){const w=unproj(p.x,p.y);path.push({x:w.x,z:w.z,s:0});}
@@ -350,12 +367,11 @@ function strokeInfo(){ // translate the raw stroke so it originates at the ball;
                    pow:clamp((stroke.lenPx-60)/380,0.35,1)}:null;
   return{kind:shot?'shot':'pass',pts,path,totalS,shot,gi};
 }
-function classifyPass(fx,fz,wx,wz,lead,beat,firstTime){
+function classifyPass(fx,fz,wx,wz,lead,firstTime){
   const ev=[];
   if(lead){ev.push([400,'THROUGH BALL']);ev.push([300,'RUNNER']);}
   else if(wz>fz+0.03)ev.push([150,'FORWARD PASS']);
   else ev.push([100,'PASS']);
-  if(beat)ev.push([200,'BEATS DEFENDER']);
   if(Math.abs(wx-fx)>0.5&&fz>0.55&&wz>0.62&&!lead)ev.push([350,'CROSS']);
   if(fz>0.72&&wz<fz-0.06&&Math.abs(fx)>0.42&&Math.abs(wx)<0.35)ev.push([300,'CUTBACK']);
   if(firstTime)ev.push([350,'FIRST-TIME']);
@@ -368,9 +384,15 @@ function releaseStroke(){
   flight={kind:'ball',path:info.path,totalS:info.totalS,sPos:0,passer:ball.carrier,
           shot:info.shot,shotOn:false,att0:att.map(a=>({x:a.x,z:a.z})),
           fromX:c.x,fromZ:c.z,firstTime:heldT<FT_WIN,relClock:readClock,
-          minDef:1e9,t:0,settled:0,loose:false,distM:0,distPts:0};
+          minDef:1e9,close:def.map(()=>false),t:0,settled:0,loose:false,distM:0,distPts:0};
   ball.carrier=-1; sub='flight';
   if(flight.totalS<=0.05&&flight.shot)beginShot();
+}
+function shotBallPos(s){ // ball's screen position along the drawn shot curve (shared by update + draw)
+  const u=clamp(s.t/s.dur,0,1);
+  const pts=s.pts,fi=u*(pts.length-1),i0=Math.floor(fi),i1=Math.min(pts.length-1,i0+1),ft=fi-i0;
+  return{x:lerp(pts[i0].x,pts[i1].x,ft),
+         y:lerp(pts[i0].y,pts[i1].y,ft)-Math.sin(u*Math.PI)*lerp(8,26,s.pow),u};
 }
 function setBallFromPath(f){
   const path=f.path,s=Math.min(f.sPos,f.totalS);
@@ -400,6 +422,11 @@ function finalizeDist(f){ // pot already grew live; log it for the goal breakdow
   totalDistM+=f.distM;
   if(f.distPts>=1)potEvents.push({label:'DISTANCE '+Math.round(f.distM)+'m',pts:Math.round(f.distPts)});
 }
+function awardBeats(f,wx,wz){ // +200 per defender the ball went COMPLETELY past
+  let n=0;
+  for(let i=0;i<def.length;i++)if(f.close[i]&&def[i].z<ball.z-0.02)n++;
+  if(n)addPot(200*n,n>1?'BEATS '+n+' DEFENDERS':'BEATS DEFENDER',wx,wz);
+}
 function completePass(i){
   const a=att[i],f=flight;
   ball.carrier=i; ball.x=a.x; ball.z=a.z; ball.h=0;
@@ -408,11 +435,11 @@ function completePass(i){
   if(f.loose){lastRebound=true; addPot(200,'REBOUND',a.x,a.z); return;}
   lastRebound=false; passes++;
   const ran=gdist(f.att0[i].x,f.att0[i].z,a.x,a.z)>LEAD_RUN;
-  const beat=f.minDef<BEAT_R;
   noteAction({t:ran?'lead':'pass',to:i,rc:f.relClock});
   if(!f.firstTime)allFT=false;
-  for(const [pts,label] of classifyPass(f.fromX,f.fromZ,a.x,a.z,ran,beat,f.firstTime))
+  for(const [pts,label] of classifyPass(f.fromX,f.fromZ,a.x,a.z,ran,f.firstTime))
     addPot(pts,label,a.x,a.z);
+  awardBeats(f,a.x,a.z);
   const straight=gdist(f.fromX,f.fromZ,a.x,a.z);
   if(straight>3&&f.totalS>straight*1.3)addPot(250,'BENDER',a.x,a.z);
 }
@@ -428,6 +455,7 @@ function goalZone(tx,ty){
 function beginShot(){ // ball has reached the end of the ground path; launch along drawn curve
   const f=flight,s=f.shot;
   finalizeDist(f); f.distPts=0;
+  awardBeats(f,ball.x,ball.z);
   noteAction({t:'shoot',rc:f.relClock});
   if(!f.firstTime)allFT=false;
   let tx=s.tx+(Math.random()-0.5)*0.10*s.pow;
@@ -437,20 +465,16 @@ function beginShot(){ // ball has reached the end of the ground path; launch alo
   if(sideAbs>1.05||ty>1.12||ty<-0.05)outcome='miss';
   else if(sideAbs>0.96){special=Math.random()<0.5?'postin':'postout';outcome=special==='postin'?'goal':'miss';}
   else if(ty>0.97){special=Math.random()<0.5?'barin':'barout';outcome=special==='barin'?'goal':'miss';}
-  else{
-    // jetpack keeper: floats mid-goal, dives 30% of goal width in ANY direction
-    const dxp=(tx-keeper.kx)*POST_PX, dyp=(ty-0.5)*BAR_H;
-    const dpx=Math.hypot(dxp,dyp);
-    const reach=KEEP_REACH*2*POST_PX;
-    if(dpx<reach*0.7)outcome='save';
-    else if(dpx<reach)outcome='parry';
-    const dl=dpx||1,cap=Math.min(dpx,reach);
-    keeper.dvx=dxp/dl*cap; keeper.dvy=dyp/dl*cap;
-  }
+  // keeper is NOT precomputed — he dives at the ball and a real hitbox decides (see shot update)
   s.tx=tx;s.ty=ty;s.outcome=outcome;s.special=special;
   s.t=0;s.dur=lerp(0.5,0.3,s.pow);s.fz=ball.z;
-  s.rebound=lastRebound;s.firstTime=f.firstTime;
-  keeper.dive=0.01; keeper.divedir=Math.sign(tx-keeper.kx)||1;
+  s.rebound=lastRebound;s.firstTime=f.firstTime;s.minK=1e9;
+  s.gx=CX+clamp(tx,-1.08,1.08)*POST_PX;
+  s.gy=GOALY-clamp(ty,-0.05,1.12)*BAR_H;
+  keeper.bx=CX+keeper.kx*POST_PX; keeper.by=GOALY-BAR_H*0.5;
+  const ddx=s.gx-keeper.bx, ddy=s.gy-keeper.by, dl=Math.hypot(ddx,ddy)||1;
+  keeper.tox=ddx/dl*Math.min(dl,K_EXT); keeper.toy=ddy/dl*Math.min(dl,K_EXT);
+  keeper.diveT=0;
   f.shotOn=true;
 }
 function landShot(){
@@ -462,12 +486,13 @@ function landShot(){
     if(s.special==='barin')addPot(1250,'OFF THE BAR — IN',0,0.9);
     if(s.rebound)addPot(600,'VOLLEY',0,0.9);
     else if(s.firstTime)addPot(400,'FIRST-TIME FINISH',0,0.9);
+    if(s.minK<K_TIP+16)popup('FINGERTIPS!','#ffc233',0,0.92,true); // he ALMOST got there
     bankGoal(z);
   }else if(s.outcome==='miss'){
     crash(s.special==='postout'?'OFF THE POST':s.special==='barout'?'OFF THE BAR':'OFF TARGET');
   }else if(s.outcome==='save'){
-    crash('SAVED CLEAN');
-  }else{ // parry — live loose ball: everyone races for it
+    crash('CAUGHT BY THE KEEPER');
+  }else{ // parry — gloves got fingertips to it: live loose ball, everyone races
     const nx=clamp(s.tx*GHW*0.6+(Math.random()-0.5)*0.3,-0.7,0.7);
     const nz=0.74+Math.random()*0.08;
     ball.x=nx;ball.z=nz;ball.h=0;ball.carrier=-1;
@@ -475,7 +500,7 @@ function landShot(){
     flight={kind:'ball',path:[{x:nx,z:nz,s:0}],totalS:0,sPos:0,passer:-1,
             shot:null,shotOn:false,att0:att.map(a=>({x:a.x,z:a.z})),
             fromX:nx,fromZ:nz,firstTime:false,relClock:readClock,
-            minDef:1e9,t:0,settled:0,loose:true,distM:0,distPts:0};
+            minDef:1e9,close:def.map(()=>false),t:0,settled:0,loose:true,distM:0,distPts:0};
     sub='flight'; shake=6;
   }
 }
@@ -580,7 +605,7 @@ function update(dt){
   if(sub==='live'){
     // possession = the whole pitch freezes; think as long as you like
     readClock+=dt; heldT+=dt;
-    keeper.dive=Math.max(0,keeper.dive-dt*2.5);
+    keeper.ox*=Math.max(0,1-dt*5); keeper.oy*=Math.max(0,1-dt*5); // keeper floats back to center
     const c=att[ball.carrier];
     ball.x=c.x; ball.z=c.z;
   }
@@ -588,7 +613,20 @@ function update(dt){
     const f=flight; f.t+=dt;
     if(f.shotOn){
       const s=f.shot; s.t+=dt;
-      keeper.dive=Math.min(1,keeper.dive+dt*3.2);
+      // keeper launches at the ball; a real hitbox decides the outcome
+      keeper.diveT+=dt;
+      const need=Math.hypot(keeper.tox,keeper.toy)||1;
+      const ext=Math.min(1,K_SPD*keeper.diveT/need);
+      keeper.ox=keeper.tox*ext; keeper.oy=keeper.toy*ext;
+      const bp=shotBallPos(s);
+      if(bp.y<GOALY+12&&Math.abs(bp.x-CX)<POST_PX+30){ // ball is in the goal mouth
+        const d=Math.hypot(bp.x-(keeper.bx+keeper.ox),bp.y-(keeper.by+keeper.oy));
+        if(d<s.minK)s.minK=d;
+        if(s.outcome==='goal'&&!s.special){
+          if(d<K_CORE){s.outcome='save';landShot();return;}          // body on it = catch
+          if(bp.u>=0.92&&d<K_TIP){s.outcome='parry';landShot();return;} // fingertips at arrival
+        }
+      }
       if(s.t>=s.dur)landShot();
     }else{
       // ball rolls along the drawn path
@@ -609,7 +647,7 @@ function update(dt){
       // keeper cheats toward the ball's side as it moves
       const tk=clamp(ball.x,-0.62,0.62);
       keeper.kx+=clamp(tk-keeper.kx,-KEEP_CHEAT*dt,KEEP_CHEAT*dt);
-      keeper.dive=Math.max(0,keeper.dive-dt*2.5);
+      keeper.ox*=Math.max(0,1-dt*5); keeper.oy*=Math.max(0,1-dt*5);
       if(Math.abs(ball.x)>1.03||ball.z>1.005||ball.z<0.005){crash('OUT OF PLAY');return;}
       if(f.sPos>=f.totalS){
         if(f.shot){beginShot();return;}
@@ -628,8 +666,9 @@ function update(dt){
         stepToward(d,p||{x:d.hx,z:d.hz},DEF_CHASE*dt);
       }
       let dBest=1e9;
-      for(const d of def){
-        const dd=gdist(d.x,d.z,ball.x,ball.z);
+      for(let di=0;di<def.length;di++){
+        const dd=gdist(def[di].x,def[di].z,ball.x,ball.z);
+        if(dd<BEAT_R)f.close[di]=true; // came near the line — beaten only if ball ends goal-side
         if(dd<f.minDef)f.minDef=dd;
         if(dd<dBest)dBest=dd;
       }
@@ -658,8 +697,7 @@ function update(dt){
     }
   }
   else if(sub==='resolve'){
-    resolveT-=dt;
-    if(keeper.dive>0)keeper.dive=Math.min(1,keeper.dive+dt*3.2);
+    resolveT-=dt; // keeper holds his dive pose through the banner — that's the feedback
     if(resolveT<=0)endSession(); // one goal = cash out; one crash = done
   }
 }
@@ -699,6 +737,7 @@ window.TB={
   get:()=>({state,sub,T,banked,pot,endKind,passes,chances,readBonus,idealIdx,idealAlive,
             scen:scen?scen.name:null,carrier:ball.carrier,ball:{...ball},
             dist:flight?{m:+flight.distM.toFixed(1),pts:Math.round(flight.distPts)}:null,
+            events:potEvents.map(e=>e.label),
             att:att.map(a=>({x:+a.x.toFixed(2),z:+a.z.toFixed(2)})),
             def:def.map(d=>({x:+d.x.toFixed(2),z:+d.z.toFixed(2)})),keeper:{...keeper}}),
   tick:s=>{const n=Math.round(s*60);for(let i=0;i<n;i++)update(1/60);},
@@ -782,7 +821,7 @@ function draw(){
     zoneTag(-0.82,0.16,'+300');zoneTag(0.82,0.16,'+300');
     // keeper dive reach — shoot outside this circle
     ctx.strokeStyle='rgba(255,61,110,.55)';ctx.lineWidth=1.5;ctx.setLineDash([4,5]);
-    ctx.beginPath();ctx.arc(CX+keeper.kx*POST_PX,GOALY-BAR_H*0.5,KEEP_REACH*2*POST_PX,0,7);ctx.stroke();
+    ctx.beginPath();ctx.arc(CX+keeper.kx*POST_PX,GOALY-BAR_H*0.5,K_EXT+K_TIP,0,7);ctx.stroke();
     ctx.setLineDash([]);
   }
 
@@ -911,17 +950,18 @@ function drawPlayer(x,z,kind,o){
   ctx.fillStyle=kind==='hero'?'#5fe0ff':kind==='def'?'#ff5e5e':'#39ffa0';
   ctx.fillRect(sx-hr*0.7,ys-bh-hr*0.85,hr*1.4,2.4*s);
 }
-function drawKeeper(){ // jetpack keeper: floats mid-goal, cheats sideways, dives on shots
+function drawKeeper(){ // jetpack keeper: floats mid-goal, cheats sideways, dives at the ball
   const s=sc(0.955);
-  const bob=Math.sin(performance.now()/320)*3;
-  const kx=CX+keeper.kx*POST_PX+keeper.dive*keeper.dvx;
-  const ky=GOALY-BAR_H*0.5+bob+keeper.dive*keeper.dvy;
+  const diving=Math.abs(keeper.ox)+Math.abs(keeper.oy)>2;
+  const bob=diving?0:Math.sin(performance.now()/320)*3;
+  const kx=CX+keeper.kx*POST_PX+keeper.ox;
+  const ky=GOALY-BAR_H*0.5+bob+keeper.oy;
   const bw=26*s,bh=48*s,hr=8.5*s;
   // faint ground shadow under the hover spot
   ctx.fillStyle='rgba(0,0,0,.35)';
   ctx.beginPath();ctx.ellipse(kx,GOALY+3,bw*0.8,bw*0.28,0,0,7);ctx.fill();
   ctx.save();
-  ctx.translate(kx,ky);ctx.rotate(keeper.dive*0.55*(keeper.divedir||1));
+  ctx.translate(kx,ky);ctx.rotate(clamp(keeper.ox/40,-1,1)*0.7);
   // jet flames
   const fl=(3+Math.random()*4)*s;
   ctx.fillStyle='rgba(95,224,255,.85)';ctx.shadowColor='#5fe0ff';ctx.shadowBlur=10;
@@ -950,11 +990,9 @@ function drawKeeper(){ // jetpack keeper: floats mid-goal, cheats sideways, dive
 function drawBall(){
   let x,y,r;
   if(flight&&flight.shotOn){
-    const s=flight.shot,u=clamp(s.t/s.dur,0,1);
-    const pts=s.pts,fi=u*(pts.length-1),i0=Math.floor(fi),i1=Math.min(pts.length-1,i0+1),ft=fi-i0;
-    x=lerp(pts[i0].x,pts[i1].x,ft);
-    y=lerp(pts[i0].y,pts[i1].y,ft)-Math.sin(u*Math.PI)*lerp(8,26,s.pow);
-    r=7*lerp(sc(s.fz),sc(0.98),u);
+    const s=flight.shot,bp=shotBallPos(s);
+    x=bp.x; y=bp.y;
+    r=7*lerp(sc(s.fz),sc(0.98),bp.u);
   }else{
     const s=sc(ball.z);
     x=SXp(ball.x,ball.z)+(ball.carrier>=0?10*s:0);
