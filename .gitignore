@@ -1,2 +1,7 @@
 .DS_Store
 .claude/
+
+# API keys for asset pipeline
+spy-dash/tools/.env
+spy-dash/tools/.style_id
+spy-dash/art/env/incoming/

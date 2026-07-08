@@ -1,0 +1,132 @@
+{
+  "styleRefs": [
+    "../art/SpyDiveAnim.png",
+    "../art/SpySlideAnim.png",
+    "../art/SpyGrappleAnim.png",
+    "../art/SpyDeathAnim.png"
+  ],
+  "styleBase": "digital_illustration",
+  "promptSuffix": "High-quality low-poly cyberpunk game environment asset: crisp faceted polygons, clean sharp render, deep navy blues (#1e2856, #0e1334) with subtle cyan (#5fe0ff) and magenta (#ff3d9a) rim-light edge accents, dilapidated spy-thriller megacity interior, premium mobile-game art quality. STRICTLY FLAT 2D SIDE ELEVATION like a game tileset sprite: straight-on front view, zero perspective, no vanishing point, no visible top or side faces, every vertical edge perfectly vertical, every horizontal edge perfectly horizontal. Uniform frontal lighting from one consistent source, no cast shadows outside the object. No lens flare, no text, no watermark.",
+  "assets": [
+    {
+      "key": "floor-slab",
+      "base": "bases/floor-slab.png",
+      "strength": 0.42,
+      "prompt": "Battered dark navy concrete floor slab as a perfectly flat 2D side elevation: the slab fills the entire dark band of the guide edge-to-edge, straight-on side view, absolutely no perspective, no backdrop. Matte weathered concrete with chunky low-poly cracks, chipped edges, panel seams.",
+      "removeBg": true,
+      "out": "floor-slab.png",
+      "noStyle": true
+    },
+    {
+      "key": "back-wall",
+      "base": "bases/back-wall.png",
+      "strength": 0.34,
+      "prompt": "Flat interior concrete wall texture built from RECTANGULAR panels in a straight grid, camera exactly parallel to the wall: every seam perfectly vertical or perfectly horizontal, no vanishing point, no receding angle, no sky. Cracked plaster inside panels, faint stains, grimy darker baseboard along the bottom, exactly following the guide shapes.",
+      "removeBg": false,
+      "out": "back-wall.png",
+      "cropInner": 0.76,
+      "noStyle": true
+    },
+    {
+      "key": "window-intact",
+      "prompt": "A tall rectangular window, flat straight-on front view: pale metal frame with a center mullion and two transom bars, six panes of very dark blue night glass, one pane with a faint sheen, two tiny distant city lights, dilapidated but intact, exactly following the guide shapes.",
+      "removeBg": true,
+      "out": "window-intact.png",
+      "noStyle": true,
+      "base": "bases/window-intact.png",
+      "strength": 0.5
+    },
+    {
+      "key": "window-broken",
+      "base": "bases/window-broken2.png",
+      "strength": 0.42,
+      "prompt": "The exact same window but with the glass violently shattered: a jagged crack web radiating from an impact hole, a few missing shards showing darkness behind. Keep the frame, colors and lighting IDENTICAL to the input image, exactly following the guide shapes.",
+      "removeBg": true,
+      "out": "window-broken.png",
+      "noStyle": true
+    },
+    {
+      "key": "rubble-pile",
+      "base": "bases/rubble-pile.png",
+      "strength": 0.6,
+      "prompt": "A small knee-high heap of broken concrete chunks: faceted low-poly navy concrete blocks with clearly visible lighter facet highlights and edge wear, one thin bent rebar rod sticking out, exactly following the guide shapes. Small debris pile only, nothing else.",
+      "removeBg": true,
+      "out": "rubble-pile.png",
+      "noStyle": true
+    },
+    {
+      "key": "data-chip",
+      "base": "bases/data-chip.png",
+      "strength": 0.5,
+      "prompt": "A solid faceted diamond-shaped golden data-chip game pickup: vibrant golden amber crystal (#ffc233) with polished facets and a lighter pale-gold core facet in the center \u2014 completely solid, no hollow center, no white. Crisp low-poly geometry following the guide shapes. Single solid diamond only.",
+      "removeBg": true,
+      "out": "data-chip.png",
+      "noStyle": true
+    },
+    {
+      "key": "door-locked",
+      "base": "bases/door-locked.png",
+      "strength": 0.55,
+      "prompt": "A tall narrow locked security door, full-bleed: dark navy metal slab with inset panels, a small keypad, scuffs and scratches, brutalist spy-thriller style. exactly following the guide shapes.",
+      "out": "door-locked.png",
+      "noStyle": true
+    },
+    {
+      "key": "door-blasted",
+      "base": "bases/door-blasted.png",
+      "strength": 0.55,
+      "prompt": "The twisted remains of a blasted-open security door: two bent dark navy metal frame posts with torn edges, a blown panel shard and rubble at the base. exactly following the guide shapes.",
+      "out": "door-blasted.png",
+      "noStyle": true
+    },
+    {
+      "key": "vent-cap",
+      "base": "bases/vent-cap.png",
+      "strength": 0.45,
+      "prompt": "A flat 2D side-view wall section, tileset texture: industrial riveted sheet-metal duct paneling with horizontal vent grilles filling the upper three quarters, a near-black rectangular crawl-tunnel opening running along the bottom quarter, and a pale slatted vent frame on the left edge of the opening, exactly following the guide shapes.",
+      "out": "vent-cap.png",
+      "noStyle": true
+    },
+    {
+      "key": "vent-mid",
+      "base": "bases/vent-mid.png",
+      "strength": 0.45,
+      "cropInner": 0.92,
+      "prompt": "A flat 2D side-view wall section, seamless tileset texture: industrial riveted sheet-metal duct paneling with horizontal vent grilles filling the upper three quarters, and a near-black rectangular crawl-tunnel opening running along the bottom quarter, exactly following the guide shapes.",
+      "out": "vent-mid.png",
+      "noStyle": true
+    },
+    {
+      "key": "staircase",
+      "base": "bases/staircase.png",
+      "strength": 0.4,
+      "prompt": "A concrete staircase ascending left to right with eight chunky steps and a solid mass beneath, battered dark navy concrete with worn tread noses, low-poly facets. exactly following the guide shapes.",
+      "out": "staircase.png",
+      "noStyle": true
+    },
+    {
+      "key": "grapple-ramp",
+      "base": "bases/grapple-ramp.png",
+      "strength": 0.62,
+      "prompt": "A ramp of collapsed concrete rubble rising to the right: heaped faceted navy concrete blocks with lighter facet highlights, climbable slope. exactly following the guide shapes.",
+      "out": "grapple-ramp.png",
+      "noStyle": true
+    },
+    {
+      "key": "dive-window",
+      "base": "bases/dive-window.png",
+      "strength": 0.52,
+      "prompt": "A tall narrow window in a wall section, full-bleed: pale metal frame, dark night glass with diagonal sheen streaks, dilapidated but intact. exactly following the guide shapes.",
+      "out": "dive-window.png",
+      "noStyle": true
+    },
+    {
+      "key": "dive-window-broken",
+      "base": "bases/dive-window-broken.png",
+      "strength": 0.52,
+      "prompt": "A tall narrow window violently smashed open: pale metal frame with jagged glass teeth around a blown-out hole, dark night glass remnants in the corners. exactly following the guide shapes.",
+      "out": "dive-window-broken.png",
+      "noStyle": true
+    }
+  ]
+}
