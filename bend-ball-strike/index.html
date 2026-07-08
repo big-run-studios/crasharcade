@@ -39,6 +39,9 @@
   #bankVal{font-size:20px;font-weight:900;color:var(--gold);text-shadow:0 0 10px rgba(255,194,51,.7);line-height:1.15;}
   #potVal{font-size:20px;font-weight:900;color:var(--cyan);text-shadow:0 0 10px rgba(95,224,255,.7);line-height:1.15;transition:transform .1s;}
   #potVal.bump{transform:scale(1.25);}
+  #multVal{font-size:15px;font-weight:900;color:var(--dim);line-height:1.25;transition:transform .12s;}
+  #multVal.hot{color:var(--gold);text-shadow:0 0 10px rgba(255,194,51,.7);}
+  #multVal.bump{transform:scale(1.35);}
   #chanceBar{position:absolute;top:max(58px,calc(env(safe-area-inset-top) + 46px));left:50%;transform:translateX(-50%);width:120px;height:5px;border-radius:99px;background:rgba(95,224,255,.15);overflow:hidden;}
   #chanceFill{height:100%;width:100%;border-radius:99px;background:linear-gradient(90deg,#39ffa0,#5fe0ff);transition:none;}
 
@@ -101,7 +104,7 @@
     <div id="hud">
       <div id="bankBox"><div class="hlbl">BEST</div><div id="bankVal">0</div></div>
       <div id="timeBox"><div id="timeVal">45</div></div>
-      <div id="potBox"><div class="hlbl">POT</div><div id="potVal">500</div></div>
+      <div id="potBox"><div class="hlbl">POT</div><div id="potVal">500</div><div id="multVal">×1.00</div></div>
     </div>
 
     <div id="banner"><div class="head"></div><div class="rows"></div><div class="total"></div><div class="why"></div></div>
@@ -113,7 +116,7 @@
         <div class="row"><div class="ic">✍️</div><div class="tx"><b>Draw anywhere</b> — your line becomes <b>one clean curve</b> from the ball: where you start, how hard you bend, where you end</div></div>
         <div class="row"><div class="ic">🏃</div><div class="tx">Your team <b>chases the ball</b> — first one there takes it. <i>So do they.</i> End the line in the <u>goal</u> to shoot</div></div>
         <div class="row"><div class="ic">🪁</div><div class="tx">The <b>longer the curve, the harder &amp; higher</b> the ball — long lobs <b>sail over</b> defenders; short passes stay flat and <i>can be cut</i></div></div>
-        <div class="row"><div class="ic">📈</div><div class="tx">Passes grow the pot — and <u>every meter the ball travels</u> grows it faster. <i>Lose the ball and the pot crashes to 0</i></div></div>
+        <div class="row"><div class="ic">📈</div><div class="tx">Every pass raises your <u>×multiplier</u> — keep passing to multiply everything after. But <i>defenders are quick</i> — lose the ball and the pot crashes to 0</div></div>
         <div class="row"><div class="ic">🥅</div><div class="tx"><u>One goal cashes out the pot</u> — shoot past the jetpack keeper's dive. The clock only runs <b>while the ball moves</b>. <i>Time up = 0</i></div></div>
       </div>
       <button class="btn" id="playBtn">KICK OFF</button>
@@ -137,7 +140,7 @@
     </div>
   </div>
 
-  <div class="brand">SKILLZARCADE · BEND BALL STRIKE v0.6.0</div>
+  <div class="brand">SKILLZARCADE · BEND BALL STRIKE v0.7.0</div>
 </div>
 
 <script>
@@ -189,8 +192,9 @@ const BAR_H=118;                     // crossbar height px above goal line
 const BAR_Y=GOALY-BAR_H;
 
 /* ================= tuning ================= */
-const SESSION_T=45;                  // ball-motion budget (s) — clock only runs while the ball moves
-const READ_T=5, READ_MAX=1000;
+const SESSION_T=60;                  // ball-motion budget (s) — clock only runs while the ball moves
+const TIME_BONUS_PER_S=10;           // goal time bonus = 10 pts per second left on the clock
+const PASS_MULT_STEP=0.25, PASS_MULT_MAX=5; // each completed pass raises the live multiplier
 const KEEP_REACH=0.30;               // keeper MAX dive TRAVEL = 30% of goal width (his ask); gloves reach a bit beyond
 const KEEP_CHEAT=0.8;                // keeper cheat speed toward ball side (goal-units/s)
 const K_TIP=22, K_CORE=13;           // keeper hitbox radii (px): gloves = parry, body = clean save
@@ -207,7 +211,7 @@ const H_DANGER=0.18;                 // danger-meters only score while the ball 
 const BOUNCE_N=2, BOUNCE_H=0.2;      // settle: number of hops + hop height (frac of loft peak)
 const SHOT_LIFT_MIN=26, SHOT_LIFT_MAX=66; // shot arc bulge (px) by power
 const RUN_SPD=5.6, DEF_CHASE=5.0;    // chase speeds: attackers vs defenders (m/s)
-const REACT=0.45;                    // defender reaction delay before chasing (s)
+const REACT=0.30;                    // defender reaction delay before chasing (s) — quicker = more passing risk
 const TAKE_R=0.85;                   // possession radius at reception (m)
 const DEF_CUT=0.5;                   // defender radius to cut a rolling ball mid-path (m)
 const ZONE_R=6;                      // defenders only hunt the ball this far from their post (m)
@@ -273,8 +277,7 @@ let chances=0, passes=0, totalDistM=0, potLost=0, endKind=null, endReason='';
 let att=[],def=[],keeper={kx:0,ox:0,oy:0,tox:0,toy:0,bx:0,by:0,diveT:0};
 let ball={x:0,z:0,h:0,carrier:0};
 let pot=0, potEvents=[], scen=null, deck=[], deckI=0;
-let readClock=0, firstActionDone=false, readBonus=0;
-let idealIdx=0, idealAlive=true, allFT=true, heldT=0, lastGain='';
+let heldT=0, passMult=1;
 let flight=null, resolveT=0, popups=[], shake=0, paused=false;
 let stroke=null;             // {id, pts:[{x,y}...], lenPx} raw drawn line (screen space)
 let lastRebound=false;
@@ -286,10 +289,16 @@ function popup(txt,color,wx,wz,big){
   popups.push({txt,color,x:SXp(wx,wz),y:gy(wz)-46*sc(wz)-popups.length*17,t:0,big:!!big});
 }
 function addPot(pts,label,wx,wz){
-  pot+=pts; potEvents.push({label,pts});
+  pts=Math.round(pts*passMult); pot+=pts; potEvents.push({label,pts}); // points scale with the pass multiplier
   popup('+'+pts+' '+label,'#5fe0ff',wx,wz);
   const pv=$('potVal'); pv.textContent=fmt(pot);
   pv.classList.remove('bump'); void pv.offsetWidth; pv.classList.add('bump');
+}
+function showMult(){
+  const m=$('multVal'); if(!m)return;
+  m.textContent='×'+passMult.toFixed(2);
+  m.classList.toggle('hot',passMult>1.01);
+  m.classList.remove('bump'); void m.offsetWidth; m.classList.add('bump');
 }
 
 /* ================= chance lifecycle ================= */
@@ -306,28 +315,11 @@ function spawnChance(forceI){
   keeper={kx:scen.kx,ox:0,oy:0,tox:0,toy:0,bx:0,by:0,diveT:0};
   ball={x:att[0].x,z:att[0].z,h:0,carrier:0};
   pot=BASE_POT; potEvents=[{label:'GOAL CHANCE',pts:BASE_POT}];
-  readClock=0; firstActionDone=false; readBonus=0;
-  idealIdx=0; idealAlive=true; allFT=true; heldT=999; lastRebound=false;
+  heldT=999; lastRebound=false; passMult=1; showMult();
   sub='live'; stroke=null; flight=null; popups=[]; chances++;
   $('potVal').textContent=fmt(pot);
 }
 
-/* ================= ideal path / read bonus ================= */
-function matchStep(step,act){ // act = {t:'pass'|'lead'|'shoot', to?, rc}
-  if(!step)return false;
-  if(step.t==='shoot')return act.t==='shoot';
-  return act.t!=='shoot'&&(step.to==null||step.to===act.to);
-}
-function noteAction(act){ // called when the action RESOLVES (receiver known); rc = readClock at release
-  if(!firstActionDone){
-    firstActionDone=true;
-    if(idealIdx===0&&matchStep(scen.ideal.path[0],act)){
-      readBonus=Math.round(READ_MAX*Math.max(0,1-act.rc/READ_T));
-    }
-  }
-  if(idealAlive&&matchStep(scen.ideal.path[idealIdx],act))idealIdx++;
-  else idealAlive=false;
-}
 
 /* ================= drawn path / possession race ================= */
 function ballScreen(){return{x:SXp(ball.x,ball.z),y:gy(ball.z)-8*sc(ball.z)};}
@@ -377,14 +369,9 @@ function strokeInfo(){ // the drawn shape reduces to ONE smooth curve: where you
                    pow:clamp((slen-90)/380,0.2,1),slen}:null;
   return{kind:shot?'shot':'pass',pts,path,totalS,slen,shot,gi};
 }
-function classifyPass(fx,fz,wx,wz,lead,firstTime){
-  const ev=[];
+function classifyPass(lead){ // 100 for any completed pass; through-ball onto a runner pays extra
+  const ev=[[100,'PASS']];
   if(lead){ev.push([400,'THROUGH BALL']);ev.push([300,'RUNNER']);}
-  else if(wz>fz+0.03)ev.push([150,'FORWARD PASS']);
-  else ev.push([100,'PASS']);
-  if(Math.abs(wx-fx)>0.5&&fz>0.55&&wz>0.62&&!lead)ev.push([350,'CROSS']);
-  if(fz>0.72&&wz<fz-0.06&&Math.abs(fx)>0.42&&Math.abs(wx)<0.35)ev.push([300,'CUTBACK']);
-  if(firstTime)ev.push([350,'FIRST-TIME']);
   return ev;
 }
 function releaseStroke(){
@@ -394,7 +381,7 @@ function releaseStroke(){
   const pow=clamp(info.totalS/POW_FULL,0,1);            // pass power from resolved curve length
   flight={kind:'ball',path:info.path,totalS:info.totalS,sPos:0,passer:ball.carrier,
           shot:info.shot,shotOn:false,att0:att.map(a=>({x:a.x,z:a.z})),
-          fromX:c.x,fromZ:c.z,firstTime:heldT<FT_WIN,relClock:readClock,
+          fromX:c.x,fromZ:c.z,firstTime:heldT<FT_WIN,
           minDef:1e9,close:def.map(()=>false),t:0,settled:0,loose:false,distM:0,distPts:0,
           pow,spd:lerp(PASS_SPD_MIN,PASS_SPD_MAX,pow),peakH:passLoft(pow),bounceH:0};
   ball.carrier=-1; sub='flight';
@@ -456,14 +443,10 @@ function completePass(i){
   finalizeDist(f);
   if(f.loose){lastRebound=true; addPot(200,'REBOUND',a.x,a.z); return;}
   lastRebound=false; passes++;
+  passMult=Math.min(PASS_MULT_MAX,passMult+PASS_MULT_STEP); showMult(); // each pass boosts the live multiplier
   const ran=gdist(f.att0[i].x,f.att0[i].z,a.x,a.z)>LEAD_RUN;
-  noteAction({t:ran?'lead':'pass',to:i,rc:f.relClock});
-  if(!f.firstTime)allFT=false;
-  for(const [pts,label] of classifyPass(f.fromX,f.fromZ,a.x,a.z,ran,f.firstTime))
-    addPot(pts,label,a.x,a.z);
+  for(const [pts,label] of classifyPass(ran))addPot(pts,label,a.x,a.z);
   awardBeats(f,a.x,a.z);
-  const straight=gdist(f.fromX,f.fromZ,a.x,a.z);
-  if(straight>3&&f.totalS>straight*1.3)addPot(250,'BENDER',a.x,a.z);
 }
 
 /* ================= shooting ================= */
@@ -477,8 +460,6 @@ function goalZone(tx,ty){
 function beginShot(){ // shot leaves the foot in the air and arcs the WHOLE drawn curve to the target
   const f=flight,s=f.shot;
   finalizeDist(f); f.distPts=0;
-  noteAction({t:'shoot',rc:f.relClock});
-  if(!f.firstTime)allFT=false;
   let tx=s.tx+(Math.random()-0.5)*0.10*s.pow;
   let ty=s.ty+(Math.random()-0.5)*0.08*s.pow;
   let outcome='goal',special=null;
@@ -509,8 +490,6 @@ function landShot(){
     if(z.pts)addPot(z.pts,z.label,0,0.9);
     if(s.special==='postin')addPot(750,'OFF THE POST — IN',0,0.9);
     if(s.special==='barin')addPot(1250,'OFF THE BAR — IN',0,0.9);
-    if(s.rebound)addPot(600,'VOLLEY',0,0.9);
-    else if(s.firstTime)addPot(400,'FIRST-TIME FINISH',0,0.9);
     if(s.minK<K_TIP+16)popup('FINGERTIPS!','#ffc233',0,0.92,true); // he ALMOST got there
     bankGoal(z);
   }else if(s.outcome==='miss'){
@@ -524,7 +503,7 @@ function landShot(){
     popup('PARRIED!','#ffc233',nx,nz,true);
     flight={kind:'ball',path:[{x:nx,z:nz,s:0}],totalS:0,sPos:0,passer:-1,
             shot:null,shotOn:false,att0:att.map(a=>({x:a.x,z:a.z})),
-            fromX:nx,fromZ:nz,firstTime:false,relClock:readClock,
+            fromX:nx,fromZ:nz,firstTime:false,
             minDef:1e9,close:def.map(()=>false),t:0,settled:0,loose:true,distM:0,distPts:0,
             spd:PASS_SPD,pow:0,peakH:0};
     sub='flight'; shake=6;
@@ -533,38 +512,31 @@ function landShot(){
 
 /* ================= bank / crash ================= */
 function bankGoal(zone){
-  const shotIdeal=idealAlive&&idealIdx>=scen.ideal.path.length;
-  if(shotIdeal)addPot(1000,'IDEAL PATH',0,0.9);
-  if(readBonus>0){pot+=readBonus;potEvents.push({label:'TIME BONUS',pts:readBonus});}
-  let mult=1;
-  const mrows=[];
-  if(shotIdeal){mult*=1.5;mrows.push('IDEAL PATH ×1.5');}
-  if(allFT&&potEvents.some(e=>e.label==='FIRST-TIME')){mult*=1.4;mrows.push('ONE-TOUCH ×1.4');}
-  if(zone.key===scen.ideal.zone){mult*=1.5;mrows.push('PERFECT TARGET ×1.5');}
-  const total=Math.round(pot*mult);
+  const tb=Math.max(0,Math.round(TIME_BONUS_PER_S*Math.ceil(T))); // 10 pts per second left (NOT multiplied)
+  if(tb>0){pot+=tb;potEvents.push({label:'TIME BONUS',pts:tb});}
+  const total=Math.round(pot);
   banked=total; endKind='cash';
   shake=8;
-  showBanner(true,total,mrows,zone);
+  showBanner(true,total,zone);
 }
 function crash(reason){
   potLost=Math.round(pot); pot=0; $('potVal').textContent='0';
   endKind='crash'; endReason=reason;
   shake=5;
-  showBanner(false,0,null,null,reason);
+  showBanner(false,0,null,reason);
 }
-function showBanner(goal,total,mrows,zone,reason){
+function showBanner(goal,total,zoneOrReason){
   const b=$('banner');
   b.className=goal?'goal':'crash'; b.classList.add('on');
   b.querySelector('.head').textContent=goal?'GOAL!':'CRASHED';
   const rows=b.querySelector('.rows'); rows.innerHTML='';
   if(goal){
-    const top=potEvents.filter(e=>e.pts>0).sort((a,b2)=>b2.pts-a.pts).slice(0,5);
+    const top=potEvents.filter(e=>e.pts>0).sort((a,b2)=>b2.pts-a.pts).slice(0,6);
     for(const e of top){const r=document.createElement('div');r.className='row';r.innerHTML='<span>'+e.label+'</span><b>+'+fmt(e.pts)+'</b>';rows.appendChild(r);}
-    for(const m of (mrows||[])){const r=document.createElement('div');r.className='row m';r.innerHTML='<span>'+m.split(' ×')[0]+'</span><b>×'+m.split('×')[1]+'</b>';rows.appendChild(r);}
   }
   b.querySelector('.total').textContent=goal?'+'+fmt(total):'';
-  b.querySelector('.why').textContent=goal?'':reason;
-  sub='resolve'; resolveT=goal?1.5:0.95; flight=null; stroke=null;
+  b.querySelector('.why').textContent=goal?(passes+' pass'+(passes===1?'':'es')+' · ×'+passMult.toFixed(2)):zoneOrReason;
+  sub='resolve'; resolveT=goal?1.6:0.95; flight=null; stroke=null;
 }
 function endSession(){
   state='over'; stroke=null; flight=null;
@@ -630,7 +602,7 @@ function update(dt){
 
   if(sub==='live'){
     // possession = the whole pitch freezes; think as long as you like
-    readClock+=dt; heldT+=dt;
+    heldT+=dt;
     keeper.ox*=Math.max(0,1-dt*5); keeper.oy*=Math.max(0,1-dt*5); // keeper floats back to center
     const c=att[ball.carrier];
     ball.x=c.x; ball.z=c.z; ball.h=0;
@@ -673,7 +645,7 @@ function update(dt){
       if(dm>0){
         let hot=0;
         if(ball.h<H_DANGER)for(const d of def)if(gdist(d.x,d.z,ball.x,ball.z)<DANGER_R)hot++;
-        const rate=DIST_RATE*(1+f.distM/DIST_ACCEL)*(1+0.5*hot);
+        const rate=DIST_RATE*(1+f.distM/DIST_ACCEL)*(1+0.5*hot)*passMult;
         f.distM+=dm; f.distPts+=dm*rate; pot+=dm*rate;
         $('potVal').textContent=fmt(pot);
         if(Math.floor(f.distM/10)>Math.floor((f.distM-dm)/10))
@@ -762,10 +734,10 @@ if(best>0)$('menuBest').textContent='Best: '+fmt(best);
 
 /* ================= dev/test hooks ================= */
 window.TB={
-  get:()=>({state,sub,T,banked,pot,endKind,passes,chances,readBonus,idealIdx,idealAlive,
+  get:()=>({state,sub,T,banked,pot,endKind,passes,chances,passMult,
+            events:potEvents.map(e=>e.label+' '+e.pts),
             scen:scen?scen.name:null,carrier:ball.carrier,ball:{...ball},
             dist:flight?{m:+flight.distM.toFixed(1),pts:Math.round(flight.distPts)}:null,
-            events:potEvents.map(e=>e.label),
             att:att.map(a=>({x:+a.x.toFixed(2),z:+a.z.toFixed(2)})),
             def:def.map(d=>({x:+d.x.toFixed(2),z:+d.z.toFixed(2)})),keeper:{...keeper}}),
   tick:s=>{const n=Math.round(s*60);for(let i=0;i<n;i++)update(1/60);},
