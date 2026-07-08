@@ -118,7 +118,7 @@
         <div class="row"><div class="ic">✍️</div><div class="tx"><b>Draw anywhere</b> — your line becomes <b>one clean curve</b> from the ball: where you start, how hard you bend, where you end</div></div>
         <div class="row"><div class="ic">🏃</div><div class="tx">Your team <b>chases the ball</b> — first one there takes it. <i>So do they.</i> End the line in the <u>goal</u> to shoot</div></div>
         <div class="row"><div class="ic">🪁</div><div class="tx">The <b>longer the curve, the harder &amp; higher</b> the ball — long lobs <b>sail over</b> defenders; short passes stay flat and <i>can be cut</i></div></div>
-        <div class="row"><div class="ic">📈</div><div class="tx">Every pass raises your <u>×multiplier</u> — keep passing to multiply everything after. But <i>defenders are quick</i> — lose the ball and the pot crashes to 0</div></div>
+        <div class="row"><div class="ic">📈</div><div class="tx">Every pass raises your <u>×multiplier</u> — keep passing to multiply everything after. But <i>defenders are faster than you and close in fast</i> — pass sharp or shoot before they catch you</div></div>
         <div class="row"><div class="ic">🥅</div><div class="tx"><u>One goal cashes out the pot</u> — shoot past the jetpack keeper's dive. The clock only runs <b>while the ball moves</b>. <i>Time up = 0</i></div></div>
       </div>
       <button class="btn" id="playBtn">KICK OFF</button>
@@ -142,7 +142,7 @@
     </div>
   </div>
 
-  <div class="brand">SKILLZARCADE · BEND BALL STRIKE v0.8.0</div>
+  <div class="brand">SKILLZARCADE · BEND BALL STRIKE v0.8.1</div>
 </div>
 
 <audio id="music" src="music.mp3" loop preload="auto"></audio>
@@ -199,11 +199,11 @@ const BAR_Y=GOALY-BAR_H;
 const SESSION_T=60;                  // ball-motion budget (s) — clock only runs while the ball moves
 const TIME_BONUS_PER_S=10;           // goal time bonus = 10 pts per second left on the clock
 const PASS_MULT_STEP=0.25, PASS_MULT_MAX=5; // each completed pass raises the live multiplier
-const KEEP_REACH=0.30;               // keeper MAX dive TRAVEL = 30% of goal width (his ask); gloves reach a bit beyond
-const KEEP_CHEAT=0.8;                // keeper cheat speed toward ball side (goal-units/s)
-const K_TIP=22, K_CORE=13;           // keeper hitbox radii (px): gloves = parry, body = clean save
-const K_EXT=KEEP_REACH*2*POST_PX;    // max dive body-travel (≈52px); glove tip reaches K_EXT + K_TIP
-const K_SPD=105;                     // dive speed (px/s): he only reaches full stretch on slow shots — pace beats him
+const KEEP_REACH=0.40;               // keeper MAX dive TRAVEL as fraction of goal width; gloves reach a bit beyond
+const KEEP_CHEAT=1.1;                // keeper cheat speed toward ball side (goal-units/s) — harder to fake
+const K_TIP=25, K_CORE=15;           // keeper hitbox radii (px): gloves = parry, body = clean save
+const K_EXT=KEEP_REACH*2*POST_PX;    // max dive body-travel; glove tip reaches K_EXT + K_TIP
+const K_SPD=160;                     // dive speed (px/s): reaches corners on all but the fastest shots
 const BASE_POT=500;
 const PASS_SPD=16;                   // reference ball speed (m/s); actual scales with power
 const PASS_SPD_MIN=12, PASS_SPD_MAX=27; // harder hit (longer curve) = faster ball
@@ -214,11 +214,11 @@ const H_CUT=0.22;                    // ball must be below this height for a def
 const H_DANGER=0.18;                 // danger-meters only score while the ball is this low
 const BOUNCE_N=2, BOUNCE_H=0.2;      // settle: number of hops + hop height (frac of loft peak)
 const SHOT_LIFT_MIN=26, SHOT_LIFT_MAX=66; // shot arc bulge (px) by power
-const RUN_SPD=5.6, DEF_CHASE=5.0;    // chase speeds: attackers vs defenders (m/s)
-const REACT=0.30;                    // defender reaction delay before chasing (s) — quicker = more passing risk
-const TAKE_R=0.85;                   // possession radius at reception (m)
-const DEF_CUT=0.5;                   // defender radius to cut a rolling ball mid-path (m)
-const ZONE_R=6;                      // defenders only hunt the ball this far from their post (m)
+const RUN_SPD=5.6, DEF_CHASE=RUN_SPD*1.2; // defenders run 20% faster than players — they WILL catch up
+const REACT=0.10;                    // defender reaction delay before chasing (s) — near-instant
+const TAKE_R=0.9;                    // possession radius at reception (m)
+const DEF_CUT=0.7;                   // defender radius to cut a rolling ball mid-path (m)
+const ZONE_R=8;                      // defenders hunt the ball this far from their post (m) — wider coverage
 const DANGER_R=4;                    // ball travel near defenders pays extra (m)
 const BEAT_R=2.7;                    // "beats defender" bonus radius (m)
 const LEAD_RUN=2.0;                  // receiver ran this far -> counts as run onto it (m)
@@ -668,8 +668,8 @@ function update(dt){
         stepToward(att[i],endP,RUN_SPD*dt); // team runs to where the line ends
       }
       if(f.t>REACT)for(const d of def){
-        const p=chasePoint(d.x,d.z,DEF_CHASE,d.hx,d.hz);
-        stepToward(d,p||{x:d.hx,z:d.hz},DEF_CHASE*dt);
+        const p=chasePoint(d.x,d.z,DEF_CHASE,d.hx,d.hz); // smart cut point if the ball's in my zone...
+        stepToward(d,p||ball,DEF_CHASE*dt);               // ...otherwise run straight at the ball. Always closing.
       }
       let dBest=1e9;
       for(let di=0;di<def.length;di++){
@@ -882,14 +882,13 @@ function draw(){
         if(t2<bestAtt){bestAtt=t2;win=i;}
       }
       let danger=false;
-      for(const d of def){
-        if(!lofted)for(let i=0;i<info.path.length;i+=2){       // only a flat ball can be cut mid-line
+      for(const d of def){                                     // every defender pursues, so none are ruled out
+        if(!lofted)for(let i=0;i<info.path.length;i+=2){        // only a flat ball can be cut mid-line
           const p=info.path[i];
-          if(gdist(d.hx,d.hz,p.x,p.z)>ZONE_R)continue;
           const bt=p.s/spdP, mt=Math.max(0,gdist(d.x,d.z,p.x,p.z)-DEF_CUT)/DEF_CHASE+REACT;
           if(mt<bt-0.05){danger=true;break;}
         }
-        if(!danger&&gdist(d.hx,d.hz,endP.x,endP.z)<=ZONE_R){    // landing contest (flat & lofted)
+        if(!danger){                                            // landing contest (flat & lofted)
           const t2=gdist(d.x,d.z,endP.x,endP.z)/DEF_CHASE+REACT;
           if(t2<Math.max(bestAtt,ballHold))danger=true;
         }
