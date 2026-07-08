@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
-<title>Top Bins — Prototype</title>
+<title>Bend Ball Strike — Prototype</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@500;600;700&family=Orbitron:wght@600;700;900&display=swap" rel="stylesheet">
 <style>
@@ -78,6 +78,8 @@
   .pb{font-family:'Fredoka',sans-serif;font-weight:700;font-size:14px;color:var(--dim);letter-spacing:1px;margin-top:16px;}
 
   #over .big{font-size:38px;font-weight:900;letter-spacing:2px;color:#7fe9ff;margin:10px 0 4px;text-shadow:var(--title-glow);}
+  #over .big.cash{color:var(--gold);text-shadow:0 0 12px rgba(255,194,51,.9),0 0 34px rgba(255,194,51,.6);}
+  #over .big.bad{color:var(--crash);text-shadow:var(--crash-glow);}
   #over .lbl{font-size:12px;font-weight:700;letter-spacing:3px;color:var(--dim);margin-top:14px;}
   #over .pts{font-size:62px;font-weight:900;color:var(--gold);line-height:1.05;text-shadow:0 0 10px rgba(255,194,51,.7),0 0 28px rgba(255,194,51,.5);}
   #over .stats{font-family:'Fredoka',sans-serif;font-weight:600;font-size:14px;color:var(--txt);margin:8px 0 2px;}
@@ -97,30 +99,29 @@
     <button id="backArcade" title="Back to arcade">‹</button>
 
     <div id="hud">
-      <div id="bankBox"><div class="hlbl">BANKED</div><div id="bankVal">0</div></div>
-      <div id="timeBox"><div id="timeVal">90</div></div>
+      <div id="bankBox"><div class="hlbl">BEST</div><div id="bankVal">0</div></div>
+      <div id="timeBox"><div id="timeVal">45</div></div>
       <div id="potBox"><div class="hlbl">POT</div><div id="potVal">500</div></div>
-      <div id="chanceBar"><div id="chanceFill"></div></div>
     </div>
 
     <div id="banner"><div class="head"></div><div class="rows"></div><div class="total"></div><div class="why"></div></div>
 
     <div id="menu" class="overlay">
-      <div class="title">TOP <span>BINS</span></div>
-      <div class="sub">90 SECONDS · BUILD THE POT · BANK THE GOAL</div>
+      <div class="title">BEND BALL <span>STRIKE</span></div>
+      <div class="sub">DRAW IT · BEND IT · ONE GOAL · CASH OUT</div>
       <div class="htp">
         <div class="row"><div class="ic">✍️</div><div class="tx"><b>Draw a line anywhere</b> — it starts at the ball. <b>Bend it</b> around defenders</div></div>
         <div class="row"><div class="ic">🏃</div><div class="tx">Your team <b>chases the ball</b> — first one there takes it. <i>So do they.</i> End the line in the <u>goal</u> to shoot</div></div>
         <div class="row"><div class="ic">📈</div><div class="tx">Passes grow the pot — and <u>every meter the ball travels</u> grows it faster. <i>Lose the ball and the pot crashes to 0</i></div></div>
-        <div class="row"><div class="ic">🥅</div><div class="tx">Score to bank it. Corners pay more — <u>top bins pays the most</u></div></div>
+        <div class="row"><div class="ic">🥅</div><div class="tx"><u>One goal cashes out the pot</u> — shoot past the jetpack keeper's dive. The clock only runs <b>while the ball moves</b>. <i>Time up = 0</i></div></div>
       </div>
       <button class="btn" id="playBtn">KICK OFF</button>
       <div class="pb" id="menuBest"></div>
     </div>
 
     <div id="over" class="overlay hide">
-      <div class="big">FULL TIME</div>
-      <div class="lbl">FINAL SCORE</div>
+      <div class="big" id="overBig">TIME'S UP</div>
+      <div class="lbl">PAYOUT</div>
       <div class="pts" id="finalScore">0</div>
       <div class="stats" id="finalStats"></div>
       <div class="best" id="finalBest"></div>
@@ -135,7 +136,7 @@
     </div>
   </div>
 
-  <div class="brand">SKILLZARCADE · TOP BINS v0.3.0</div>
+  <div class="brand">SKILLZARCADE · BEND BALL STRIKE v0.4.0</div>
 </div>
 
 <script>
@@ -187,7 +188,10 @@ const BAR_H=118;                     // crossbar height px above goal line
 const BAR_Y=GOALY-BAR_H;
 
 /* ================= tuning ================= */
-const SESSION_T=90, CHANCE_T=10, READ_T=5, READ_MAX=1000;
+const SESSION_T=45;                  // ball-motion budget (s) — clock only runs while the ball moves
+const READ_T=5, READ_MAX=1000;
+const KEEP_REACH=0.30;               // keeper dive radius = 30% of goal width, any direction
+const KEEP_CHEAT=0.8;                // keeper cheat speed toward ball side (goal-units/s)
 const BASE_POT=500;
 const PASS_SPD=16;                   // ball speed along drawn path (m/s)
 const RUN_SPD=5.6, DEF_CHASE=5.0;    // chase speeds: attackers vs defenders (m/s)
@@ -252,9 +256,9 @@ const SCEN=[
 /* ================= state ================= */
 let state='menu';            // menu | play | over
 let sub='live';              // live | flight | resolve
-let T=SESSION_T, chanceT=CHANCE_T, banked=0, best=+(sget('topbins_best')||0);
-let goals=0, chances=0, biggest=0;
-let att=[],def=[],keeper={x:0,kx:0,dive:0,divedir:0};
+let T=SESSION_T, banked=0, best=+(sget('bendball_best')||0);
+let chances=0, passes=0, totalDistM=0, potLost=0, endKind=null, endReason='';
+let att=[],def=[],keeper={kx:0,dive:0,divedir:0,dvx:0,dvy:0};
 let ball={x:0,z:0,h:0,carrier:0};
 let pot=0, potEvents=[], scen=null, deck=[], deckI=0;
 let readClock=0, firstActionDone=false, readBonus=0;
@@ -287,10 +291,10 @@ function spawnChance(forceI){
   scen=SCEN[forceI!=null?forceI:deck[deckI++]];
   att=scen.att.map(a=>({x:a.x,z:a.z,run:a.run?[...a.run]:null,moveTo:null,bob:Math.random()*6}));
   def=scen.def.map(d=>({x:d.x,z:d.z,hx:d.x,hz:d.z,bob:Math.random()*6}));
-  keeper={x:scen.kx*GHW,kx:scen.kx,dive:0,divedir:0};
+  keeper={kx:scen.kx,dive:0,divedir:0,dvx:0,dvy:0};
   ball={x:att[0].x,z:att[0].z,h:0,carrier:0};
   pot=BASE_POT; potEvents=[{label:'GOAL CHANCE',pts:BASE_POT}];
-  chanceT=CHANCE_T; readClock=0; firstActionDone=false; readBonus=0;
+  readClock=0; firstActionDone=false; readBonus=0;
   idealIdx=0; idealAlive=true; allFT=true; heldT=999; lastRebound=false;
   sub='live'; stroke=null; flight=null; popups=[]; chances++;
   $('potVal').textContent=fmt(pot);
@@ -393,6 +397,7 @@ function chasePoint(ex,ez,speed,hx,hz){ // earliest path point this chaser can b
   return hx!=null?inZoneEnd:path[path.length-1]; // null = nothing in my zone, hold post
 }
 function finalizeDist(f){ // pot already grew live; log it for the goal breakdown
+  totalDistM+=f.distM;
   if(f.distPts>=1)potEvents.push({label:'DISTANCE '+Math.round(f.distM)+'m',pts:Math.round(f.distPts)});
 }
 function completePass(i){
@@ -401,7 +406,7 @@ function completePass(i){
   sub='live'; flight=null; heldT=0;
   finalizeDist(f);
   if(f.loose){lastRebound=true; addPot(200,'REBOUND',a.x,a.z); return;}
-  lastRebound=false;
+  lastRebound=false; passes++;
   const ran=gdist(f.att0[i].x,f.att0[i].z,a.x,a.z)>LEAD_RUN;
   const beat=f.minDef<BEAT_R;
   noteAction({t:ran?'lead':'pass',to:i,rc:f.relClock});
@@ -433,10 +438,14 @@ function beginShot(){ // ball has reached the end of the ground path; launch alo
   else if(sideAbs>0.96){special=Math.random()<0.5?'postin':'postout';outcome=special==='postin'?'goal':'miss';}
   else if(ty>0.97){special=Math.random()<0.5?'barin':'barout';outcome=special==='barin'?'goal':'miss';}
   else{
-    const reach=Math.max(0.16,0.60-0.20*s.pow-0.15*ty);
-    const dx=Math.abs(tx-keeper.kx);
-    if(dx<reach*0.55)outcome='save';
-    else if(dx<reach)outcome='parry';
+    // jetpack keeper: floats mid-goal, dives 30% of goal width in ANY direction
+    const dxp=(tx-keeper.kx)*POST_PX, dyp=(ty-0.5)*BAR_H;
+    const dpx=Math.hypot(dxp,dyp);
+    const reach=KEEP_REACH*2*POST_PX;
+    if(dpx<reach*0.7)outcome='save';
+    else if(dpx<reach)outcome='parry';
+    const dl=dpx||1,cap=Math.min(dpx,reach);
+    keeper.dvx=dxp/dl*cap; keeper.dvy=dyp/dl*cap;
   }
   s.tx=tx;s.ty=ty;s.outcome=outcome;s.special=special;
   s.t=0;s.dur=lerp(0.5,0.3,s.pow);s.fz=ball.z;
@@ -482,13 +491,13 @@ function bankGoal(zone){
   if(allFT&&potEvents.some(e=>e.label==='FIRST-TIME')){mult*=1.4;mrows.push('ONE-TOUCH ×1.4');}
   if(zone.key===scen.ideal.zone){mult*=1.5;mrows.push('PERFECT TARGET ×1.5');}
   const total=Math.round(pot*mult);
-  banked+=total; goals++; biggest=Math.max(biggest,total);
-  $('bankVal').textContent=fmt(banked);
+  banked=total; endKind='cash';
   shake=8;
   showBanner(true,total,mrows,zone);
 }
 function crash(reason){
-  pot=0; $('potVal').textContent='0';
+  potLost=Math.round(pot); pot=0; $('potVal').textContent='0';
+  endKind='crash'; endReason=reason;
   shake=5;
   showBanner(false,0,null,null,reason);
 }
@@ -510,10 +519,17 @@ function endSession(){
   state='over'; stroke=null; flight=null;
   $('hud').classList.remove('on');
   $('banner').classList.remove('on');
-  $('finalScore').textContent=fmt(banked);
-  $('finalStats').textContent=goals+' goal'+(goals===1?'':'s')+' from '+chances+' chances · biggest bank '+fmt(biggest);
-  const nb=banked>best;
-  if(nb){best=banked;sset('topbins_best',best);}
+  const cash=endKind==='cash';
+  const big=$('overBig');
+  big.textContent=cash?'CASHED OUT!':endKind==='time'?"TIME'S UP":'CRASHED';
+  big.className='big '+(cash?'cash':'bad');
+  const score=cash?banked:0;
+  $('finalScore').textContent=fmt(score);
+  $('finalStats').textContent=cash
+    ? passes+' pass'+(passes===1?'':'es')+' · '+Math.round(totalDistM)+'m traveled'
+    : (endReason?endReason+' — ':'')+(potLost>=1?'you dropped '+fmt(potLost):'');
+  const nb=cash&&score>best;
+  if(nb){best=score;sset('bendball_best',best);}
   const fb=$('finalBest');
   fb.textContent=nb?'★ NEW BEST ★':'Best: '+fmt(best);
   fb.className='best'+(nb?' newbest':'');
@@ -550,17 +566,21 @@ function update(dt){
   if(shake>0)shake=Math.max(0,shake-dt*22);
   if(paused||state!=='play')return;
 
-  // global clock — buzzer-beater rule: a shot in the air may finish
-  T-=dt;
-  const buzzShot=flight&&flight.shotOn;
-  if(T<=0&&!buzzShot){endSession();return;}
+  // the clock only runs while the ball is moving — deciding is free
+  if(sub==='flight'&&flight&&!flight.shotOn){
+    T-=dt;
+    if(T<=0){ // time's up mid-move = 0 (a shot already in the air gets its buzzer-beater)
+      potLost=Math.round(pot); pot=0; endKind='time'; endReason='';
+      endSession(); return;
+    }
+  }
   const tv=$('timeVal');tv.textContent=Math.max(0,Math.ceil(T));
   tv.classList.toggle('low',T<=10);
 
   if(sub==='live'){
-    // possession = the whole pitch freezes; only the decision clock runs
-    readClock+=dt; heldT+=dt; chanceT-=dt;
-    if(chanceT<=0){crash('TOO SLOW');return;}
+    // possession = the whole pitch freezes; think as long as you like
+    readClock+=dt; heldT+=dt;
+    keeper.dive=Math.max(0,keeper.dive-dt*2.5);
     const c=att[ball.carrier];
     ball.x=c.x; ball.z=c.z;
   }
@@ -569,7 +589,7 @@ function update(dt){
     if(f.shotOn){
       const s=f.shot; s.t+=dt;
       keeper.dive=Math.min(1,keeper.dive+dt*3.2);
-      if(s.t>=s.dur){if(T<=0){landShot();if(state==='play')endSession();}else landShot();}
+      if(s.t>=s.dur)landShot();
     }else{
       // ball rolls along the drawn path
       const prevS=Math.min(f.sPos,f.totalS);
@@ -586,6 +606,10 @@ function update(dt){
         if(Math.floor(f.distM/10)>Math.floor((f.distM-dm)/10))
           popup(Math.floor(f.distM/10)*10+'m!','#ffc233',ball.x,ball.z,true);
       }
+      // keeper cheats toward the ball's side as it moves
+      const tk=clamp(ball.x,-0.62,0.62);
+      keeper.kx+=clamp(tk-keeper.kx,-KEEP_CHEAT*dt,KEEP_CHEAT*dt);
+      keeper.dive=Math.max(0,keeper.dive-dt*2.5);
       if(Math.abs(ball.x)>1.03||ball.z>1.005||ball.z<0.005){crash('OUT OF PLAY');return;}
       if(f.sPos>=f.totalS){
         if(f.shot){beginShot();return;}
@@ -636,12 +660,8 @@ function update(dt){
   else if(sub==='resolve'){
     resolveT-=dt;
     if(keeper.dive>0)keeper.dive=Math.min(1,keeper.dive+dt*3.2);
-    if(resolveT<=0){
-      $('banner').classList.remove('on');
-      if(T<=0)endSession(); else spawnChance();
-    }
+    if(resolveT<=0)endSession(); // one goal = cash out; one crash = done
   }
-  $('chanceFill').style.width=(clamp(chanceT/CHANCE_T,0,1)*100)+'%';
 }
 function stepToward(o,target,step){ // step in meters
   const dx=(target.x-o.x)*GXM,dz=(target.z-o.z)*GZM;
@@ -654,9 +674,11 @@ function stepToward(o,target,step){ // step in meters
 /* ================= session flow / buttons ================= */
 function startGame(){
   shuffleDeck();
-  banked=0;goals=0;chances=0;biggest=0;T=SESSION_T;paused=false;
+  banked=0;chances=0;passes=0;totalDistM=0;potLost=0;endKind=null;endReason='';
+  T=SESSION_T;paused=false;
   state='play';
-  $('bankVal').textContent='0';$('timeVal').textContent='90';$('timeVal').classList.remove('low');
+  $('bankVal').textContent=fmt(best);
+  $('timeVal').textContent=Math.ceil(SESSION_T);$('timeVal').classList.remove('low');
   $('menu').classList.add('hide');$('over').classList.add('hide');$('quit').classList.add('hide');
   $('hud').classList.add('on');$('banner').classList.remove('on');
   spawnChance();
@@ -667,14 +689,14 @@ $('menuBtn').addEventListener('click',()=>{location.href='../index.html';});
 $('quitBtn').addEventListener('click',()=>{location.href='../index.html';});
 $('resumeBtn').addEventListener('click',()=>{paused=false;$('quit').classList.add('hide');});
 $('backArcade').addEventListener('click',()=>{
-  if(state==='play'){paused=true;aim=null;$('quit').classList.remove('hide');}
+  if(state==='play'){paused=true;stroke=null;$('quit').classList.remove('hide');}
   else location.href='../index.html';
 });
 if(best>0)$('menuBest').textContent='Best: '+fmt(best);
 
 /* ================= dev/test hooks ================= */
 window.TB={
-  get:()=>({state,sub,T,chanceT,banked,pot,goals,chances,readBonus,idealIdx,idealAlive,
+  get:()=>({state,sub,T,banked,pot,endKind,passes,chances,readBonus,idealIdx,idealAlive,
             scen:scen?scen.name:null,carrier:ball.carrier,ball:{...ball},
             dist:flight?{m:+flight.distM.toFixed(1),pts:Math.round(flight.distPts)}:null,
             att:att.map(a=>({x:+a.x.toFixed(2),z:+a.z.toFixed(2)})),
@@ -692,7 +714,7 @@ window.TB={
     let L=0;for(let i=1;i<pts.length;i++)L+=Math.hypot(pts[i].x-pts[i-1].x,pts[i].y-pts[i-1].y);
     stroke={id:-1,pts,lenPx:L};releaseStroke();},
   time:t=>{T=t;},
-  clearBest:()=>{try{localStorage.removeItem('topbins_best');}catch(e){}}
+  clearBest:()=>{try{localStorage.removeItem('bendball_best');}catch(e){}}
 };
 /* ================= drawing ================= */
 const SPECK=[];for(let i=0;i<130;i++)SPECK.push({x:Math.random()*W,y:64+Math.random()*100,a:0.12+Math.random()*0.3});
@@ -758,6 +780,10 @@ function draw(){
     zoneTag(-0.82,0.85,'+750');zoneTag(0.82,0.85,'+750');
     zoneTag(-0.82,0.5,'+500');zoneTag(0.82,0.5,'+500');
     zoneTag(-0.82,0.16,'+300');zoneTag(0.82,0.16,'+300');
+    // keeper dive reach — shoot outside this circle
+    ctx.strokeStyle='rgba(255,61,110,.55)';ctx.lineWidth=1.5;ctx.setLineDash([4,5]);
+    ctx.beginPath();ctx.arc(CX+keeper.kx*POST_PX,GOALY-BAR_H*0.5,KEEP_REACH*2*POST_PX,0,7);ctx.stroke();
+    ctx.setLineDash([]);
   }
 
   /* entities far→near */
@@ -885,12 +911,40 @@ function drawPlayer(x,z,kind,o){
   ctx.fillStyle=kind==='hero'?'#5fe0ff':kind==='def'?'#ff5e5e':'#39ffa0';
   ctx.fillRect(sx-hr*0.7,ys-bh-hr*0.85,hr*1.4,2.4*s);
 }
-function drawKeeper(){
-  const dive=keeper.dive,dir=keeper.divedir;
-  const s=sc(0.955),sx=SXp(keeper.x,0.955)+dir*dive*60*s,ys=gy(0.955);
+function drawKeeper(){ // jetpack keeper: floats mid-goal, cheats sideways, dives on shots
+  const s=sc(0.955);
+  const bob=Math.sin(performance.now()/320)*3;
+  const kx=CX+keeper.kx*POST_PX+keeper.dive*keeper.dvx;
+  const ky=GOALY-BAR_H*0.5+bob+keeper.dive*keeper.dvy;
+  const bw=26*s,bh=48*s,hr=8.5*s;
+  // faint ground shadow under the hover spot
+  ctx.fillStyle='rgba(0,0,0,.35)';
+  ctx.beginPath();ctx.ellipse(kx,GOALY+3,bw*0.8,bw*0.28,0,0,7);ctx.fill();
   ctx.save();
-  ctx.translate(sx,ys);ctx.rotate(dir*dive*0.9);ctx.translate(-sx,-ys);
-  drawPlayer((sx-CX)/hw(0.955),0.955,'keeper');
+  ctx.translate(kx,ky);ctx.rotate(keeper.dive*0.55*(keeper.divedir||1));
+  // jet flames
+  const fl=(3+Math.random()*4)*s;
+  ctx.fillStyle='rgba(95,224,255,.85)';ctx.shadowColor='#5fe0ff';ctx.shadowBlur=10;
+  ctx.beginPath();ctx.moveTo(-bw*0.3,bh*0.55);ctx.lineTo(-bw*0.19,bh*0.55+fl+4*s);ctx.lineTo(-bw*0.08,bh*0.55);ctx.closePath();ctx.fill();
+  ctx.beginPath();ctx.moveTo(bw*0.08,bh*0.55);ctx.lineTo(bw*0.19,bh*0.55+fl+4*s);ctx.lineTo(bw*0.3,bh*0.55);ctx.closePath();ctx.fill();
+  ctx.shadowBlur=0;
+  // legs
+  ctx.fillStyle='#123a26';
+  ctx.fillRect(-bw*0.32,bh*0.13,bw*0.24,bh*0.42);
+  ctx.fillRect(bw*0.08,bh*0.13,bw*0.24,bh*0.42);
+  // torso
+  ctx.fillStyle='#2f8a5e';
+  rrect(-bw/2,-bh*0.45,bw,bh*0.62,6*s);
+  ctx.fillStyle='rgba(220,238,255,.85)';ctx.shadowColor='rgba(200,230,255,.8)';ctx.shadowBlur=4;
+  ctx.fillRect(-bw/2+2*s,-bh*0.45,bw-4*s,2.2*s);
+  ctx.shadowBlur=0;
+  ctx.fillStyle='#39ffa0';
+  ctx.fillRect(-bw/2,bh*0.05,bw,3.5*s);
+  // head
+  ctx.fillStyle='#0a1226';
+  ctx.beginPath();ctx.arc(0,-bh*0.45-hr*0.6,hr,0,7);ctx.fill();
+  ctx.fillStyle='#39ffa0';
+  ctx.fillRect(-hr*0.7,-bh*0.45-hr*0.85,hr*1.4,2.4*s);
   ctx.restore();
 }
 function drawBall(){
@@ -930,7 +984,6 @@ function frame(now){
 }
 requestAnimationFrame(frame);
 })();
-</script>
 </script>
 </body>
 </html>
