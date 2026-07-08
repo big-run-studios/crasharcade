@@ -142,7 +142,7 @@
     </div>
   </div>
 
-  <div class="brand">SKILLZARCADE · BEND BALL STRIKE v0.8.2</div>
+  <div class="brand">SKILLZARCADE · BEND BALL STRIKE v0.8.3</div>
 </div>
 
 <audio id="music" src="music.mp3" loop preload="auto"></audio>
@@ -281,7 +281,7 @@ let chances=0, passes=0, totalDistM=0, potLost=0, endKind=null, endReason='';
 let att=[],def=[],keeper={kx:0,ox:0,oy:0,tox:0,toy:0,bx:0,by:0,diveT:0};
 let ball={x:0,z:0,h:0,carrier:0};
 let pot=0, potEvents=[], scen=null, deck=[], deckI=0;
-let heldT=0, passMult=1;
+let heldT=0, passMult=1, defSpeedMult=1;
 let flight=null, resolveT=0, popups=[], shake=0, paused=false;
 let stroke=null;             // {id, pts:[{x,y}...], lenPx} raw drawn line (screen space)
 let lastRebound=false;
@@ -315,11 +315,15 @@ function spawnChance(forceI){
   if(deckI>=deck.length)shuffleDeck();
   scen=SCEN[forceI!=null?forceI:deck[deckI++]];
   att=scen.att.map(a=>({x:a.x,z:a.z,run:a.run?[...a.run]:null,moveTo:null,bob:Math.random()*6}));
-  def=scen.def.map(d=>({x:d.x,z:d.z,hx:d.x,hz:d.z,bob:Math.random()*6}));
+  def=scen.def.map(d=>({x:d.x,z:d.z,hx:d.x,hz:d.z,bob:Math.random()*6,role:'zone'}));
+  // two recovering defenders from the back — no safe backfield keep-away:
+  // one hounds the ball, the other shadows the best passing outlet.
+  def.push({x:-0.3,z:0.10,hx:-0.3,hz:0.10,bob:Math.random()*6,role:'ball'});
+  def.push({x:0.3, z:0.06,hx:0.3, hz:0.06,bob:Math.random()*6,role:'mark'});
   keeper={kx:scen.kx,ox:0,oy:0,tox:0,toy:0,bx:0,by:0,diveT:0};
   ball={x:att[0].x,z:att[0].z,h:0,carrier:0};
   pot=BASE_POT; potEvents=[{label:'GOAL CHANCE',pts:BASE_POT}];
-  heldT=999; lastRebound=false; passMult=1; showMult();
+  heldT=999; lastRebound=false; passMult=1; defSpeedMult=1; showMult();
   sub='live'; stroke=null; flight=null; popups=[]; chances++;
   $('potVal').textContent=fmt(pot);
 }
@@ -448,6 +452,7 @@ function completePass(i){
   if(f.loose){lastRebound=true; addPot(200,'REBOUND',a.x,a.z); return;}
   lastRebound=false; passes++;
   passMult=Math.min(PASS_MULT_MAX,passMult+PASS_MULT_STEP); showMult(); // each pass boosts the live multiplier
+  defSpeedMult=Math.min(3,defSpeedMult*1.1); // ...and speeds the defenders up 10% — they close faster every pass
   const ran=gdist(f.att0[i].x,f.att0[i].z,a.x,a.z)>LEAD_RUN;
   for(const [pts,label] of classifyPass(ran))addPot(pts,label,a.x,a.z);
   awardBeats(f,a.x,a.z);
@@ -668,9 +673,15 @@ function update(dt){
         if(i===f.passer&&f.sPos<2.5&&!f.loose)continue;
         stepToward(att[i],endP,RUN_SPD*dt); // team runs to where the line ends
       }
+      const dspd=DEF_CHASE*defSpeedMult;                  // defenders get 10% faster per pass
       if(f.t>REACT)for(const d of def){
-        const p=chasePoint(d.x,d.z,DEF_CHASE,d.hx,d.hz); // smart cut point if the ball's in my zone...
-        stepToward(d,p||ball,DEF_CHASE*dt);               // ...otherwise run straight at the ball. Always closing.
+        let tgt;
+        if(d.role==='ball') tgt=ball;                     // recovering CB: hound the ball
+        else if(d.role==='mark'){                         // recovering CB: shadow the best outlet (most advanced teammate)
+          let m=-1,bz=-1; for(let i=0;i<att.length;i++){if(i===f.passer)continue;if(att[i].z>bz){bz=att[i].z;m=i;}}
+          tgt=m>=0?att[m]:ball;
+        } else tgt=chasePoint(d.x,d.z,dspd,d.hx,d.hz)||ball; // zonal: smart cut point, else chase the ball
+        stepToward(d,tgt,dspd*dt);
       }
       let dBest=1e9;
       for(let di=0;di<def.length;di++){
@@ -755,7 +766,7 @@ if(best>0)$('menuBest').textContent='Best: '+fmt(best);
 
 /* ================= dev/test hooks ================= */
 window.TB={
-  get:()=>({state,sub,T,banked,pot,endKind,passes,chances,passMult,
+  get:()=>({state,sub,T,banked,pot,endKind,passes,chances,passMult,defSpeedMult,ndef:def.length,
             events:potEvents.map(e=>e.label+' '+e.pts),
             scen:scen?scen.name:null,carrier:ball.carrier,ball:{...ball},
             dist:flight?{m:+flight.distM.toFixed(1),pts:Math.round(flight.distPts)}:null,
@@ -882,15 +893,15 @@ function draw(){
         const t2=gdist(att[i].x,att[i].z,endP.x,endP.z)/RUN_SPD;
         if(t2<bestAtt){bestAtt=t2;win=i;}
       }
-      let danger=false;
+      let danger=false;const dspd=DEF_CHASE*defSpeedMult;      // defenders' current (ramped) speed
       for(const d of def){                                     // every defender pursues, so none are ruled out
         if(!lofted)for(let i=0;i<info.path.length;i+=2){        // only a flat ball can be cut mid-line
           const p=info.path[i];
-          const bt=p.s/spdP, mt=Math.max(0,gdist(d.x,d.z,p.x,p.z)-DEF_CUT)/DEF_CHASE+REACT;
+          const bt=p.s/spdP, mt=Math.max(0,gdist(d.x,d.z,p.x,p.z)-DEF_CUT)/dspd+REACT;
           if(mt<bt-0.05){danger=true;break;}
         }
         if(!danger){                                            // landing contest (flat & lofted)
-          const t2=gdist(d.x,d.z,endP.x,endP.z)/DEF_CHASE+REACT;
+          const t2=gdist(d.x,d.z,endP.x,endP.z)/dspd+REACT;
           if(t2<Math.max(bestAtt,ballHold))danger=true;
         }
         if(danger)break;
