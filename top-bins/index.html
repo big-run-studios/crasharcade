@@ -111,7 +111,7 @@
       <div class="htp">
         <div class="row"><div class="ic">✍️</div><div class="tx"><b>Draw a line anywhere</b> — it starts at the ball. <b>Bend it</b> around defenders</div></div>
         <div class="row"><div class="ic">🏃</div><div class="tx">Your team <b>chases the ball</b> — first one there takes it. <i>So do they.</i> End the line in the <u>goal</u> to shoot</div></div>
-        <div class="row"><div class="ic">📈</div><div class="tx">Every good pass grows the pot. <i>Lose the ball and the pot crashes to 0</i></div></div>
+        <div class="row"><div class="ic">📈</div><div class="tx">Passes grow the pot — and <u>every meter the ball travels</u> grows it faster. <i>Lose the ball and the pot crashes to 0</i></div></div>
         <div class="row"><div class="ic">🥅</div><div class="tx">Score to bank it. Corners pay more — <u>top bins pays the most</u></div></div>
       </div>
       <button class="btn" id="playBtn">KICK OFF</button>
@@ -135,7 +135,7 @@
     </div>
   </div>
 
-  <div class="brand">SKILLZARCADE · TOP BINS v0.2.0</div>
+  <div class="brand">SKILLZARCADE · TOP BINS v0.3.0</div>
 </div>
 
 <script>
@@ -191,11 +191,17 @@ const SESSION_T=90, CHANCE_T=10, READ_T=5, READ_MAX=1000;
 const BASE_POT=500;
 const PASS_SPD=16;                   // ball speed along drawn path (m/s)
 const RUN_SPD=5.6, DEF_CHASE=5.0;    // chase speeds: attackers vs defenders (m/s)
-const REACT=0.22;                    // defender reaction delay before chasing (s)
-const TAKE_R=0.85;                   // possession radius (m)
+const REACT=0.45;                    // defender reaction delay before chasing (s)
+const TAKE_R=0.85;                   // possession radius at reception (m)
+const DEF_CUT=0.5;                   // defender radius to cut a rolling ball mid-path (m)
+const ZONE_R=6;                      // defenders only hunt the ball this far from their post (m)
+const DANGER_R=4;                    // ball travel near defenders pays extra (m)
 const BEAT_R=2.7;                    // "beats defender" bonus radius (m)
 const LEAD_RUN=2.0;                  // receiver ran this far -> counts as run onto it (m)
 const FT_WIN=0.55;                   // first-time window (s)
+const DIST_RATE=20;                  // pot points per meter of ball travel (base)
+const DIST_ACCEL=10;                 // rate doubles every this many meters in one stroke
+const distEst=d=>Math.round(DIST_RATE*d+DIST_RATE*d*d/(2*DIST_ACCEL)); // integral of the rate
 
 /* ================= scenarios (handcrafted, shuffled deck) =================
    att[0] starts with the ball. run = normalized dir, runner keeps moving.
@@ -280,13 +286,13 @@ function spawnChance(forceI){
   if(deckI>=deck.length)shuffleDeck();
   scen=SCEN[forceI!=null?forceI:deck[deckI++]];
   att=scen.att.map(a=>({x:a.x,z:a.z,run:a.run?[...a.run]:null,moveTo:null,bob:Math.random()*6}));
-  def=scen.def.map(d=>({x:d.x,z:d.z,bob:Math.random()*6}));
+  def=scen.def.map(d=>({x:d.x,z:d.z,hx:d.x,hz:d.z,bob:Math.random()*6}));
   keeper={x:scen.kx*GHW,kx:scen.kx,dive:0,divedir:0};
   ball={x:att[0].x,z:att[0].z,h:0,carrier:0};
   pot=BASE_POT; potEvents=[{label:'GOAL CHANCE',pts:BASE_POT}];
   chanceT=CHANCE_T; readClock=0; firstActionDone=false; readBonus=0;
   idealIdx=0; idealAlive=true; allFT=true; heldT=999; lastRebound=false;
-  sub='live'; stroke=null; flight=null; chances++;
+  sub='live'; stroke=null; flight=null; popups=[]; chances++;
   $('potVal').textContent=fmt(pot);
 }
 
@@ -358,7 +364,7 @@ function releaseStroke(){
   flight={kind:'ball',path:info.path,totalS:info.totalS,sPos:0,passer:ball.carrier,
           shot:info.shot,shotOn:false,att0:att.map(a=>({x:a.x,z:a.z})),
           fromX:c.x,fromZ:c.z,firstTime:heldT<FT_WIN,relClock:readClock,
-          minDef:1e9,t:0,settled:0,loose:false};
+          minDef:1e9,t:0,settled:0,loose:false,distM:0,distPts:0};
   ball.carrier=-1; sub='flight';
   if(flight.totalS<=0.05&&flight.shot)beginShot();
 }
@@ -373,20 +379,27 @@ function setBallFromPath(f){
   }
   const e=path[path.length-1]; ball.x=e.x; ball.z=e.z;
 }
-function chasePoint(ex,ez,speed){ // earliest path point this chaser can beat the ball to
-  const f=flight,path=f.path;
+function chasePoint(ex,ez,speed,hx,hz){ // earliest path point this chaser can beat the ball to
+  const f=flight,path=f.path;               // hx/hz: zonal chaser — ignore points outside its zone
+  let inZoneEnd=null;
   for(let i=0;i<path.length;i++){
     const p=path[i];
+    if(hx!=null&&gdist(hx,hz,p.x,p.z)>ZONE_R)continue;
+    if(hx!=null)inZoneEnd=p;
     if(p.s<f.sPos)continue;
     const bt=(p.s-f.sPos)/PASS_SPD, mt=gdist(ex,ez,p.x,p.z)/speed;
     if(mt<=bt)return p;
   }
-  return path[path.length-1];
+  return hx!=null?inZoneEnd:path[path.length-1]; // null = nothing in my zone, hold post
+}
+function finalizeDist(f){ // pot already grew live; log it for the goal breakdown
+  if(f.distPts>=1)potEvents.push({label:'DISTANCE '+Math.round(f.distM)+'m',pts:Math.round(f.distPts)});
 }
 function completePass(i){
   const a=att[i],f=flight;
   ball.carrier=i; ball.x=a.x; ball.z=a.z; ball.h=0;
   sub='live'; flight=null; heldT=0;
+  finalizeDist(f);
   if(f.loose){lastRebound=true; addPot(200,'REBOUND',a.x,a.z); return;}
   lastRebound=false;
   const ran=gdist(f.att0[i].x,f.att0[i].z,a.x,a.z)>LEAD_RUN;
@@ -409,6 +422,7 @@ function goalZone(tx,ty){
 }
 function beginShot(){ // ball has reached the end of the ground path; launch along drawn curve
   const f=flight,s=f.shot;
+  finalizeDist(f); f.distPts=0;
   noteAction({t:'shoot',rc:f.relClock});
   if(!f.firstTime)allFT=false;
   let tx=s.tx+(Math.random()-0.5)*0.10*s.pow;
@@ -452,7 +466,7 @@ function landShot(){
     flight={kind:'ball',path:[{x:nx,z:nz,s:0}],totalS:0,sPos:0,passer:-1,
             shot:null,shotOn:false,att0:att.map(a=>({x:a.x,z:a.z})),
             fromX:nx,fromZ:nz,firstTime:false,relClock:readClock,
-            minDef:1e9,t:0,settled:0,loose:true};
+            minDef:1e9,t:0,settled:0,loose:true,distM:0,distPts:0};
     sub='flight'; shake=6;
   }
 }
@@ -493,7 +507,7 @@ function showBanner(goal,total,mrows,zone,reason){
   sub='resolve'; resolveT=goal?1.5:0.95; flight=null; stroke=null;
 }
 function endSession(){
-  state='over'; aim=null; flight=null;
+  state='over'; stroke=null; flight=null;
   $('hud').classList.remove('on');
   $('banner').classList.remove('on');
   $('finalScore').textContent=fmt(banked);
@@ -558,32 +572,64 @@ function update(dt){
       if(s.t>=s.dur){if(T<=0){landShot();if(state==='play')endSession();}else landShot();}
     }else{
       // ball rolls along the drawn path
+      const prevS=Math.min(f.sPos,f.totalS);
       f.sPos+=PASS_SPD*dt;
       setBallFromPath(f);
+      // push-your-luck: every meter of travel grows the pot, at an escalating rate
+      const dm=Math.min(f.sPos,f.totalS)-prevS;
+      if(dm>0){
+        let hot=0; // meters near defenders pay extra — crazy beats safe
+        for(const d of def)if(gdist(d.x,d.z,ball.x,ball.z)<DANGER_R)hot++;
+        const rate=DIST_RATE*(1+f.distM/DIST_ACCEL)*(1+0.5*hot);
+        f.distM+=dm; f.distPts+=dm*rate; pot+=dm*rate;
+        $('potVal').textContent=fmt(pot);
+        if(Math.floor(f.distM/10)>Math.floor((f.distM-dm)/10))
+          popup(Math.floor(f.distM/10)*10+'m!','#ffc233',ball.x,ball.z,true);
+      }
       if(Math.abs(ball.x)>1.03||ball.z>1.005||ball.z<0.005){crash('OUT OF PLAY');return;}
       if(f.sPos>=f.totalS){
         if(f.shot){beginShot();return;}
         f.settled+=dt;
         if(f.settled>4){crash('CLEARED');return;}
       }
-      // everyone chases the ball; first one there takes possession
+      // attackers run to where the drawn line ENDS and collect there;
+      // defenders hunt the ball anywhere along it — that's the crash risk
+      const endP=f.path[f.path.length-1];
       for(let i=0;i<att.length;i++){
         if(i===f.passer&&f.sPos<2.5&&!f.loose)continue;
-        const p=chasePoint(att[i].x,att[i].z,RUN_SPD);
-        stepToward(att[i],p,RUN_SPD*dt);
+        stepToward(att[i],endP,RUN_SPD*dt); // team runs to where the line ends
       }
       if(f.t>REACT)for(const d of def){
-        const p=chasePoint(d.x,d.z,DEF_CHASE);
-        stepToward(d,p,DEF_CHASE*dt);
+        const p=chasePoint(d.x,d.z,DEF_CHASE,d.hx,d.hz);
+        stepToward(d,p||{x:d.hx,z:d.hz},DEF_CHASE*dt);
       }
+      let dBest=1e9;
       for(const d of def){
         const dd=gdist(d.x,d.z,ball.x,ball.z);
         if(dd<f.minDef)f.minDef=dd;
-        if(dd<TAKE_R&&f.t>REACT){popup('CUT OUT','#ff3d6e',ball.x,ball.z,true);crash('INTERCEPTED');return;}
+        if(dd<dBest)dBest=dd;
       }
-      for(let i=0;i<att.length;i++){
-        if(i===f.passer&&f.sPos<2.5&&!f.loose)continue;
-        if(gdist(att[i].x,att[i].z,ball.x,ball.z)<TAKE_R){completePass(i);return;}
+      const arrived=f.sPos>=f.totalS;
+      if(!arrived&&!f.loose){
+        // rolling ball: a defender body on the line always blocks it (REACT only delays chasing)
+        if(dBest<DEF_CUT){
+          popup('CUT OUT','#ff3d6e',ball.x,ball.z,true);crash('INTERCEPTED');return;
+        }
+      }else{
+        // reception contest at the end of the line
+        let aBest=1e9,aWin=-1;
+        for(let i=0;i<att.length;i++){
+          if(i===f.passer&&f.sPos<2.5&&!f.loose)continue;
+          const dd=gdist(att[i].x,att[i].z,ball.x,ball.z);
+          if(dd<aBest){aBest=dd;aWin=i;}
+        }
+        const attTake=aWin>=0&&aBest<TAKE_R;
+        const defTake=dBest<TAKE_R;
+        // receiver shields the ball; defender must be clearly closer to steal it
+        if(defTake&&(!attTake||dBest<aBest-0.3)){
+          popup('CUT OUT','#ff3d6e',ball.x,ball.z,true);crash('INTERCEPTED');return;
+        }
+        if(attTake){completePass(aWin);return;}
       }
     }
   }
@@ -630,6 +676,7 @@ if(best>0)$('menuBest').textContent='Best: '+fmt(best);
 window.TB={
   get:()=>({state,sub,T,chanceT,banked,pot,goals,chances,readBonus,idealIdx,idealAlive,
             scen:scen?scen.name:null,carrier:ball.carrier,ball:{...ball},
+            dist:flight?{m:+flight.distM.toFixed(1),pts:Math.round(flight.distPts)}:null,
             att:att.map(a=>({x:+a.x.toFixed(2),z:+a.z.toFixed(2)})),
             def:def.map(d=>({x:+d.x.toFixed(2),z:+d.z.toFixed(2)})),keeper:{...keeper}}),
   tick:s=>{const n=Math.round(s*60);for(let i=0;i<n;i++)update(1/60);},
@@ -739,10 +786,11 @@ function draw(){
     for(const d of def){
       for(let i=0;i<info.path.length;i+=2){
         const p=info.path[i];
-        const bt=p.s/PASS_SPD, mt=gdist(d.x,d.z,p.x,p.z)/DEF_CHASE+REACT;
+        if(gdist(d.hx,d.hz,p.x,p.z)>ZONE_R)continue; // outside this defender's zone
+        const bt=p.s/PASS_SPD, mt=Math.max(0,gdist(d.x,d.z,p.x,p.z)-DEF_CUT)/DEF_CHASE+REACT;
         if(mt<bt-0.05){danger=true;break;}
       }
-      if(!danger&&!info.shot){
+      if(!danger&&!info.shot&&gdist(d.hx,d.hz,endP.x,endP.z)<=ZONE_R){
         const t2=gdist(d.x,d.z,endP.x,endP.z)/DEF_CHASE+REACT;
         if(t2<Math.max(bestAtt,ballHold))danger=true;
       }
@@ -771,6 +819,13 @@ function draw(){
     ctx.lineTo(ep.x-13*Math.cos(an-0.42),ep.y-13*Math.sin(an-0.42));
     ctx.lineTo(ep.x-13*Math.cos(an+0.42),ep.y-13*Math.sin(an+0.42));
     ctx.closePath();ctx.fill();ctx.shadowBlur=0;
+    // push-your-luck projection: meters + points this line would earn
+    if(info.totalS>1){
+      ctx.font='800 13px Fredoka';ctx.textAlign='center';
+      ctx.fillStyle='#ffc233';ctx.shadowColor='rgba(255,194,51,.8)';ctx.shadowBlur=6;
+      ctx.fillText(Math.round(info.totalS)+'m · +'+fmt(distEst(info.totalS)),ep.x,ep.y-18);
+      ctx.shadowBlur=0;
+    }
     if(!info.shot&&win>=0){ // predicted receiver + landing spot
       const r=att[win];
       ring(SXp(r.x,r.z),gy(r.z),22*sc(r.z),gcol);
