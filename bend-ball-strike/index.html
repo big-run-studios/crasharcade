@@ -142,7 +142,7 @@
     </div>
   </div>
 
-  <div class="brand">SKILLZARCADE · BEND BALL STRIKE v0.9.1</div>
+  <div class="brand">SKILLZARCADE · BEND BALL STRIKE v0.9.2</div>
 </div>
 
 <audio id="music" src="music.mp3" loop preload="auto"></audio>
@@ -866,12 +866,20 @@ const SHEETMAP={
   hero:{img:SPRITES.hero,cols:6,rows:6,back:{c:3,r:1},front:{c:2,r:4},backQ:{c:1,r:1},frontQ:{c:0,r:4}},
   def :{img:SPRITES.def ,cols:6,rows:6,back:{c:3,r:2},front:{c:2,r:5},backQ:{c:1,r:2},frontQ:{c:0,r:5}},
 };
-const BODY_H=104, KEEP_H=132;        // on-screen sprite heights at near scale (px)
+const BODY_H=74, KEEP_H=132;         // on-screen sprite heights at near scale (px)
+const GLOW={hero:'#5fe0ff',def:'#ff2d6e',keep:'#39ffa0'}; // per-team neon rim colour
 function spriteReady(img){return img.complete&&img.naturalWidth>0;}
-function drawSprite(img,cols,rows,c,r,cx,footY,drawH,flip,rot){ // anchor = bottom-center at (cx,footY)
+function drawSprite(img,cols,rows,c,r,cx,footY,drawH,flip,rot,glow,glowBlur){ // anchor = bottom-center at (cx,footY)
   const cw=img.naturalWidth/cols,ch=img.naturalHeight/rows,k=drawH/ch,dw=cw*k,dh=ch*k;
   ctx.save();ctx.translate(cx,footY);if(rot)ctx.rotate(rot);if(flip)ctx.scale(-1,1);
-  ctx.drawImage(img,c*cw,r*ch,cw,ch,-dw/2,-dh,dw,dh);ctx.restore();
+  if(glow){ // neon rim: two shadow passes build a glowing halo so units pop against the dark pitch & each other
+    ctx.shadowColor=glow;ctx.shadowOffsetX=0;ctx.shadowOffsetY=0;
+    ctx.shadowBlur=glowBlur||9;ctx.drawImage(img,c*cw,r*ch,cw,ch,-dw/2,-dh,dw,dh);
+    ctx.drawImage(img,c*cw,r*ch,cw,ch,-dw/2,-dh,dw,dh);
+    ctx.shadowBlur=0;
+  }
+  ctx.drawImage(img,c*cw,r*ch,cw,ch,-dw/2,-dh,dw,dh);
+  ctx.restore();
 }
 function faceOf(o,heroDefault){ // remembers a facing from frame-to-frame movement; default up(hero)/down(def)
   const dx=o.x-(o._lx==null?o.x:o._lx),dz=o.z-(o._lz==null?o.z:o._lz);
@@ -1104,16 +1112,19 @@ function drawPlayer(x,z,kind,o){
   o=o||{};
   const s=sc(z),sx=SXp(x,z),ys=gy(z);
   const bw=26*s,bh=48*s,hr=8.5*s;
-  ctx.fillStyle='rgba(0,0,0,.45)';
-  ctx.beginPath();ctx.ellipse(sx,ys,bw*0.8,bw*0.3,0,0,7);ctx.fill();
+  // grounded contact shadow (soft, sits under the wheel)
+  ctx.save();
+  ctx.fillStyle='rgba(0,0,0,.5)';ctx.shadowColor='rgba(0,0,0,.5)';ctx.shadowBlur=6*s;
+  ctx.beginPath();ctx.ellipse(sx,ys+2*s,20*s,7*s,0,0,7);ctx.fill();
+  ctx.restore();
   if(o.carrier){
     const pulse=1+0.12*Math.sin(performance.now()/160);
-    ring(sx,ys,bw*1.15*pulse,'#ffc233');
+    ring(sx,ys,22*s*pulse,'#ffc233');
   }
   const m=SHEETMAP[kind];
   if(m&&spriteReady(m.img)){
     const fr=faceFrame(m,faceOf(o.obj||{x,z},kind==='hero'));
-    drawSprite(m.img,m.cols,m.rows,fr.c,fr.r,sx,ys+5*s,BODY_H*s,fr.flip,0);
+    drawSprite(m.img,m.cols,m.rows,fr.c,fr.r,sx,ys+3*s,BODY_H*s,fr.flip,0,GLOW[kind],9);
     return;
   }
   const body=kind==='hero'?'#86d8ff':kind==='def'?'#8a2f56':'#2f8a5e';
@@ -1145,14 +1156,19 @@ function drawKeeper(){ // jetpack keeper: floats mid-goal, cheats sideways, dive
   const kx=CX+keeper.kx*POST_PX+keeper.ox;
   const ky=GOALY-BAR_H*0.5+bob+keeper.oy;
   const bw=26*s,bh=48*s,hr=8.5*s;
-  // faint ground shadow under the hover spot
-  ctx.fillStyle='rgba(0,0,0,.35)';
-  ctx.beginPath();ctx.ellipse(CX+keeper.kx*POST_PX,GOALY+3,bw*0.8,bw*0.28,0,0,7);ctx.fill();
+  // ground shadow under the hover spot (keeper floats, so it stays put on the deck)
+  ctx.fillStyle='rgba(0,0,0,.4)';
+  ctx.beginPath();ctx.ellipse(CX+keeper.kx*POST_PX,GOALY+3,bw*0.85,bw*0.3,0,0,7);ctx.fill();
   if(spriteReady(SPRITES.keep)){ // floating keeper: arms down idle, arms out on a dive
     const img=SPRITES.keep,cw=img.naturalWidth/4,ch=img.naturalHeight/4;
     const fr=diving?{c:0,r:1}:{c:0,r:0},k=(KEEP_H*s)/ch,dw=cw*k,dh=ch*k;
     ctx.save();ctx.translate(kx,ky);ctx.rotate(clamp(keeper.ox/45,-1,1)*0.5);
-    ctx.drawImage(img,fr.c*cw,fr.r*ch,cw,ch,-dw/2,-dh*0.6,dw,dh);ctx.restore();
+    ctx.shadowColor=GLOW.keep;ctx.shadowOffsetX=0;ctx.shadowOffsetY=0;ctx.shadowBlur=12; // neon rim so he reads vs the dark net
+    ctx.drawImage(img,fr.c*cw,fr.r*ch,cw,ch,-dw/2,-dh*0.6,dw,dh);
+    ctx.drawImage(img,fr.c*cw,fr.r*ch,cw,ch,-dw/2,-dh*0.6,dw,dh);
+    ctx.shadowBlur=0;
+    ctx.drawImage(img,fr.c*cw,fr.r*ch,cw,ch,-dw/2,-dh*0.6,dw,dh);
+    ctx.restore();
     return;
   }
   ctx.save();
