@@ -142,7 +142,7 @@
     </div>
   </div>
 
-  <div class="brand">SKILLZARCADE · BEND BALL STRIKE v0.9.2</div>
+  <div class="brand">SKILLZARCADE · BEND BALL STRIKE v0.9.3</div>
 </div>
 
 <audio id="music" src="music.mp3" loop preload="auto"></audio>
@@ -1085,11 +1085,9 @@ function drawFence(){ // neon perimeter railing: down both sidelines + flanking 
     for(let i=0;i<=n;i++){const t=i/n,px=ax+(bx-ax)*t,py=ay+(by-ay)*t,ph=ha+(hb-ha)*t;
       ctx.beginPath();ctx.moveTo(px,py);ctx.lineTo(px,py-ph);ctx.stroke();}                   // posts
   }
-  const gL=CX-POST_PX-6,gR=CX+POST_PX+6;
   seg(eX(yT,-1),yT,eX(H,-1),H);                          // left sideline
   seg(eX(yT,1),yT,eX(H,1),H);                            // right sideline
-  seg(eX(yT,-1),yT,gL,yT);                               // endline, left of goal
-  seg(gR,yT,eX(yT,1),yT);                                // endline, right of goal
+  // (endline fence between the pitch and the audience removed per design)
 }
 function ring(x,y,r,col){ctx.strokeStyle=col;ctx.lineWidth=2.5;ctx.shadowColor=col;ctx.shadowBlur=8;
   ctx.beginPath();ctx.ellipse(x,y,r,r*0.42,0,0,7);ctx.stroke();ctx.shadowBlur=0;}
