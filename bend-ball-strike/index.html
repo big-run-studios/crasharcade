@@ -46,6 +46,7 @@
   #chanceFill{height:100%;width:100%;border-radius:99px;background:linear-gradient(90deg,#39ffa0,#5fe0ff);transition:none;}
 
   #backArcade{position:absolute;top:max(16px,env(safe-area-inset-top));left:16px;z-index:25;width:46px;height:46px;border-radius:50%;border:var(--panel-bd);background:var(--panel);color:#fff;font-size:28px;font-weight:800;line-height:1;padding-bottom:4px;cursor:pointer;backdrop-filter:blur(6px);box-shadow:var(--panel-glow);display:flex;align-items:center;justify-content:center;}
+  #muteBtn{position:absolute;bottom:max(18px,env(safe-area-inset-bottom));right:16px;z-index:25;width:44px;height:44px;border-radius:50%;border:var(--panel-bd);background:var(--panel);color:#fff;font-size:19px;line-height:1;cursor:pointer;backdrop-filter:blur(6px);box-shadow:var(--panel-glow);display:flex;align-items:center;justify-content:center;opacity:.85;}
 
   /* result banner (fast, non-blocking) */
   #banner{position:absolute;left:50%;top:34%;transform:translate(-50%,-50%);text-align:center;opacity:0;pointer-events:none;transition:opacity .12s;min-width:250px;}
@@ -100,6 +101,7 @@
 
   <div class="ui">
     <button id="backArcade" title="Back to arcade">‹</button>
+    <button id="muteBtn" title="Mute">🔊</button>
 
     <div id="hud">
       <div id="bankBox"><div class="hlbl">BEST</div><div id="bankVal">0</div></div>
@@ -140,8 +142,10 @@
     </div>
   </div>
 
-  <div class="brand">SKILLZARCADE · BEND BALL STRIKE v0.7.0</div>
+  <div class="brand">SKILLZARCADE · BEND BALL STRIKE v0.8.0</div>
 </div>
+
+<audio id="music" src="music.mp3" loop preload="auto"></audio>
 
 <script>
 (function(){
@@ -557,6 +561,7 @@ function endSession(){
   fb.textContent=nb?'★ NEW BEST ★':'Best: '+fmt(best);
   fb.className='best'+(nb?' newbest':'');
   $('over').classList.remove('hide');
+  syncMusic(); // rides the cash-out card; stops on crash / time-up
 }
 /* ================= input: free-drawn line ================= */
 function uiHit(e){const t=e.target;return t.tagName==='BUTTON'||(t.closest&&t.closest('.overlay'));}
@@ -720,16 +725,31 @@ function startGame(){
   $('menu').classList.add('hide');$('over').classList.add('hide');$('quit').classList.add('hide');
   $('hud').classList.add('on');$('banner').classList.remove('on');
   spawnChance();
+  try{music.currentTime=0;}catch(e){} syncMusic(); // restart the track each kickoff
 }
 $('playBtn').addEventListener('click',startGame);
 $('againBtn').addEventListener('click',startGame);
 $('menuBtn').addEventListener('click',()=>{location.href='../index.html';});
 $('quitBtn').addEventListener('click',()=>{location.href='../index.html';});
-$('resumeBtn').addEventListener('click',()=>{paused=false;$('quit').classList.add('hide');});
+$('resumeBtn').addEventListener('click',()=>{paused=false;$('quit').classList.add('hide');syncMusic();});
 $('backArcade').addEventListener('click',()=>{
-  if(state==='play'){paused=true;stroke=null;$('quit').classList.remove('hide');}
+  if(state==='play'){paused=true;stroke=null;$('quit').classList.remove('hide');syncMusic();}
   else location.href='../index.html';
 });
+
+/* ================= music ================= */
+const music=$('music');
+let muted=sget('bendball_muted')==='1';
+function applyMute(){ $('muteBtn').textContent=muted?'🔇':'🔊'; }
+function syncMusic(){ // single source of truth — call after any state/pause/mute change
+  const want=!muted && ((state==='play'&&!paused) || (state==='over'&&endKind==='cash'));
+  if(want){ if(music.paused){const p=music.play(); if(p&&p.catch)p.catch(()=>{});} }
+  else if(!music.paused) music.pause();
+}
+$('muteBtn').addEventListener('click',e=>{
+  e.stopPropagation(); muted=!muted; sset('bendball_muted',muted?'1':'0'); applyMute(); syncMusic();
+});
+applyMute();
 if(best>0)$('menuBest').textContent='Best: '+fmt(best);
 
 /* ================= dev/test hooks ================= */
