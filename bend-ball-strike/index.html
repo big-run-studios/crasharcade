@@ -142,7 +142,7 @@
     </div>
   </div>
 
-  <div class="brand">SKILLZARCADE · BEND BALL STRIKE v0.8.5</div>
+  <div class="brand">SKILLZARCADE · BEND BALL STRIKE v0.8.6</div>
 </div>
 
 <audio id="music" src="music.mp3" loop preload="auto"></audio>
@@ -537,7 +537,7 @@ function crash(reason){
 function showBanner(goal,total,zoneOrReason){
   const b=$('banner');
   b.className=goal?'goal':'crash'; b.classList.add('on');
-  b.querySelector('.head').textContent=goal?'GOAL!':'CRASHED';
+  b.querySelector('.head').textContent=goal?'GOAL!':'NO GOAL';
   const rows=b.querySelector('.rows'); rows.innerHTML='';
   if(goal){
     const top=potEvents.filter(e=>e.pts>0).sort((a,b2)=>b2.pts-a.pts).slice(0,6);
@@ -553,7 +553,7 @@ function endSession(){
   $('banner').classList.remove('on');
   const cash=endKind==='cash';
   const big=$('overBig');
-  big.textContent=cash?'CASHED OUT!':endKind==='time'?"TIME'S UP":'CRASHED';
+  big.textContent=cash?'CASHED OUT!':endKind==='time'?"TIME'S UP":'NO GOAL';
   big.className='big '+(cash?'cash':'bad');
   const score=cash?banked:0;
   $('finalScore').textContent=fmt(score);
