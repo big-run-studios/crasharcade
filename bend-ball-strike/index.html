@@ -142,7 +142,7 @@
     </div>
   </div>
 
-  <div class="brand">SKILLZARCADE · BEND BALL STRIKE v0.9.4</div>
+  <div class="brand">SKILLZARCADE · BEND BALL STRIKE v0.9.5</div>
 </div>
 
 <audio id="music" src="music.mp3" loop preload="auto"></audio>
@@ -282,6 +282,7 @@ let att=[],def=[],keeper={kx:0,ox:0,oy:0,tox:0,toy:0,bx:0,by:0,diveT:0};
 let ball={x:0,z:0,h:0,carrier:0};
 let pot=0, potEvents=[], scen=null, deck=[], deckI=0;
 let heldT=0, passMult=1, defSpeedMult=1;
+let animClock=0;             // ambient-animation time (ms); pauses while the scene is frozen for a decision
 let flight=null, resolveT=0, popups=[], shake=0, paused=false;
 let stroke=null;             // {id, pts:[{x,y}...], lenPx} raw drawn line (screen space)
 let lastRebound=false;
@@ -766,7 +767,7 @@ if(best>0)$('menuBest').textContent='Best: '+fmt(best);
 
 /* ================= dev/test hooks ================= */
 window.TB={
-  get:()=>({state,sub,T,banked,pot,endKind,passes,chances,passMult,defSpeedMult,ndef:def.length,
+  get:()=>({state,sub,T,banked,pot,endKind,passes,chances,passMult,defSpeedMult,ndef:def.length,animClock:Math.round(animClock),
             events:potEvents.map(e=>e.label+' '+e.pts),
             scen:scen?scen.name:null,carrier:ball.carrier,ball:{...ball},
             dist:flight?{m:+flight.distM.toFixed(1),pts:Math.round(flight.distPts)}:null,
@@ -861,10 +862,10 @@ const SPRITES={hero:new Image(),def:new Image(),keep:new Image()};
 SPRITES.hero.src='art/team-sheet.png';
 SPRITES.def.src='art/defender-sheet.png';
 SPRITES.keep.src='art/goalie-sheet.png';
-// turntable maps: which cell is the back/front/quarter view (quarters face LEFT, flip for right)
+// turntable maps: back-facing row + front-facing row; each row's 6 columns = a left→right yaw sweep
 const SHEETMAP={
-  hero:{img:SPRITES.hero,cols:6,rows:6,back:{c:3,r:1},front:{c:2,r:4},backQ:{c:1,r:1},frontQ:{c:0,r:4}},
-  def :{img:SPRITES.def ,cols:6,rows:6,back:{c:3,r:2},front:{c:2,r:5},backQ:{c:1,r:2},frontQ:{c:0,r:5}},
+  hero:{img:SPRITES.hero,cols:6,rows:6,backRow:1,frontRow:4},
+  def :{img:SPRITES.def ,cols:6,rows:6,backRow:2,frontRow:5},
 };
 const BODY_H=74, KEEP_H=132;         // on-screen sprite heights at near scale (px)
 const GLOW={hero:'#5fe0ff',def:'#ff2d6e',keep:'#39ffa0'}; // per-team neon rim colour
@@ -887,10 +888,10 @@ function faceOf(o,heroDefault){ // remembers a facing from frame-to-frame moveme
   else if(!o._f)o._f={dx:0,dz:heroDefault?1:-1};
   return o._f;
 }
-function faceFrame(m,f){ // pick turntable cell from a facing vector
-  const dx=f.dx*GXM,dz=f.dz*GZM;
-  if(Math.abs(dz)>=Math.abs(dx))return dz>=0?{c:m.back.c,r:m.back.r,flip:false}:{c:m.front.c,r:m.front.r,flip:false};
-  const q=dz>=0?m.backQ:m.frontQ;return{c:q.c,r:q.r,flip:dx>0};
+function faceFrame(m,f){ // facing vector -> turntable cell: row by toward/away, column by yaw across the sweep
+  const ax=f.dx*GXM,az=f.dz*GZM,mag=Math.hypot(ax,az)||1,lat=clamp(ax/mag,-1,1);
+  const col=Math.round((lat*0.5+0.5)*(m.cols-1)); // -1(left)→col0 ... +1(right)→col5
+  return{c:col,r:az>=0?m.backRow:m.frontRow,flip:false};
 }
 function draw(){
   // full clear (device space)
@@ -902,8 +903,9 @@ function draw(){
 
   /* futuristic stadium backdrop (baked) + live crowd flashes & jumbotron */
   ctx.drawImage(stadiumBG,0,0,W,STAD_H);
-  const now=performance.now();
-  for(let i=0;i<9;i++){                                 // occasional camera flashes (sparse)
+  const now=animClock;                                  // frozen while deciding/paused
+  const sceneFrozen=(state==='play'&&(paused||sub==='live'));
+  if(!sceneFrozen)for(let i=0;i<9;i++){                 // occasional camera flashes (sparse); still while frozen
     if(Math.random()>=0.1)continue;                     // ~90% fewer flashes than before
     const c=CROWD[(Math.random()*CROWD.length)|0];
     ctx.globalAlpha=0.85;ctx.fillStyle=Math.random()<0.5?'#ffffff':'#ffe6a8';
@@ -1147,7 +1149,7 @@ function drawPlayer(x,z,kind,o){
 function drawKeeper(){ // jetpack keeper: floats mid-goal, cheats sideways, dives at the ball
   const s=sc(0.955);
   const diving=Math.abs(keeper.ox)+Math.abs(keeper.oy)>2;
-  const bob=diving?0:Math.sin(performance.now()/320)*3;
+  const bob=diving?0:Math.sin(animClock/320)*3;         // frozen while deciding/paused
   const kx=CX+keeper.kx*POST_PX+keeper.ox;
   const ky=GOALY-BAR_H*0.5+bob+keeper.oy;
   const bw=26*s,bh=48*s,hr=8.5*s;
@@ -1228,6 +1230,8 @@ function rrect(x,y,w2,h2,r){
 let lastT=performance.now();
 function frame(now){
   const dt=Math.min(0.05,(now-lastT)/1000);lastT=now;
+  // ambient animation only advances when the scene isn't frozen (deciding / paused)
+  if(!(state==='play'&&(paused||sub==='live')))animClock+=dt*1000;
   try{update(dt);draw();}catch(err){console.error('frame error:',err);}
   requestAnimationFrame(frame);
 }
