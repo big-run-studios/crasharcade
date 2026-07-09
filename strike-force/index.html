@@ -142,7 +142,7 @@
     <button id="cashBtn"><span>CASH</span><small>OUT</small></button>
   </div>
 
-  <div class="brand">CRASHARCADE · STRIKE FORCE v0.2.8</div>
+  <div class="brand">CRASHARCADE · STRIKE FORCE v0.2.9</div>
 </div>
 
 <audio id="music" src="music.mp3" loop preload="auto"></audio>
@@ -164,7 +164,7 @@ const COYOTE=0.09, JBUF=0.13;
 const FIRE_CD=0.10, BSPD=780, PB_R=4.5, SPREAD_A=0.24;
 const DEAD=16;                // tap/gesture movement threshold px
 const STICK_R=64, AIM_DEAD=13, AIM_SMOOTH=13; // floating analog stick: bigger throw + deadzone + eased aim = less twitchy
-const JUMP_ZONE_X=190;        // touches left of this (logical x) = JUMP; right = fire/aim
+const JUMP_ZONE_X=225;        // touches left of this (logical x) = JUMP; right = fire/aim (split at centre, matches the two pads)
 const BOSS_BASE=60;           // first boss at ~60s
 
 const cv=document.getElementById('cv'), ctx=cv.getContext('2d');
@@ -1129,30 +1129,32 @@ function drawParticles(){
   ctx.globalAlpha=1;
 }
 function drawControlGuides(){
-  const cy=724, half=54, a=Math.max(0.14, 0.5 - runT*0.012);   // bright while teaching, fades as the run goes
-  drawPadBtn(80, cy, half, 'jump', a);
-  drawPadBtn(W-80, cy, half, 'aim', a);
+  // two big pads filling the bottom safe zone — plenty of thumb room
+  const hx=100, hy=116, cy=674, a=Math.max(0.14, 0.5 - runT*0.012);   // fades as the run goes (teaches early)
+  drawPadBtn(14+hx, cy, hx, hy, 'jump', a);
+  drawPadBtn(W-14-hx, cy, hx, hy, 'aim', a);
 }
-function drawPadBtn(cx,cy,half,kind,a){
+function drawPadBtn(cx,cy,hx,hy,kind,a){
   ctx.save(); ctx.globalAlpha=a;
-  ctx.fillStyle='rgba(120,200,255,.06)'; rr(cx-half,cy-half,half*2,half*2,16); ctx.fill();
-  ctx.strokeStyle='rgba(180,235,255,.9)'; ctx.lineWidth=2; rr(cx-half,cy-half,half*2,half*2,16); ctx.stroke();
+  ctx.fillStyle='rgba(120,200,255,.05)'; rr(cx-hx,cy-hy,hx*2,hy*2,28); ctx.fill();
+  ctx.strokeStyle='rgba(180,235,255,.85)'; ctx.lineWidth=2.5; rr(cx-hx,cy-hy,hx*2,hy*2,28); ctx.stroke();
   ctx.fillStyle='#bfeaff'; ctx.strokeStyle='#bfeaff';
   if(kind==='jump'){
-    ctx.lineWidth=4; ctx.lineCap='round';
-    ctx.beginPath(); ctx.moveTo(cx-16,cy-6); ctx.lineTo(cx,cy-24); ctx.lineTo(cx+16,cy-6); ctx.stroke();
-    ctx.beginPath(); ctx.moveTo(cx-16,cy+12); ctx.lineTo(cx,cy-6); ctx.lineTo(cx+16,cy+12); ctx.stroke();
+    const w=40; ctx.lineWidth=8; ctx.lineCap='round';
+    ctx.beginPath(); ctx.moveTo(cx-w,cy-6); ctx.lineTo(cx,cy-6-w); ctx.lineTo(cx+w,cy-6); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(cx-w,cy+w-6); ctx.lineTo(cx,cy-6); ctx.lineTo(cx+w,cy+w-6); ctx.stroke();
     ctx.lineCap='butt';
   } else {
-    for(let i=0;i<16;i++){ const ang=i*Math.PI/8, rIn=20, rOut=32, w=3.2;    // 16 arrows, empty middle = "move your finger around"
+    const rIn=42, rOut=64, aw=6;   // 16 arrows, empty middle = "move your finger around"; ring ≈ the aim throw
+    for(let i=0;i<16;i++){ const ang=i*Math.PI/8;
       const bx=cx+Math.cos(ang)*rIn, by=cy+Math.sin(ang)*rIn, tx=cx+Math.cos(ang)*rOut, ty=cy+Math.sin(ang)*rOut, pr=ang+Math.PI/2;
       ctx.beginPath(); ctx.moveTo(tx,ty);
-      ctx.lineTo(bx+Math.cos(pr)*w, by+Math.sin(pr)*w);
-      ctx.lineTo(bx-Math.cos(pr)*w, by-Math.sin(pr)*w);
+      ctx.lineTo(bx+Math.cos(pr)*aw, by+Math.sin(pr)*aw);
+      ctx.lineTo(bx-Math.cos(pr)*aw, by-Math.sin(pr)*aw);
       ctx.closePath(); ctx.fill(); }
   }
-  ctx.font='900 12px Orbitron'; ctx.textAlign='center'; ctx.textBaseline='middle';
-  ctx.fillText(kind==='jump'?'JUMP':'AIM', cx, cy+half+13);
+  ctx.font='900 14px Orbitron'; ctx.textAlign='center'; ctx.textBaseline='middle';
+  ctx.fillText(kind==='jump'?'JUMP':'AIM', cx, cy+hy-22);
   ctx.restore();
 }
 function drawHUD(){
