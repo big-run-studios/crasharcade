@@ -26,8 +26,14 @@
      and therefore difficulty — is the same on any window. Tall desktop windows
      letterbox to phone proportions; short windows shrink the column instead. */
   #app{position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);
+    /* vh = largest (URL-bar-hidden) viewport, so on mobile the fixed, centered board
+       is taller than the visible area and gets clipped top+bottom. dvh tracks the
+       CURRENTLY-visible viewport and updates as the browser chrome shows/hides.
+       vh line first as a fallback for browsers without dvh support. */
     width:min(520px,100vw,calc(100vh/1.6));
+    width:min(520px,100vw,calc(100dvh/1.6));
     height:min(100vh,calc(min(520px,100vw,100vh/1.6)*2.16));
+    height:min(100dvh,calc(min(520px,100vw,100dvh/1.6)*2.16));
     overflow:hidden;background:var(--bg);touch-action:none;user-select:none;-webkit-user-select:none;}
   #cv{position:absolute;inset:0;width:100%;height:100%;display:block;}
 
@@ -148,7 +154,7 @@
     <button class="btn ghost" id="confirmEnd">EXIT TO ARCADE</button>
   </div>
 
-  <div class="ver">v0.8.0</div>
+  <div class="ver">v0.8.1</div>
 </div>
 
 <script>
@@ -1200,6 +1206,9 @@ function resize(){
   buildBackdrop();
 }
 addEventListener('resize',resize);
+// mobile: URL-bar show/hide changes the dvh-sized board without always firing a
+// window 'resize', so re-fit the canvas backing store on visualViewport changes too.
+if(window.visualViewport){visualViewport.addEventListener('resize',resize);}
 resize(); updateHUD();
 requestAnimationFrame(frame);
 </script>
