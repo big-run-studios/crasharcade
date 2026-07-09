@@ -111,7 +111,7 @@
       <div class="sub">ROUTE PLANES · LAND SAFE · CASH OUT BEFORE THEY COLLIDE</div>
       <div class="htp">
         <div class="row"><div class="ic">✍️</div><div class="tx"><b>Drag from a plane</b> to draw its route — release to lock it in. Touch it again to <b>redraw anytime</b>.</div></div>
-        <div class="row"><div class="ic">🛬</div><div class="tx">Fly into a runway <u>arrow, same direction</u>, to land. <b>3 landings open runway 2</b> — keep landing for runway 3.</div></div>
+        <div class="row"><div class="ic">🛬</div><div class="tx"><u>End a route on a runway</u>, matching its arrows, to land. <b>3 landings open runway 2</b> — keep landing for runway 3.</div></div>
         <div class="row"><div class="ic">⚠️</div><div class="tx">Rings mean planes are <i>too close</i>. If two planes touch, the run ends and an unbanked pot pays <i>zero</i>.</div></div>
         <div class="row"><div class="ic">💰</div><div class="tx">Faster planes score bigger. <u>Hold CASH OUT</u> to bank your pot and end the run safely.</div></div>
       </div>
@@ -137,7 +137,7 @@
     </div>
   </div>
 
-  <div class="brand">CRASHARCADE · FINAL APPROACH v0.1.0</div>
+  <div class="brand">CRASHARCADE · FINAL APPROACH v0.1.1</div>
 </div>
 
 <script>
@@ -281,7 +281,9 @@ function endDraw(e){
   const p=drawing.plane,raw=drawing.pts;
   drawing=null;
   if(raw.length>=3&&state==='play'&&!p.landing){
-    p.route=buildRoute(p,raw);
+    const r=buildRoute(p,raw);
+    p.route=r.pts;
+    p.landRw=r.rw;   // only routes that END on a runway may land
     p.ret=false;
   }
 }
@@ -328,19 +330,28 @@ function buildRoute(p,raw){
   let pts=[{x:p.x,y:p.y},...raw];
   pts=resample(pts,16);
   pts=chaikin(chaikin(pts));
-  // drop leading points hugging the plane
-  while(pts.length>1&&Math.hypot(pts[0].x-p.x,pts[0].y-p.y)<14)pts.shift();
-  // snap: released on/near a runway → append clean final approach
+  // the plane kept flying while the player drew — start the route at the
+  // point on the path closest to where the plane is NOW
+  let bi=0,bd=1e9;
+  for(let i=0;i<pts.length;i++){const d=Math.hypot(pts[i].x-p.x,pts[i].y-p.y);if(d<bd){bd=d;bi=i;}}
+  pts=pts.slice(bi);
+  // drop leading points on top of / just behind the plane (they force a spin)
+  while(pts.length>1){
+    const q=pts[0],d=Math.hypot(q.x-p.x,q.y-p.y);
+    const off=Math.abs(angNorm(Math.atan2(q.y-p.y,q.x-p.x)-p.hdg));
+    if(d<18||(off>1.6&&d<70))pts.shift();else break;
+  }
+  // snap: released on/near a runway → append clean final approach + landing intent
   const rw=nearRunway(raw[raw.length-1]);
   if(rw){
     pts.push({x:rw.tx-rw.dx*90,y:rw.ty-rw.dy*90},{x:rw.tx-rw.dx*20,y:rw.ty-rw.dy*20},{x:rw.tx+rw.dx*30,y:rw.ty+rw.dy*30});
   }
-  return pts;
+  return {pts,rw};
 }
 /* live preview of the smoothed committed path */
 function previewRoute(){
   if(!drawing||drawing.pts.length<3)return null;
-  return buildRoute(drawing.plane,drawing.pts);
+  return buildRoute(drawing.plane,drawing.pts).pts;
 }
 
 /* ================= spawning ================= */
@@ -370,7 +381,7 @@ function spawnPlane(q){
   planes.push({
     id:++idSeq,type:q.type,x:q.x,y:q.y,hdg:q.hdg,
     spd:q.type.spd,turn:q.type.turn,r:q.type.r,
-    route:[],grace:GRACE,alert:0,dirty:false,   // dirty = went code-red at least once
+    route:[],landRw:null,grace:GRACE,alert:0,dirty:false,   // dirty = went code-red at least once
     landing:null,ret:false,gaCool:0,trail:[],trailT:0,
   });
 }
@@ -398,26 +409,17 @@ function landScore(p,rw){
 
 /* ================= plane update ================= */
 function approachAssist(p,dt){
-  // gently align a plane that is already committed to an open runway corridor
-  if(p.route.length>0){
-    const last=p.route[p.route.length-1];
-    if(!nearRunwayPoint(last))return false;
+  // gently align a plane onto the runway the PLAYER routed it to (intent only)
+  const rw=p.landRw;
+  if(!rw||rw.busy)return false;
+  const rx=p.x-rw.tx,ry=p.y-rw.ty;
+  const along=-(rx*rw.dx+ry*rw.dy);            // >0 = in front of threshold
+  const lat=Math.abs(rx*-rw.dy+ry*rw.dx);
+  if(along>-6&&along<ASSIST_D&&lat<ASSIST_LAT&&Math.abs(angNorm(p.hdg-rw.a))<ASSIST_ANG){
+    const aim=Math.atan2(rw.ty+rw.dy*26-p.y,rw.tx+rw.dx*26-p.x);
+    p.hdg=turnToward(p.hdg,aim,p.turn*1.5*dt);
+    return true;
   }
-  for(let i=0;i<rwyCount;i++){
-    const rw=RWYS[i];if(rw.busy)continue;
-    const rx=p.x-rw.tx,ry=p.y-rw.ty;
-    const along=-(rx*rw.dx+ry*rw.dy);            // >0 = in front of threshold
-    const lat=Math.abs(rx*-rw.dy+ry*rw.dx);
-    if(along>-6&&along<ASSIST_D&&lat<ASSIST_LAT&&Math.abs(angNorm(p.hdg-rw.a))<ASSIST_ANG){
-      const aim=Math.atan2(rw.ty+rw.dy*26-p.y,rw.tx+rw.dx*26-p.x);
-      p.hdg=turnToward(p.hdg,aim,p.turn*1.5*dt);
-      return true;
-    }
-  }
-  return false;
-}
-function nearRunwayPoint(pt){
-  for(let i=0;i<rwyCount;i++){const rw=RWYS[i];if(Math.hypot(pt.x-rw.tx,pt.y-rw.ty)<95)return true;}
   return false;
 }
 function updatePlane(p,dt){
@@ -437,20 +439,30 @@ function updatePlane(p,dt){
     return;
   }
 
-  // off-screen → clear route, loop back toward the field
-  if(p.x<-24||p.x>W+24||p.y<-24||p.y>H+24){if(!p.ret){p.ret=true;p.route=[];}}
+  // off-screen → clear route + landing intent, loop back toward the field
+  if(p.x<-24||p.x>W+24||p.y<-24||p.y>H+24){if(!p.ret){p.ret=true;p.route=[];p.landRw=null;}}
   if(p.ret){
     const aim=Math.atan2(380-p.y,240-p.x);
     p.hdg=turnToward(p.hdg,aim,p.turn*dt);
     if(p.x>50&&p.x<W-50&&p.y>50&&p.y<H-50)p.ret=false;
   }else if(p.route.length){
-    const t=p.route[0];
-    p.hdg=turnToward(p.hdg,Math.atan2(t.y-p.y,t.x-p.x),p.turn*dt);
-    if(Math.hypot(t.x-p.x,t.y-p.y)<14)p.route.shift();
+    // consume waypoints we've reached OR can no longer reach (close + behind);
+    // steering at an unreachable point is what made planes orbit in place
+    const acc=Math.max(15,p.spd*.3), tr=p.spd/p.turn;
+    while(p.route.length){
+      const t=p.route[0];
+      const d=Math.hypot(t.x-p.x,t.y-p.y);
+      const off=Math.abs(angNorm(Math.atan2(t.y-p.y,t.x-p.x)-p.hdg));
+      if(d<acc||(off>1.75&&d<tr*1.7)){p.route.shift();continue;}
+      break;
+    }
+    if(p.route.length){
+      const t=p.route[0];
+      p.hdg=turnToward(p.hdg,Math.atan2(t.y-p.y,t.x-p.x),p.turn*dt);
+    }
   }else{
     approachAssist(p,dt);
   }
-  if(p.route.length)approachAssist(p,dt);
 
   p.x+=Math.cos(p.hdg)*p.spd*dt;
   p.y+=Math.sin(p.hdg)*p.spd*dt;
@@ -463,9 +475,9 @@ function updatePlane(p,dt){
   for(const tr of p.trail)tr.t+=dt;
   p.trail=p.trail.filter(tr=>tr.t<.6);
 
-  // touchdown check
-  for(let i=0;i<rwyCount;i++){
-    const rw=RWYS[i];
+  // touchdown check — only on the runway the player routed this plane to
+  if(p.landRw){
+    const rw=p.landRw;
     const d=Math.hypot(p.x-rw.tx,p.y-rw.ty);
     if(d<LAND_R){
       const aok=Math.abs(angNorm(p.hdg-rw.a))<LAND_ANG;
@@ -477,7 +489,6 @@ function updatePlane(p,dt){
         addPop(p.x,p.y-24,rw.busy?'RWY OCCUPIED':'GO AROUND','#ff6b6b');
         S.goaround();
       }
-      break;
     }
   }
 }
