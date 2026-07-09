@@ -107,7 +107,7 @@
         <div class="row"><div class="ic">👇</div><div class="tx"><b>Hold</b> to crouch &amp; tuck down the slope — build speed</div></div>
         <div class="row"><div class="ic">☝️</div><div class="tx"><b>Let go</b> to hop — release <b>climbing a hill</b> for big air</div></div>
         <div class="row"><div class="ic">🏂</div><div class="tx">Land <u>3 jumps</u> to unlock <i>TRICK MODE</i></div></div>
-        <div class="row"><div class="ic">🌀</div><div class="tx">Then <i>swipe any way</i> in the air to trick · land <u>upright</u> or wipe out</div></div>
+        <div class="row"><div class="ic">🌀</div><div class="tx">Then swipe <i>↑ ↓ ← →</i> for moves · <b>chain them</b> — each is longer &amp; crazier · land <u>aligned</u>!</div></div>
         <div class="row"><div class="ic">💰</div><div class="tx"><u>Cash out</u> before you crash · <i>wipe out and the pot's gone</i></div></div>
       </div>
       <button class="btn" id="playBtn">DROP IN</button>
@@ -162,7 +162,7 @@ const HOP_UPSLOPE=0.25;          // a little extra when you let go climbing towa
 const MIN_HOP=150;               // release always pops you at least this far up (little hop on flat/downhill)
 const MAX_HOP_VY=900;            // ...but cap the very biggest launches so they stay framable
 const UNLOCK_JUMPS=3;            // land this many curve jumps to unlock Trick Mode
-const MAX_ROT=18;                // rad/s — trick rotation speed (a single flip fits early air)
+const SPIN_BASE=16, SPIN_K=1.15; // spin speed = SPIN_BASE + pending*SPIN_K → crazier combos whip faster & settle
 const SETTLE=0.35;               // rad: trick counts as "done" once rot is this close to its target
 const LAND_TOL=0.5;              // rad: board must be within this of the landing slope, or you wipe out
 const SWIPE_MIN=22;              // logical px to register a swipe
@@ -291,29 +291,20 @@ function addScore(base){ score+=Math.max(1,Math.round(base*mult)); }
 function popWorld(wx,wy,txt,col,big){ pops.push({wx,wy,txt,col:col||'#ffe07a',t:big?1.1:0.8,big:!!big}); }
 
 /* ================================================================= tricks */
-// swipe dir → trick. All rotations are whole turns so a completed trick lands upright.
-const TRICKS={
-  up:        {name:'BACKFLIP',    d:-TAU,   pts:150, grab:false},
-  down:      {name:'GRAB',        d:0,      pts:90,  grab:true},
-  left:      {name:'360 SPIN',    d:-TAU,   pts:130, grab:false},
-  right:     {name:'360 SPIN',    d:+TAU,   pts:130, grab:false},
-  upleft:    {name:'DOUBLE CORK', d:-2*TAU, pts:320, grab:false},
-  upright:   {name:'DOUBLE RODEO',d:+2*TAU, pts:320, grab:false},
-  downleft:  {name:'CORK GRAB',   d:-TAU,   pts:210, grab:true},
-  downright: {name:'TWEAK GRAB',  d:+TAU,   pts:210, grab:true},
+// Four moves, one per direction — each spins a WHOLE number of turns (so a finished trick lands
+// aligned to the slope). CHAINING escalates: the Nth move in a combo adds N turns, so the 2nd
+// move is a double, the 3rd a triple, etc. Longer/crazier moves need more airtime to finish →
+// bigger combos are only landable off bigger jumps. That's the push-your-luck.
+const MOVES={
+  up:    {base:'BACKFLIP',   sign:-1, grab:false},   // vertical backflip
+  down:  {base:'FRONT FLIP', sign:+1, grab:true},    // forward flip, tucked grab
+  left:  {base:'LEFT CORK',  sign:-1, grab:false},   // off-axis spin, left
+  right: {base:'RIGHT CORK', sign:+1, grab:false},   // off-axis spin, right
 };
-function classifySwipe(dx,dy){
-  const a=Math.atan2(dy,dx);                 // screen: +y down
-  const deg=(a*180/Math.PI+360)%360;
-  // 8-way buckets (45° each), start at right=0
-  if(deg<22.5||deg>=337.5) return 'right';
-  if(deg<67.5) return 'downright';
-  if(deg<112.5) return 'down';
-  if(deg<157.5) return 'downleft';
-  if(deg<202.5) return 'left';
-  if(deg<247.5) return 'upleft';
-  if(deg<292.5) return 'up';
-  return 'upright';
+const SPINWORD=['','DOUBLE ','TRIPLE ','QUAD ','QUINT ','INSANE '];
+function classifySwipe(dx,dy){                        // 4-way: dominant axis
+  if(Math.abs(dx)>Math.abs(dy)) return dx<0?'left':'right';
+  return dy<0?'up':'down';
 }
 function doTrick(dir){
   if(!air) return;
@@ -321,18 +312,23 @@ function doTrick(dir){
     // pre-unlock: a small stylish tweak only — no rotation, so it can never cost you a landing
     grabT=Math.max(grabT,0.4); curTrickTxt='TWEAK'; trickFlash=0.5;
     addScore(10); sfx('trick');
-    facing = dir.indexOf('left')>=0?-1 : dir.indexOf('right')>=0?1 : facing;
+    facing = dir==='left'?-1 : dir==='right'?1 : facing;
     return;
   }
-  const t=TRICKS[dir]; if(!t) return;
-  rotTarget += t.d;
-  if(t.grab) grabT=Math.max(grabT,0.45);
-  comboN++; airPts += t.pts; comboList.push(t.name);
-  curTrickTxt=t.name+(comboN>1?' ×'+comboN:''); trickFlash=0.9;
-  facing = t.d<0?-1:(t.d>0?1:facing);
-  addScore(Math.round(t.pts*0.25));          // small instant taste; full bank on clean landing
-  sfx('trick'); flash('#34e1ff',0.06);
-  for(let i=0;i<8;i++){ const ang=R(0,TAU); parts.push({wx:px,wy:py-24,vx:Math.cos(ang)*R(40,150),vy:Math.sin(ang)*R(40,150),r:R(2,4),c:rand(['#34e1ff','#ff4fd8','#ffe07a']),t:R(.25,.5),g:120}); }
+  const m=MOVES[dir]; if(!m) return;
+  comboN++;
+  const turns=comboN;                                 // 1st→1 turn, 2nd→2, 3rd→3 … longer & crazier each time
+  rotTarget += m.sign*turns*TAU;
+  if(m.grab) grabT=Math.max(grabT,0.5);
+  const pts=80*turns;
+  airPts += pts;
+  const name=(SPINWORD[Math.min(turns-1,SPINWORD.length-1)])+m.base;
+  comboList.push(name);
+  curTrickTxt=name; trickFlash=0.95;
+  facing=m.sign;
+  addScore(Math.round(pts*0.2));                      // small instant taste; full bank on a clean landing
+  sfx('trick'); flash(turns>=3?'#ff4fd8':'#34e1ff',0.07);
+  for(let i=0;i<6+turns*3;i++){ const ang=R(0,TAU); parts.push({wx:px,wy:py-24,vx:Math.cos(ang)*R(40,160),vy:Math.sin(ang)*R(40,160),r:R(2,4),c:rand(['#34e1ff','#ff4fd8','#ffe07a']),t:R(.25,.55),g:120}); }
 }
 
 /* ================================================================= player physics */
@@ -393,7 +389,7 @@ function land(){
   } else {
     // ---- post-unlock: bank the air's tricks, keep the multiplier climbing ----
     if(comboN>0){
-      let factor = (quality==='clean'?1 : quality==='ok'?0.8 : 0.4) * (grabT>0?0.85:1) * 1.6;
+      let factor = (quality==='clean'?1 : quality==='ok'?0.8 : 0.4) * 1.6;
       const banked=Math.round(airPts*factor*(1+0.25*(comboN-1)));
       addScore(banked);
       popWorld(px,py-58, '+'+Math.max(1,Math.round(banked*mult)), quality==='stumble'?'#ffb04d':'#ffe07a', true);
@@ -421,7 +417,8 @@ function stepPlayer(dt){
     px+=vx*dt; py+=vy*dt;
     // tricks spin the board toward their target; once the trick is DONE the board eases to align
     // with the slope it's about to land on (anticipation) so it touches down flush and slides in.
-    const d=rotTarget-rot, step=clamp(d,-MAX_ROT*dt,MAX_ROT*dt); rot+=step;
+    const pending=rotTarget-rot, spinSpeed=SPIN_BASE+Math.abs(pending)*SPIN_K;
+    rot+=clamp(pending,-spinSpeed*dt,spinSpeed*dt);
     const trickDone=Math.abs(rotTarget-rot)<SETTLE;
     const tAim=(trickDone && vy>-140) ? predictLandAngle() : 0;   // anticipate near/after the apex
     tilt=lerp(tilt, tAim, clamp(dt*7,0,1));
