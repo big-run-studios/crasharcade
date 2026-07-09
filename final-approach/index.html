@@ -137,8 +137,10 @@
     </div>
   </div>
 
-  <div class="brand">CRASHARCADE · FINAL APPROACH v0.1.3</div>
+  <div class="brand">CRASHARCADE · FINAL APPROACH v0.1.4</div>
 </div>
+
+<audio id="music" src="music.mp3" loop preload="auto"></audio>
 
 <script>
 (function(){
@@ -229,8 +231,8 @@ const CLEAN_BONUS=50;          // plane never went code-red
 const AIR_BONUS=30;            // per extra plane airborne when you land one
 const CASH_HOLD=0.65;          // seconds holding to cash out
 const RW2_AT=3, RW3_AT=7;      // landings to unlock runways
-const maxAirFor=l=>l<1?1:l<3?2:l<6?3:l<9?4:l<12?5:6;
-function spawnIv(t,l){return clamp(6.5-t/22-l*.15,2.2,6.5);}
+const maxAirFor=l=>l<3?2:l<6?3:l<9?4:l<12?5:6;
+function spawnIv(t,l){return clamp(5-t/22-l*.15,2.2,5);}
 function typeFor(l){
   const r=Math.random();
   if(l<3)return TYPES.prop;
@@ -382,8 +384,17 @@ function pickEntry(){
     for(const p of planes)if(Math.hypot(p.x-x,p.y-y)<135){ok=false;break;}
     for(const q of pendings)if(Math.hypot(q.x-x,q.y-y)<135){ok=false;break;}
     if(!ok)continue;
-    const aimX=150+Math.random()*180,aimY=280+Math.random()*140;
-    return{x,y,hdg:Math.atan2(aimY-y,aimX-x)};
+    // aim at whichever of a few wide-spread points is farthest from current
+    // traffic — idle planes fanning out instead of converging on mid-field
+    let aim=null,score=-1;
+    for(let k=0;k<3;k++){
+      const ax=80+Math.random()*320,ay=180+Math.random()*320;
+      let m=1e9;
+      for(const p of planes)m=Math.min(m,Math.hypot(p.x-ax,p.y-ay));
+      for(const q of pendings)m=Math.min(m,Math.hypot(q.x-ax,q.y-ay));
+      if(m>score){score=m;aim={x:ax,y:ay};}
+    }
+    return{x,y,hdg:Math.atan2(aim.y-y,aim.x-x)};
   }
   return null;
 }
@@ -440,19 +451,33 @@ function approachAssist(p,dt){
   return false;
 }
 function followPts(p,pts,dt){
-  // consume waypoints we've reached OR can no longer reach (close + behind);
-  // steering at an unreachable point is what made planes orbit in place
+  // consume waypoints we've reached OR can never reach: a waypoint inside
+  // either turning circle traps the plane in an endless orbit around it
   const acc=Math.max(15,p.spd*.3), tr=p.spd/p.turn;
   while(pts.length){
     const t=pts[0];
-    const d=Math.hypot(t.x-p.x,t.y-p.y);
-    const off=Math.abs(angNorm(Math.atan2(t.y-p.y,t.x-p.x)-p.hdg));
-    if(d<acc||(off>1.75&&d<tr*1.7)){pts.shift();continue;}
+    if(Math.hypot(t.x-p.x,t.y-p.y)<acc){pts.shift();continue;}
+    const px=Math.cos(p.hdg+Math.PI/2)*tr, py=Math.sin(p.hdg+Math.PI/2)*tr;
+    const dl=Math.hypot(t.x-(p.x+px),t.y-(p.y+py));
+    const dr=Math.hypot(t.x-(p.x-px),t.y-(p.y-py));
+    if(dl<tr-3||dr<tr-3){pts.shift();continue;}
     break;
   }
   if(pts.length){
     const t=pts[0];
     p.hdg=turnToward(p.hdg,Math.atan2(t.y-p.y,t.x-p.x),p.turn*dt);
+  }
+}
+function idleAvoid(p,dt){
+  let n=null,nd=1e9;
+  for(const o of planes){
+    if(o===p||o.landing)continue;
+    const d=Math.hypot(o.x-p.x,o.y-p.y);
+    if(d<nd){nd=d;n=o;}
+  }
+  if(n&&nd<100){
+    const away=Math.atan2(p.y-n.y,p.x-n.x);
+    p.hdg=turnToward(p.hdg,away,p.turn*.7*dt);
   }
 }
 function updatePlane(p,dt){
@@ -474,19 +499,27 @@ function updatePlane(p,dt){
 
   const liveDraw=drawing&&drawing.plane===p&&drawing.moved;
   // off-screen → clear route + landing intent, loop back toward the field
-  if(!liveDraw&&(p.x<-24||p.x>W+24||p.y<-24||p.y>H+24)){if(!p.ret){p.ret=true;p.route=[];p.landRw=null;}}
+  if(!liveDraw&&(p.x<-24||p.x>W+24||p.y<-24||p.y>H+24)){
+    if(!p.ret){
+      p.ret=true;p.route=[];p.landRw=null;
+      // per-plane re-entry target — everyone aiming at one point = pileups
+      p.retAim={x:100+(p.id*97)%280,y:260+(p.id*53)%200};
+    }
+  }
   if(liveDraw){
     // the plane traces the line WHILE it is being drawn — the visible route
     // always starts at the plane and can never point backwards
     followPts(p,drawing.pts,dt);
   }else if(p.ret){
-    const aim=Math.atan2(380-p.y,240-p.x);
+    const aim=Math.atan2(p.retAim.y-p.y,p.retAim.x-p.x);
     p.hdg=turnToward(p.hdg,aim,p.turn*dt);
     if(p.x>50&&p.x<W-50&&p.y>50&&p.y<H-50)p.ret=false;
   }else if(p.route.length){
     followPts(p,p.route,dt);
   }else{
-    approachAssist(p,dt);
+    // unattended planes see-and-avoid each other so the run isn't ended by
+    // traffic the player never touched — a drawn route always overrides this
+    if(!approachAssist(p,dt)&&!p.landRw)idleAvoid(p,dt);
   }
 
   p.x+=Math.cos(p.hdg)*p.spd*dt;
@@ -561,13 +594,15 @@ function doCrash(a,b){
 /* ================= run control ================= */
 function startRun(){
   planes=[];pendings=[];pops=[];parts=[];alertLines=[];
-  pot=0;landings=0;streak=0;runT=0;rwyCount=1;spawnT=1;bannerT=0;
+  pot=0;landings=0;streak=0;runT=0;rwyCount=1;spawnT=.5;bannerT=0;
   crashInfo=null;cashedOut=false;cashHold=0;cashHeld=false;shake=0;
   for(const rw of RWYS){rw.busy=false;rw.cool=0;rw.flash=0;}
   state='play';
   hud.classList.add('on');cashBtn.classList.add('on');
   menu.classList.add('hide');over.classList.add('hide');quit.classList.add('hide');
   bestVal.textContent=fmt(best);
+  try{music.currentTime=0;}catch(e){}
+  syncMusic();
 }
 function endRun(cashed){
   state='over';
@@ -585,6 +620,7 @@ function endRun(cashed){
   el('finalBest').textContent=isBest?'★ NEW BEST!':'Best: '+fmt(best);
   el('finalBest').className='best'+(isBest?' newbest':'');
   over.classList.remove('hide');
+  syncMusic();
   if(cashed)S.cash();
 }
 
@@ -922,14 +958,21 @@ el('playBtn').addEventListener('click',()=>{ac();startRun();});
 el('againBtn').addEventListener('click',()=>{ac();startRun();});
 el('menuBtn').addEventListener('click',()=>{location.href='../index.html';});
 el('backArcade').addEventListener('click',()=>{
-  if(state==='play'){state='pause';quit.classList.remove('hide');}
+  if(state==='play'){state='pause';quit.classList.remove('hide');syncMusic();}
   else if(state==='menu'||state==='over')location.href='../index.html';
 });
-el('resumeBtn').addEventListener('click',()=>{quit.classList.add('hide');if(state==='pause')state='play';lastTs=performance.now();});
+el('resumeBtn').addEventListener('click',()=>{quit.classList.add('hide');if(state==='pause')state='play';lastTs=performance.now();syncMusic();});
 el('quitBtn').addEventListener('click',()=>{location.href='../index.html';});
+/* music: plays on shift, keeps rolling on a cash-out, cuts on a crash */
+const music=el('music');
+function syncMusic(){
+  const want=!muted&&(state==='play'||(state==='over'&&cashedOut));
+  if(want){if(music.paused){const pr=music.play();if(pr&&pr.catch)pr.catch(()=>{});}}
+  else if(!music.paused)music.pause();
+}
 const muteBtn=el('muteBtn');
 muteBtn.textContent=muted?'🔇':'🔊';
-muteBtn.addEventListener('click',()=>{muted=!muted;sset('fa_mute',muted?'1':'0');muteBtn.textContent=muted?'🔇':'🔊';});
+muteBtn.addEventListener('click',()=>{muted=!muted;sset('fa_mute',muted?'1':'0');muteBtn.textContent=muted?'🔇':'🔊';syncMusic();});
 el('menuBest').textContent=best>0?'Best payout: '+fmt(best):'';
 
 /* debug hook (read-only) for automated checks */
@@ -938,6 +981,7 @@ window.FA_DEBUG={
   get planes(){return planes.map(p=>({id:p.id,x:p.x,y:p.y,hdg:p.hdg,type:p.type.key,route:p.route.length,landing:!!p.landing}));},
   routeOf(id){const p=planes.find(q=>q.id===id);return p?p.route.map(q=>({x:Math.round(q.x),y:Math.round(q.y)})):null;},
   get drawing(){return drawing?{plane:drawing.plane.id,pts:drawing.pts.length,moved:drawing.moved}:null;},
+  get crash(){return crashInfo?{an:crashInfo.an,bn:crashInfo.bn,x:Math.round(crashInfo.x),y:Math.round(crashInfo.y)}:null;},
   get rwyCount(){return rwyCount;},get view(){return{VS,VOX,VOY};},
 };
 })();
