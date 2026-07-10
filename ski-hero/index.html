@@ -173,8 +173,8 @@ const PX_PER_M=30;               // world px per metre — distance climbs ~4× 
 // mega-ramp: ~every 1000 m a long, gentle (~23°) slide of ~5 s into a kicker that launches you far
 const RAMP_M=1000, RAMP_RI=RAMP_M*PX_PER_M, RAMP0=600*PX_PER_M;  // first ramp ~600 m, then every 1000 m
 const RAMP_DROP=600, RAMP_RL=4000;     // extra drop over a LONG section → ~23° (half the old severity), ~5 s slide
-const KICK_H=82, KICK_L=190;           // kicker lip height / length
-const KICK_MINSPD=420, KICK_POP=150, KICK_MAXVY=1320;  // auto-launch off the kicker → huge floaty air
+const KICK_H=115, KICK_L=210, KICK_OFF=90;  // concave launch ramp: rise / face length / drop-away past the lip
+const KICK_MINSPD=420, KICK_POP=150, KICK_MAXVY=1320;  // auto-launch off the lip → huge floaty air
 
 const cv=document.getElementById('cv'), ctx=cv.getContext('2d');
 const app=document.getElementById('app');
@@ -280,13 +280,19 @@ function rampInfo(x){
   if(x < RAMP0-400) return {drop:0, steep:0, kick:0, near:0};
   const idx=Math.floor((x-RAMP0)/RAMP_RI);
   const s=RAMP0 + Math.max(0,idx)*RAMP_RI, u=x-s;
-  const prior=Math.max(0,idx)*RAMP_DROP;
-  let d=0, steep=0;
-  if(u>=0 && u<RAMP_RL){ const t=u/RAMP_RL; d=RAMP_DROP*smooth(t); steep=smooth(t/0.12)*smooth((1-t)/0.12); }  // flatten rollers across the whole slide (plateau)
+  const prior=Math.max(0,idx)*RAMP_DROP, END=RAMP_RL+KICK_L+KICK_OFF;
+  let d=0;
+  if(u>=0 && u<RAMP_RL) d=RAMP_DROP*smooth(u/RAMP_RL);
   else if(u>=RAMP_RL) d=RAMP_DROP;
+  // flatten rollers across the ENTIRE feature (slide + kicker) so it's a clean face, not bumpy
+  let steep=0;
+  if(u>-60 && u<END+60){ const t=(u+60)/(END+120); steep=smooth(clamp(t/0.06,0,1))*smooth(clamp((1-t)/0.06,0,1)); }
+  // CONCAVE launch ramp (not a hump): after the slide bottoms out flat, the face curves upward
+  // (steepening, concave) to a lip, then drops away — you fly off the lip into the gap.
   let kick=0; const ku=u-RAMP_RL;
-  if(ku>-40 && ku<KICK_L) kick=Math.sin(Math.PI*clamp((ku+40)/(KICK_L+40),0,1));  // raised lip after the drop
-  return {drop:prior+d, steep, kick, near:(u>-450 && u<RAMP_RL+KICK_L+400)?1:0};
+  if(ku>=0 && ku<KICK_L){ const t=ku/KICK_L; kick=t*t; }                       // concave rise to the lip
+  else if(ku>=KICK_L && ku<KICK_L+KICK_OFF) kick=1-smooth((ku-KICK_L)/KICK_OFF); // lip → drop away (launch)
+  return {drop:prior+d, steep, kick, near:(u>-450 && u<END+400)?1:0};
 }
 function terrainY(x){
   const dd=diffAt(x);
@@ -482,15 +488,15 @@ function stepPlayer(dt){
   // a big launch when you release climbing toward a crest (your velocity already points up).
   // Holding NEVER launches you — hold to stay glued to the curve, tuck & accelerate (no bounce
   // off landings). Only a release jumps.
-  if(releaseEvent && spd>110){
+  const ri=rampInfo(px);
+  const onKickerFace = ri.near && slope<0;   // climbing anywhere on the mega-ramp → commit to the lip launch
+  if(ri.kick>=0.5 && slope<-0.1 && spd>KICK_MINSPD){
+    // MEGA-RAMP LIP: ride up the concave ramp and it flings you off the lip — huge floaty air.
+    goAir(HOP_BASE+spd*HOP_K+KICK_POP, KICK_MAXVY);
+  } else if(releaseEvent && spd>110 && !onKickerFace){
     let pop=HOP_BASE+spd*HOP_K;
     if(th<-0.05) pop += (-Math.sin(th))*spd*HOP_UPSLOPE;   // upslope release → bigger air
     goAir(pop);
-  } else if(!air){
-    // MEGA-RAMP KICKER: barrelling up the kicker lip auto-launches you super far (a real kicker
-    // throws you whether or not you let go) — huge floaty air for a big trick window.
-    const ri=rampInfo(px);
-    if(ri.kick>0.25 && slope<-0.1 && spd>KICK_MINSPD) goAir(HOP_BASE+spd*HOP_K+KICK_POP, KICK_MAXVY);
   }
 
   // spray while carving fast
