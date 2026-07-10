@@ -141,6 +141,8 @@
   <div class="brand">CRASHARCADE · SKI HERO v0.1.0</div>
 </div>
 
+<audio id="music" src="music.mp3" loop preload="auto"></audio>
+
 <script>
 (function(){
 'use strict';
@@ -153,8 +155,9 @@ const DESCENT=0.17;              // overall downhill slope (net descent per worl
 
 const G=950;                     // low gravity → long floaty hang time (travel farther, float longer)
 const DIVE_G=1200;               // extra downward accel while holding in the air (dive into your landing)
-const TUCK_BOOST=2.6;            // downhill hold → tuck accel multiplier (build speed; compensates for low G)
-const DRAG=0.16;                 // ground drag (fraction/s)
+const TUCK_BOOST=3.0;            // downhill hold → tuck accel multiplier: you accelerate YOURSELF by tucking
+const RELAX_DOWN=0.7;            // tuck-built speed above cruise bleeds back at this rate when you stop tucking
+const RELAX_UP=3.0;              // ...and you're lifted up to cruise if you drop below it (never sluggish)
 const AIR_DRAG=0.02;             // tiny horizontal air drag
 const SPD_MIN=150;
 const HOP_BASE=110, HOP_K=0.47;  // RELEASE = hop; pop kept low vs speed → a FLAT, far-carrying launch (not a steep pop)
@@ -214,10 +217,11 @@ let comboN=0, airPts=0, comboList=[], lastTrickT=0, trickFlash=0, curTrickTxt=''
 // fx
 let trail=[], parts=[], pops=[], speedPh=0;
 
-/* ================================================================= audio (synth sfx + light synth groove) */
+/* ================================================================= audio (synth sfx + music track) */
 let muted=store.get('ski_mute')==='1';
-let AC=null, musicGain=null, nextNote=0, beatN=0, musicOn=false;
-function ac(){ if(!AC){ try{AC=new (window.AudioContext||window.webkitAudioContext)(); musicGain=AC.createGain(); musicGain.gain.value=0.0; musicGain.connect(AC.destination);}catch(e){} } return AC; }
+let AC=null, musicOn=false;
+function ac(){ if(!AC){ try{AC=new (window.AudioContext||window.webkitAudioContext)();}catch(e){} } return AC; }
+const music=document.getElementById('music');
 function sfx(type){
   if(muted) return; const c=ac(); if(!c) return;
   const t=c.currentTime, o=c.createOscillator(), g=c.createGain();
@@ -233,37 +237,15 @@ function sfx(type){
   else if(type==='crash'){ o.type='sawtooth'; o.frequency.setValueAtTime(300,t); o.frequency.exponentialRampToValueAtTime(40,t+.6); g.gain.setValueAtTime(.13,t); g.gain.exponentialRampToValueAtTime(.001,t+.65); o.start(t); o.stop(t+.67); }
   else if(type==='cash'){ o.type='sine'; o.frequency.setValueAtTime(660,t); o.frequency.setValueAtTime(880,t+.1); o.frequency.setValueAtTime(1320,t+.2); g.gain.setValueAtTime(.07,t); g.gain.exponentialRampToValueAtTime(.001,t+.45); o.start(t); o.stop(t+.47); }
 }
-// bouncy pentatonic groove; brighter + faster in trick mode
-const SCALE=[0,3,5,7,10,12];            // minor pentatonic (semitones)
-function midiHz(m){ return 440*Math.pow(2,(m-69)/12); }
-function scheduleMusic(){
-  const c=ac(); if(!c) return;
-  const beat = trickMode ? 60/154 : 60/128;
-  while(nextNote < c.currentTime + 0.18){
-    const t=nextNote, b=beatN%16;
-    // bass on the beat
-    if(b%2===0){ const root=[36,36,41,43][(beatN/2|0)%4];
-      voice('triangle', midiHz(root), t, 0.22, trickMode?.10:.075); }
-    // arp on eighths
-    const deg=SCALE[(beatN*3)%SCALE.length];
-    voice(trickMode?'sawtooth':'square', midiHz(60+deg), t, 0.13, trickMode?.055:.038);
-    if(trickMode && b%4===2){ voice('square', midiHz(72+SCALE[(beatN)%SCALE.length]), t, 0.1, .04); }
-    beatN++; nextNote += beat;
-  }
-}
-function voice(type,hz,t,dur,vol){
-  const c=AC; const o=c.createOscillator(), g=c.createGain();
-  o.type=type; o.frequency.setValueAtTime(hz,t);
-  g.gain.setValueAtTime(0,t); g.gain.linearRampToValueAtTime(vol,t+0.01); g.gain.exponentialRampToValueAtTime(0.0008,t+dur);
-  o.connect(g); g.connect(musicGain); o.start(t); o.stop(t+dur+0.02);
-}
+// music track — plays during a run and rides the cash-out card; a touch louder in Trick Mode
+function musicVol(){ return trickMode?0.7:0.52; }
 function musicSet(on){
-  musicOn=on; const c=ac(); if(!c||!musicGain) return;
-  if(on){ nextNote=Math.max(nextNote,c.currentTime+0.05); musicGain.gain.setTargetAtTime(muted?0:0.5,c.currentTime,0.2); }
-  else musicGain.gain.setTargetAtTime(0,c.currentTime,0.15);
+  musicOn=on;
+  if(on && !muted){ music.volume=musicVol(); music.play().catch(()=>{}); }
+  else music.pause();
 }
 const muteBtn=document.getElementById('muteBtn');
-function applyMute(){ muteBtn.textContent=muted?'🔇':'🔊'; if(musicGain&&AC){ musicGain.gain.setTargetAtTime(muted?0:(musicOn?0.5:0),AC.currentTime,0.1);} }
+function applyMute(){ muteBtn.textContent=muted?'🔇':'🔊'; music.muted=muted; if(!muted && musicOn) music.play().catch(()=>{}); }
 muteBtn.addEventListener('click',e=>{e.stopPropagation(); muted=!muted; store.set('ski_mute',muted?'1':'0'); applyMute();});
 applyMute();
 
@@ -304,8 +286,10 @@ function terrainY(x){
 }
 function terrainSlope(x){ return (terrainY(x+2)-terrainY(x-2))/4; }
 function terrainAngle(x){ return Math.atan(terrainSlope(x)); }
-// speed cap ramps with BOTH distance and TIME — the longer you're out, the faster it gets
-function spdMax(){ return 440+360*diffAt(px)+runT*3.2; }
+// cruise = the pace you settle at without tucking (grows with distance & time). TUCKING downhills
+// pushes you ABOVE cruise up to spdMax (the hard ceiling) — that's you accelerating yourself.
+function cruise(){ return 440+170*diffAt(px)+runT*2.2; }
+function spdMax(){ return cruise()*1.5; }
 
 /* ================================================================= flow / trick mode */
 // Trick Mode is UNLOCKED once you land UNLOCK_JUMPS successful curve jumps, then stays on
@@ -315,6 +299,7 @@ function setTrickMode(on){
   if(on===trickMode) return;
   trickMode=on;
   if(on){ tmPulse=1; sfx('tm'); flash('#ff4fd8',0.2); }
+  if(musicOn && !muted) music.volume=musicVol();   // nudge the track louder in Trick Mode
 }
 
 /* ================================================================= scoring */
@@ -474,11 +459,13 @@ function stepPlayer(dt){
   // ---- grounded ----
   const th=terrainAngle(px);
   const slope=terrainSlope(px);
-  // gravity along the slope; tuck (hold on the downhill) supercharges it
-  let a=G*Math.sin(th);
-  if(holding && slope>0) a*=TUCK_BOOST;
-  spd+=a*dt;
-  spd-=DRAG*spd*dt;
+  // Released = "light": you just drift toward the cruise pace. HOLD on the way down = tuck/dive =
+  // you accelerate YOURSELF well above cruise (up to the ceiling). Uphills always cost speed. The
+  // tuck-built speed carries into your launch, then eases back toward cruise if you stop tucking.
+  const cr=cruise();
+  if(holding && slope>0.03) spd += G*Math.sin(th)*TUCK_BOOST*dt;   // tuck the downhill → accelerate
+  else if(slope<-0.03)      spd += G*Math.sin(th)*dt;              // uphill drag
+  spd += (cr-spd)*(spd>cr?RELAX_DOWN:RELAX_UP)*dt;                 // ease toward cruise (bleed slow, lift fast)
   spd=clamp(spd, SPD_MIN, spdMax());
   vx=spd*Math.cos(th); vy=spd*Math.sin(th);
   px+=vx*dt;
@@ -523,7 +510,7 @@ const multRow=document.getElementById('multRow');
 function reset(){
   runT=0; score=0; mult=1; distAcc=0; timeUp=false;
   shake=0; flashT=0; freezeT=0; deadT=0; timeScale=1; overShown=false; crashWhy='';
-  px=120; py=terrainY(px); vx=0; vy=0; spd=240; air=false; holding=false; lastHold=false;
+  px=120; py=terrainY(px); vx=0; vy=0; spd=440; air=false; holding=false; lastHold=false;
   rot=0; rotTarget=0; spin=0; spinTarget=0; tilt=0; grabT=0; airT=0; launchGuard=0; facing=1; crouch=0; validJump=false;
   flow=0; trickMode=false; tmPulse=0;
   comboN=0; airPts=0; comboList=[]; lastTrickT=0; trickFlash=0; curTrickTxt='';
@@ -534,7 +521,7 @@ function startRun(){
   reset(); state='play';
   menuEl.classList.add('hide'); overEl.classList.add('hide'); cashedEl.classList.add('hide');
   hudEl.classList.add('on'); cashBtn.classList.add('on');
-  ac(); musicSet(true);
+  ac(); try{music.currentTime=0;}catch(e){} musicSet(true);   // restart the track each run
 }
 function cashOut(){
   if(state!=='play') return;
@@ -622,7 +609,7 @@ window.addEventListener('keyup',e=>{ if(e.code==='Space'||e.code==='ArrowDown') 
 function update(dt){
   speedPh+=dt*(spd/40);
   if(state==='menu'){ return; }
-  if(state==='cashed'){ if(!muted&&musicOn) scheduleMusic(); return; }
+  if(state==='cashed'){ return; }
   if(state==='dead'){
     deadT+=dt/Math.max(0.001,timeScale); timeScale=Math.min(1,timeScale+dt*1.1);
     vy+=G*dt; px+=vx*dt; py+=vy*dt; rot+=6*dt*facing;
@@ -650,8 +637,6 @@ function update(dt){
   trail.push({x:px,y:py-22}); if(trail.length>42) trail.shift();
   updateFx(dt);
   updateCamera(dt);
-
-  if(!muted&&musicOn) scheduleMusic();
 }
 function updateFx(dt){
   for(const p of parts){ p.vy+=(p.g||0)*dt; p.wx+=p.vx*dt; p.wy+=p.vy*dt; p.t-=dt; }
