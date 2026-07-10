@@ -107,7 +107,7 @@
         <div class="row"><div class="ic">👇</div><div class="tx"><b>Hold</b> to crouch &amp; tuck down the slope — build speed</div></div>
         <div class="row"><div class="ic">☝️</div><div class="tx"><b>Let go</b> to hop — release <b>climbing a hill</b> for big air</div></div>
         <div class="row"><div class="ic">🏂</div><div class="tx">Land <u>3 jumps</u> to unlock <i>TRICK MODE</i></div></div>
-        <div class="row"><div class="ic">🌀</div><div class="tx">Then swipe <i>↑ ↓ ← →</i> for moves · <b>chain them</b> — each is longer &amp; crazier · land <u>aligned</u>!</div></div>
+        <div class="row"><div class="ic">🌀</div><div class="tx">Swipe <i>↑↓ flip</i> · <i>←→ spin</i> · <b>chain them</b> — each move longer &amp; worth way more · land <u>aligned</u>!</div></div>
         <div class="row"><div class="ic">💰</div><div class="tx"><u>Cash out</u> before you crash · <i>wipe out and the pot's gone</i></div></div>
       </div>
       <button class="btn" id="playBtn">DROP IN</button>
@@ -161,13 +161,20 @@ const HOP_BASE=110, HOP_K=0.47;  // RELEASE = hop; pop kept low vs speed → a F
 const HOP_UPSLOPE=0.25;          // a little extra when you let go climbing toward a crest
 const MIN_HOP=150;               // release always pops you at least this far up (little hop on flat/downhill)
 const MAX_HOP_VY=900;            // ...but cap the very biggest launches so they stay framable
-const UNLOCK_JUMPS=3;            // land this many curve jumps to unlock Trick Mode
-const SPIN_BASE=16, SPIN_K=1.15; // spin speed = SPIN_BASE + pending*SPIN_K → crazier combos whip faster & settle
-const SETTLE=0.35;               // rad: trick counts as "done" once rot is this close to its target
-const LAND_TOL=0.5;              // rad: board must be within this of the landing slope, or you wipe out
+const UNLOCK_JUMPS=3;            // land this many curve jumps to unlock Trick Mode (also the # of flow dots)
+const SPIN_BASE=15, SPIN_K=0.5;  // spin speed = SPIN_BASE + pending*SPIN_K → each extra move honestly takes longer
+const SETTLE=0.35;               // rad: a trick axis counts as "done" once it's this close to its target
+const LAND_TOL=0.5;              // rad: board must be within this of the landing slope (& facing fwd), or you wipe out
 const SWIPE_MIN=22;              // logical px to register a swipe
 const TRICK_CD=0.11;             // s between chained tricks from one drag
 const TAU=Math.PI*2;
+const GAME_TIME=90;              // total session length (s)
+const PX_PER_M=9;                // world px per metre (distance signs / mega-ramp spacing)
+// mega-ramp: ~every 1000 m a 45° drop + kicker that launches you super far for a big trick window
+const RAMP_M=1000, RAMP_RI=RAMP_M*PX_PER_M, RAMP0=RAMP_RI;
+const RAMP_DROP=250, RAMP_RL=430;      // steep-section extra drop / length (≈45° at the steepest)
+const KICK_H=72, KICK_L=150;           // kicker lip height / length
+const KICK_MINSPD=420, KICK_POP=150, KICK_MAXVY=1320;  // auto-launch off the kicker → huge floaty air
 
 const cv=document.getElementById('cv'), ctx=cv.getContext('2d');
 const app=document.getElementById('app');
@@ -187,12 +194,12 @@ function rr(x,y,w,h,r){ctx.beginPath();ctx.moveTo(x+r,y);ctx.arcTo(x+w,y,x+w,y+h
 /* ================================================================= state */
 let state='menu';
 let runT=0, score=0, best=+(store.get('ski_best')||0);
-let mult=1, distAcc=0;
+let mult=1, distAcc=0, timeUp=false;
 let shake=0, flashT=0, flashCol='#fff', freezeT=0, deadT=0, timeScale=1, overShown=false, crashWhy='';
 
 // player — worldX(px), worldY(py), velocity, orientation
 let px=0, py=0, vx=0, vy=0, spd=0, air=false, holding=false, lastHold=false;
-let rot=0, rotTarget=0, tilt=0, grabT=0, airT=0, launchGuard=0, crouch=0, validJump=false;
+let rot=0, rotTarget=0, spin=0, spinTarget=0, tilt=0, grabT=0, airT=0, launchGuard=0, crouch=0, validJump=false;
 let facing=1;
 
 // camera
@@ -265,16 +272,34 @@ applyMute();
 // the player drops into flow fast. The escalation is SPEED (faster → bigger air → tighter
 // trick timing), NOT harder curve timing. All the push-your-luck lives in the tricks.
 const WL=620;                                                // long constant wavelength → unhurried rhythm
+const smooth=t=>{ t=clamp(t,0,1); return t*t*(3-2*t); };
 function diffAt(x){ return clamp(x/9000,0,1); }
+function metres(x){ return Math.max(0, Math.round((x-120)/PX_PER_M)); }  // world x → metres travelled (start px=120)
+// mega-ramp: a persistent steep drop (≈45°) + a raised kicker lip, recurring every RAMP_RI px.
+function rampInfo(x){
+  if(x < RAMP0-200) return {drop:0, steep:0, kick:0, near:0};
+  const idx=Math.floor((x-RAMP0)/RAMP_RI);
+  const s=RAMP0 + Math.max(0,idx)*RAMP_RI, u=x-s;
+  const prior=Math.max(0,idx)*RAMP_DROP;
+  let d=0, steep=0;
+  if(u>=0 && u<RAMP_RL){ const t=u/RAMP_RL; d=RAMP_DROP*smooth(t); steep=Math.sin(Math.PI*t); }
+  else if(u>=RAMP_RL) d=RAMP_DROP;
+  let kick=0; const ku=u-RAMP_RL;
+  if(ku>-30 && ku<KICK_L) kick=Math.sin(Math.PI*clamp((ku+30)/(KICK_L+30),0,1));  // raised lip after the drop
+  return {drop:prior+d, steep, kick, near:(u>-350 && u<RAMP_RL+KICK_L+260)?1:0};
+}
 function terrainY(x){
   const dd=diffAt(x);
   const amp=28+34*dd;                                        // gentle early → bigger jumps late
   const env=0.9+0.3*Math.sin(x*0.00055+1.3)*Math.sin(x*0.00019+0.4); // slow amplitude variety (floor ~0.6)
-  return BASE_Y + DESCENT*x + (amp*env)*Math.sin(x*TAU/WL);
+  const ri=rampInfo(x);
+  const waves=(amp*env)*Math.sin(x*TAU/WL)*(1-ri.steep*0.9); // flatten rollers through the steep ramp
+  return BASE_Y + DESCENT*x + waves + ri.drop - KICK_H*ri.kick;
 }
 function terrainSlope(x){ return (terrainY(x+2)-terrainY(x-2))/4; }
 function terrainAngle(x){ return Math.atan(terrainSlope(x)); }
-function spdMax(){ return 470+380*diffAt(px); }              // slower & easier to read early, ramps up
+// speed cap ramps with BOTH distance and TIME — the longer you're out, the faster it gets
+function spdMax(){ return 440+360*diffAt(px)+runT*3.2; }
 
 /* ================================================================= flow / trick mode */
 // Trick Mode is UNLOCKED once you land UNLOCK_JUMPS successful curve jumps, then stays on
@@ -291,15 +316,17 @@ function addScore(base){ score+=Math.max(1,Math.round(base*mult)); }
 function popWorld(wx,wy,txt,col,big){ pops.push({wx,wy,txt,col:col||'#ffe07a',t:big?1.1:0.8,big:!!big}); }
 
 /* ================================================================= tricks */
-// Four moves, one per direction — each spins a WHOLE number of turns (so a finished trick lands
-// aligned to the slope). CHAINING escalates: the Nth move in a combo adds N turns, so the 2nd
-// move is a double, the 3rd a triple, etc. Longer/crazier moves need more airtime to finish →
-// bigger combos are only landable off bigger jumps. That's the push-your-luck.
+// Four DISTINCT moves. up/down = FLIPS (head-over-heels, drives `rot`); left/right = SPINS
+// (around the vertical axis, drives `spin`, drawn as a horizontal yaw). CHAINING escalates: the
+// Nth move adds N whole turns to its axis, so the 2nd move is visibly longer than the 1st and the
+// 3rd longer still — and each is worth WAY more. Longer moves need more air, so bigger combos are
+// only landable off bigger jumps (and the mega-ramp). A move lands clean only once its axis has
+// finished a whole turn (flips align to the slope, spins face forward) — else you wipe out.
 const MOVES={
-  up:    {base:'BACKFLIP',   sign:-1, grab:false},   // vertical backflip
-  down:  {base:'FRONT FLIP', sign:+1, grab:true},    // forward flip, tucked grab
-  left:  {base:'LEFT CORK',  sign:-1, grab:false},   // off-axis spin, left
-  right: {base:'RIGHT CORK', sign:+1, grab:false},   // off-axis spin, right
+  up:    {base:'BACKFLIP',  axis:'flip', sign:-1},   // head-over-heels, backward
+  down:  {base:'FRONTFLIP', axis:'flip', sign:+1, grab:true},
+  left:  {base:'SPIN',      axis:'spin', sign:-1},   // 360 spin, left
+  right: {base:'SPIN',      axis:'spin', sign:+1},   // 360 spin, right
 };
 const SPINWORD=['','DOUBLE ','TRIPLE ','QUAD ','QUINT ','INSANE '];
 function classifySwipe(dx,dy){                        // 4-way: dominant axis
@@ -317,16 +344,17 @@ function doTrick(dir){
   }
   const m=MOVES[dir]; if(!m) return;
   comboN++;
-  const turns=comboN;                                 // 1st→1 turn, 2nd→2, 3rd→3 … longer & crazier each time
-  rotTarget += m.sign*turns*TAU;
+  const turns=comboN;                                 // 1st→1 turn, 2nd→2, 3rd→3 … each move longer than the last
+  if(m.axis==='flip') rotTarget += m.sign*turns*TAU; else spinTarget += m.sign*turns*TAU;
   if(m.grab) grabT=Math.max(grabT,0.5);
-  const pts=80*turns;
+  const pts=100*turns*turns;                          // 100 / 400 / 900 … each chained move is worth WAY more
   airPts += pts;
-  const name=(SPINWORD[Math.min(turns-1,SPINWORD.length-1)])+m.base;
+  const name = m.axis==='spin' ? (turns*360)+'° SPIN'
+             : SPINWORD[Math.min(turns-1,SPINWORD.length-1)]+m.base;
   comboList.push(name);
   curTrickTxt=name; trickFlash=0.95;
   facing=m.sign;
-  addScore(Math.round(pts*0.2));                      // small instant taste; full bank on a clean landing
+  addScore(Math.round(pts*0.15));                     // small instant taste; full bank on a clean landing
   sfx('trick'); flash(turns>=3?'#ff4fd8':'#34e1ff',0.07);
   for(let i=0;i<6+turns*3;i++){ const ang=R(0,TAU); parts.push({wx:px,wy:py-24,vx:Math.cos(ang)*R(40,160),vy:Math.sin(ang)*R(40,160),r:R(2,4),c:rand(['#34e1ff','#ff4fd8','#ffe07a']),t:R(.25,.55),g:120}); }
 }
@@ -339,14 +367,14 @@ function predictLandAngle(){
   for(let i=0;i<80;i++){ svy+=g2*0.03; sx+=vx*0.03; sy+=svy*0.03; if(sy>=terrainY(sx)) return terrainAngle(sx); }
   return terrainAngle(sx);
 }
-function goAir(pop){
+function goAir(pop, maxVy){
   const th=terrainAngle(px);
   validJump = th < -0.04;                     // launched off a curve's INCLINE (up-face) = a proper jump
   air=true; airT=0; launchGuard=0.08;
   vx=spd*Math.cos(th);
-  vy=clamp(spd*Math.sin(th)-pop, -MAX_HOP_VY, -MIN_HOP);  // little hop min, soaring max, capped so it stays framable
+  vy=clamp(spd*Math.sin(th)-pop, -(maxVy||MAX_HOP_VY), -MIN_HOP);  // little hop min, soaring max, capped so it stays framable
   comboN=0; airPts=0; comboList=[]; curTrickTxt=''; grabT=0;
-  crouch=0; rot=nearUpright(rot); rotTarget=rot; tilt=0;
+  crouch=0; rot=nearUpright(rot); rotTarget=rot; spin=0; spinTarget=0; tilt=0;
   sfx('launch');
   for(let i=0;i<12;i++) parts.push({wx:px,wy:py,vx:R(-60,60),vy:R(-40,-180),r:R(2,4.5),c:'#f2fbff',t:R(.3,.6),g:520});
 }
@@ -357,10 +385,11 @@ function landSpray(q){
 }
 function land(){
   const th=terrainAngle(px);
-  // the ONLY wipeout: the board isn't aligned with the curve you touch down on (still mid-trick).
-  const mis=normAng((rot+tilt) - th);
+  // the ONLY wipeout: you touch down mid-trick — flip not aligned with the curve, OR spin not
+  // brought back to facing-forward.
+  const flipMis=normAng((rot+tilt) - th), spinMis=normAng(spin);
   air=false;
-  if(Math.abs(mis)>LAND_TOL){ crash(comboN>1?'tricked too late':'over-rotated'); return; }
+  if(Math.abs(flipMis)>LAND_TOL || Math.abs(spinMis)>LAND_TOL){ crash(comboN>1?'tricked too late':'over-rotated'); return; }
 
   py=terrainY(px);
   // ground speed = velocity projected onto the slope tangent → you keep (and on a downslope, GAIN) speed;
@@ -386,15 +415,15 @@ function land(){
     popWorld(px,py-58, '+'+Math.max(1,Math.round(banked*mult)), quality==='stumble'?'#ffb04d':'#ffe07a', true);
   }
 
-  // ---- flow / Trick Mode ----
-  // A STUMBLE knocks you out of your flow (and Trick Mode). Only clean/flat landings of a PROPER
-  // incline jump build toward the unlock and keep the multiplier climbing.
-  if(quality==='stumble'){ flow=0; setTrickMode(false); }
-  else if(properJump){ flow++; if(flow>=UNLOCK_JUMPS) setTrickMode(true); }
+  // ---- flow dots / Trick Mode ----
+  // A STUMBLE removes ONE dot (forgiving); lose all 3 dots → back to normal. Clean/flat landings of
+  // a PROPER incline jump add a dot; fill all 3 → Trick Mode.
+  if(quality==='stumble'){ flow=Math.max(0,flow-1); if(flow<=0) setTrickMode(false); }
+  else if(properJump){ flow=Math.min(UNLOCK_JUMPS,flow+1); if(flow>=UNLOCK_JUMPS) setTrickMode(true); }
 
   // ---- feedback ----
   if(quality==='stumble'){
-    popWorld(px,py-40, wasTrick?'STUMBLE — FLOW LOST':'STUMBLE', '#ffb04d');
+    popWorld(px,py-40, (wasTrick&&!trickMode)?'STUMBLE — FLOW LOST':'STUMBLE', '#ffb04d');
     sfx('stumble'); landSpray('stumble'); shake=Math.max(shake,7);
   } else if(!wasTrick && trickMode){
     addScore(150); popWorld(px,py-56,'TRICK MODE!','#ff4fd8',true); landSpray('clean'); shake=Math.max(shake,6);
@@ -406,7 +435,7 @@ function land(){
     else sfx('land');
   }
   comboN=0; airPts=0; comboList=[]; curTrickTxt=''; grabT=0;
-  rot=nearUpright(rot); rotTarget=rot; tilt=0;
+  rot=nearUpright(rot); rotTarget=rot; spin=nearUpright(spin); spinTarget=spin; tilt=0;
 }
 
 function stepPlayer(dt){
@@ -421,11 +450,12 @@ function stepPlayer(dt){
     if(holding) vy+=DIVE_G*dt;                 // press to dive back down (control your landing)
     vx*=(1-AIR_DRAG*dt);
     px+=vx*dt; py+=vy*dt;
-    // tricks spin the board toward their target; once the trick is DONE the board eases to align
-    // with the slope it's about to land on (anticipation) so it touches down flush and slides in.
-    const pending=rotTarget-rot, spinSpeed=SPIN_BASE+Math.abs(pending)*SPIN_K;
-    rot+=clamp(pending,-spinSpeed*dt,spinSpeed*dt);
-    const trickDone=Math.abs(rotTarget-rot)<SETTLE;
+    // flips (rot) and spins (spin) ease toward their targets; when BOTH are done the board aligns
+    // to the slope it's about to land on (anticipation) so it touches down flush and slides in.
+    const pend=Math.abs(rotTarget-rot)+Math.abs(spinTarget-spin), spinSpeed=SPIN_BASE+pend*SPIN_K;
+    rot +=clamp(rotTarget-rot,   -spinSpeed*dt, spinSpeed*dt);
+    spin+=clamp(spinTarget-spin, -spinSpeed*dt, spinSpeed*dt);
+    const trickDone=Math.abs(rotTarget-rot)<SETTLE && Math.abs(spinTarget-spin)<SETTLE;
     const tAim=(trickDone && vy>-140) ? predictLandAngle() : 0;   // anticipate near/after the apex
     tilt=lerp(tilt, tAim, clamp(dt*7,0,1));
     if(grabT>0) grabT-=dt;
@@ -456,6 +486,11 @@ function stepPlayer(dt){
     let pop=HOP_BASE+spd*HOP_K;
     if(th<-0.05) pop += (-Math.sin(th))*spd*HOP_UPSLOPE;   // upslope release → bigger air
     goAir(pop);
+  } else if(!air){
+    // MEGA-RAMP KICKER: barrelling up the kicker lip auto-launches you super far (a real kicker
+    // throws you whether or not you let go) — huge floaty air for a big trick window.
+    const ri=rampInfo(px);
+    if(ri.kick>0.25 && slope<-0.1 && spd>KICK_MINSPD) goAir(HOP_BASE+spd*HOP_K+KICK_POP, KICK_MAXVY);
   }
 
   // spray while carving fast
@@ -480,10 +515,10 @@ const menuEl=document.getElementById('menu'), overEl=document.getElementById('ov
 const cashedEl=document.getElementById('cashed'), cashBtn=document.getElementById('cashBtn');
 const multRow=document.getElementById('multRow');
 function reset(){
-  runT=0; score=0; mult=1; distAcc=0;
+  runT=0; score=0; mult=1; distAcc=0; timeUp=false;
   shake=0; flashT=0; freezeT=0; deadT=0; timeScale=1; overShown=false; crashWhy='';
   px=120; py=terrainY(px); vx=0; vy=0; spd=240; air=false; holding=false; lastHold=false;
-  rot=0; rotTarget=0; tilt=0; grabT=0; airT=0; launchGuard=0; facing=1; crouch=0; validJump=false;
+  rot=0; rotTarget=0; spin=0; spinTarget=0; tilt=0; grabT=0; airT=0; launchGuard=0; facing=1; crouch=0; validJump=false;
   flow=0; trickMode=false; tmPulse=0;
   comboN=0; airPts=0; comboList=[]; lastTrickT=0; trickFlash=0; curTrickTxt='';
   trail=[]; parts=[]; pops=[]; speedPh=0;
@@ -500,7 +535,7 @@ function cashOut(){
   state='cashed'; cashBtn.classList.remove('on'); hudEl.classList.remove('on');
   if(score>best){ best=score; store.set('ski_best',best); }
   document.getElementById('cashPts').textContent=score.toLocaleString();
-  document.getElementById('cashChips').textContent=Math.floor(runT)+'s · ×'+mult.toFixed(1)+(trickMode?' · TRICK MODE':'');
+  document.getElementById('cashChips').textContent=metres(px).toLocaleString()+'M · ×'+mult.toFixed(1)+(timeUp?' · TIME':'');
   const b=document.getElementById('cashBest');
   if(score>=best&&score>0){ b.textContent='★ NEW BEST ★'; b.className='best newbest'; }
   else { b.textContent='BEST '+best.toLocaleString(); b.className='best'; }
@@ -593,6 +628,8 @@ function update(dt){
   }
 
   runT+=dt;
+  // 90s session timer — when it runs out, auto cash-out whatever you've banked
+  if(runT>=GAME_TIME && !timeUp){ timeUp=true; flash('#ffc233',0.25); cashOut(); return; }
   mult=1 + diffAt(px)*3.2 + flow*0.04 + (trickMode?0.7:0);
   distAcc+=Math.max(0,vx*dt); while(distAcc>=12){ distAcc-=12; score+=Math.max(1,Math.round(1*mult)); }
 
@@ -699,25 +736,32 @@ function drawTerrain(){
   ctx.strokeStyle=trickMode?'#ff4fd8':'#34e1ff'; ctx.lineWidth=3;
   ctx.shadowColor=trickMode?'#ff4fd8':'#34e1ff'; ctx.shadowBlur=14; ctx.lineJoin='round'; ctx.stroke();
   ctx.shadowBlur=0;
-  // upcoming-crest markers: little flags on the next couple of crests (feature flavour)
-  drawCrestFlags(x0,x1);
+  drawSigns(x0,x1);
 }
-function drawCrestFlags(x0,x1){
-  // find crests (slope - → +) in view and plant a neon flag
-  let prev=terrainSlope(x0);
-  for(let wx=x0+8; wx<x1; wx+=8){
-    const s=terrainSlope(wx);
-    if(prev<0 && s>=0){
-      const sx=W2SX(wx), sy=W2SY(terrainY(wx));
-      const col = ((wx*0.013)|0)%2 ? '#ff4fd8' : '#ffc233';
-      ctx.save(); ctx.strokeStyle='rgba(60,90,130,.6)'; ctx.lineWidth=2;
-      ctx.beginPath(); ctx.moveTo(sx,sy); ctx.lineTo(sx,sy-22*zoom); ctx.stroke();
-      ctx.fillStyle=col; ctx.shadowColor=col; ctx.shadowBlur=8;
-      ctx.beginPath(); ctx.moveTo(sx,sy-22*zoom); ctx.lineTo(sx+13*zoom,sy-18*zoom); ctx.lineTo(sx,sy-13*zoom); ctx.closePath(); ctx.fill();
-      ctx.restore();
-    }
-    prev=s;
+function drawSigns(x0,x1){
+  ctx.save(); ctx.textAlign='center'; ctx.textBaseline='middle'; ctx.lineJoin='round';
+  // distance markers every 250 m (every 1000 m is a bigger gold sign)
+  const m0=Math.max(250, Math.ceil(metres(x0)/250)*250), m1=metres(x1);
+  for(let m=m0; m<=m1; m+=250){
+    const wx=m*PX_PER_M+120, sx=W2SX(wx); if(sx<-40||sx>W+40) continue;
+    const sy=W2SY(terrainY(wx)), big=(m%1000===0);
+    ctx.strokeStyle='rgba(40,70,110,.5)'; ctx.lineWidth=2;
+    ctx.beginPath(); ctx.moveTo(sx,sy); ctx.lineTo(sx,sy-27*zoom); ctx.stroke();
+    const bw=(big?36:27)*zoom, bh=14*zoom, by=sy-27*zoom-bh;
+    ctx.fillStyle=big?'#ffc233':'#eaf6ff'; ctx.shadowColor=big?'#ffc233':'#9fd8ff'; ctx.shadowBlur=big?10:5;
+    rr(sx-bw/2, by, bw, bh, 3*zoom); ctx.fill(); ctx.shadowBlur=0;
+    ctx.fillStyle='#0c2036'; ctx.font='900 '+((big?11:9)*zoom)+'px Orbitron';
+    ctx.fillText(m>=1000?(m/1000)+'K':m+'', sx, by+bh/2+0.5);
   }
+  // "MEGA RAMP" warning just ahead of each ramp entry
+  for(let idx=0;;idx++){
+    const rx=RAMP0+idx*RAMP_RI; if(rx>x1+300) break; if(rx<x0-300) continue;
+    const sx=W2SX(rx-300), sy=W2SY(terrainY(rx-300)); if(sx<-80||sx>W+80) continue;
+    ctx.fillStyle='#ff4fd8'; ctx.shadowColor='#ff4fd8'; ctx.shadowBlur=12;
+    ctx.font='900 '+(12*zoom)+'px Orbitron';
+    ctx.fillText('▼ MEGA RAMP ▼', sx, sy-46*zoom); ctx.shadowBlur=0;
+  }
+  ctx.restore();
 }
 
 function drawTrail(){
@@ -744,6 +788,9 @@ function drawRider(){
   const ang = air ? rot+tilt : terrainAngle(px);
   ctx.save();
   ctx.translate(x,y); ctx.scale(zoom,zoom); ctx.rotate(ang);
+  // SPIN (yaw) is drawn as a horizontal squash/flip: facing forward at whole turns, edge-on
+  // and mirrored through the turn — visually distinct from a head-over-heels flip.
+  if(air && Math.abs(spin)>0.01){ let sc=Math.cos(spin); sc=(sc>=0?1:-1)*Math.max(Math.abs(sc),0.16); ctx.scale(sc,1); }
   const neon = trickMode?'#ff4fd8':'#34e1ff';
   const grab = grabT>0 ? clamp(grabT/0.45,0,1) : 0;
   // board
@@ -814,15 +861,22 @@ function drawPops(){
 
 function drawHudCanvas(){
   ctx.textAlign='center'; ctx.textBaseline='middle';
-  // flow pips (top-centre, under the DOM score)
-  const py0=86;
-  for(let i=0;i<3;i++){
+  // session timer (top-centre) — flashes red in the final 10s
+  const tl=Math.max(0, GAME_TIME-runT), ss=Math.floor(tl%60), urgent=tl<=10;
+  ctx.font='800 15px Orbitron';
+  ctx.fillStyle=urgent?'#ff4f6e':'#dcefff'; ctx.shadowColor=urgent?'#ff4f6e':'#34e1ff'; ctx.shadowBlur=urgent?12:6;
+  ctx.fillText('⏱ '+Math.floor(tl/60)+':'+(ss<10?'0':'')+ss, W/2, 66); ctx.shadowBlur=0;
+  // distance (top-left, beside the back button)
+  ctx.textAlign='left'; ctx.font='800 13px Orbitron'; ctx.fillStyle='#dcefff'; ctx.shadowColor='#34e1ff'; ctx.shadowBlur=5;
+  ctx.fillText(metres(px).toLocaleString()+'M', 66, 30); ctx.shadowBlur=0; ctx.textAlign='center';
+  // flow dots (top-centre)
+  const py0=92;
+  for(let i=0;i<UNLOCK_JUMPS;i++){
     const on=flow>i; const cx=W/2-22+i*22;
     ctx.beginPath(); ctx.arc(cx,py0,7,0,TAU);
     if(on){ ctx.fillStyle=trickMode?'#ff4fd8':'#39ffa0'; ctx.shadowColor=ctx.fillStyle; ctx.shadowBlur=10; ctx.fill(); ctx.shadowBlur=0; }
     else { ctx.strokeStyle='rgba(255,255,255,.55)'; ctx.lineWidth=2; ctx.stroke(); }
   }
-  if(flow>3){ ctx.fillStyle='#ff4fd8'; ctx.font='800 12px Orbitron'; ctx.shadowColor='#ff4fd8'; ctx.shadowBlur=8; ctx.fillText('FLOW ×'+flow, W/2, py0+18); ctx.shadowBlur=0; }
 
   // TRICK MODE banner
   if(trickMode){
@@ -849,7 +903,7 @@ function drawHudCanvas(){
   // landing warning — is the board lined up with the curve it's about to hit?
   if(air && vy>0){
     const landT=predictLand();
-    const ready=Math.abs(normAng((rot+tilt)-predictLandAngle()))<LAND_TOL;
+    const ready=Math.abs(normAng((rot+tilt)-predictLandAngle()))<LAND_TOL && Math.abs(normAng(spin))<LAND_TOL;
     if(landT<0.55 && !ready){
       ctx.font='900 20px Orbitron'; ctx.fillStyle='#ff4f6e'; ctx.shadowColor='#ff4f6e'; ctx.shadowBlur=12;
       ctx.fillText('LAND! ⚠', W/2, H*0.20); ctx.shadowBlur=0;
@@ -924,12 +978,12 @@ reset(); state='menu';
 window.__game={
   get s(){ return {state,runT:+runT.toFixed(1),score,mult:+mult.toFixed(2),px:Math.round(px),py:Math.round(py),
     spd:Math.round(spd),vx:Math.round(vx),vy:Math.round(vy),air,holding,rot:+rot.toFixed(2),rotTarget:+rotTarget.toFixed(2),
-    tilt:+tilt.toFixed(2),flow,trickMode,comboN,airPts,validJump,slope:+terrainSlope(px).toFixed(3)}; },
+    tilt:+tilt.toFixed(2),spin:+spin.toFixed(2),spinTarget:+spinTarget.toFixed(2),flow,trickMode,comboN,airPts,validJump,m:metres(px),tl:+(GAME_TIME-runT).toFixed(1),slope:+terrainSlope(px).toFixed(3)}; },
   step:d=>{ try{update(d);}catch(e){console.error(e);} },
   startRun, cashOut, toMenu, crash,
   hold:v=>{ holding=v!==false; }, trick:doTrick,
-  set:(k,v)=>{ if(k==='spd')spd=v; if(k==='px'){px=v;py=terrainY(px);} },
-  terrainY, terrainSlope, diffAt
+  set:(k,v)=>{ if(k==='spd')spd=v; if(k==='px'){px=v;py=terrainY(px);} if(k==='runT')runT=v; },
+  terrainY, terrainSlope, diffAt, rampInfo, metres, get RAMP0(){return RAMP0;}, get RAMP_RI(){return RAMP_RI;}
 };
 })();
 </script>
