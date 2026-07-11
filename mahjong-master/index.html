@@ -129,24 +129,21 @@
   .tile{position:absolute;transition:transform .18s ease;will-change:transform;z-index:1;}
   .tile.drag{transition:none;z-index:20;}
   .tile.out .tin{transform:scale(.2) rotate(20deg);opacity:0;transition:all .22s ease-in;}
-  .tin{width:100%;height:100%;border-radius:7px;background:linear-gradient(180deg,var(--ivory),var(--ivory2));
-    border:1px solid #b9ae92;border-bottom-width:4px;box-shadow:0 3px 6px rgba(0,0,0,.45);
-    display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px;cursor:pointer;
-    transition:transform .15s ease, box-shadow .15s ease;position:relative;}
-  .tile.sel .tin{transform:translateY(-12px);box-shadow:0 10px 16px rgba(0,0,0,.5),0 0 14px rgba(255,194,51,.8);border-color:var(--gold);}
-  .tile.newt .tin{animation:popin .5s ease;box-shadow:0 3px 6px rgba(0,0,0,.45),0 0 16px rgba(255,194,51,.9);}
+  .tin{width:100%;height:100%;position:relative;cursor:pointer;
+    transition:transform .15s ease, filter .15s ease;
+    filter:drop-shadow(0 3px 5px rgba(0,0,0,.5));}
+  .tin img{position:absolute;inset:0;width:100%;height:100%;pointer-events:none;-webkit-user-drag:none;}
+  .tin img.glyph{width:auto;height:auto;max-width:86%;max-height:92%;left:50%;top:50%;right:auto;bottom:auto;
+    transform:translate(-50%,-50%);}
+  .tin img.tback{display:none;}
+  /* selected = flipped to the tile back, raised with a gold glow */
+  .tile.sel .tin{transform:translateY(-12px);
+    filter:drop-shadow(0 9px 12px rgba(0,0,0,.55)) drop-shadow(0 0 9px rgba(255,194,51,.9));}
+  .tile.sel .tin img{display:none;}
+  .tile.sel .tin img.tback{display:block;}
+  .tile.newt .tin{animation:popin .5s ease;
+    filter:drop-shadow(0 3px 5px rgba(0,0,0,.5)) drop-shadow(0 0 12px rgba(255,194,51,.95));}
   @keyframes popin{0%{transform:scale(.3);}55%{transform:scale(1.15);}100%{transform:scale(1);}}
-  .tbig{font-weight:900;line-height:1;font-family:var(--body);}
-  .tcap{font-family:var(--display);font-weight:700;letter-spacing:.3px;line-height:1;}
-  .fB .tbig{color:var(--bam);} .fB .tcap{color:var(--bam);}
-  .fC .tbig{color:var(--crak);} .fC .tcap{color:var(--crak);}
-  .fD .tbig{color:var(--dot);} .fD .tcap{color:var(--dot);}
-  .fwd .tbig{color:var(--wind);} .fwd .tcap{color:var(--wind);}
-  .fdr .tbig{color:var(--crak);} .fdr .tcap{color:var(--crak);}
-  .fdg .tbig{color:var(--bam);} .fdg .tcap{color:var(--bam);}
-  .fds .tbig{color:var(--dot);border:2px solid var(--dot);border-radius:4px;padding:0 4px;} .fds .tcap{color:var(--dot);}
-  .ffl .tbig{color:var(--flower);} .ffl .tcap{color:var(--flower);}
-  .fjk .tbig{color:var(--joker);} .fjk .tcap{color:var(--joker);}
 
   /* ---------- actions ---------- */
   #actions{padding:10px 12px calc(12px + env(safe-area-inset-bottom));display:flex;flex-direction:column;gap:8px;}
@@ -622,15 +619,21 @@ function buildWall(){
   for(let i=w.length-1;i>0;i--){const j=(Math.random()*(i+1))|0;[w[i],w[j]]=[w[j],w[i]];}
   return w;
 }
-function tileFace(code){
-  if(code==='FL') return {big:'✿',cap:'FLOWER',cls:'ffl'};
-  if(code==='JK') return {big:'J',cap:'JOKER',cls:'fjk'};
-  if(code[0]==='W') return {big:code[1],cap:'WIND',cls:'fwd'};
-  if(code==='GR') return {big:'中',cap:'DRAGON',cls:'fdr'};
-  if(code==='GG') return {big:'發',cap:'DRAGON',cls:'fdg'};
-  if(code==='G0') return {big:'0',cap:'SOAP',cls:'fds'};
-  return {big:code[1],cap:{B:'BAM',C:'CRAK',D:'DOT'}[code[0]],cls:'f'+code[0]};
+/* ---- tile art (tiles/ folder) ----
+   bams are full-tile renders; everything else is a glyph on blank.png.
+   8 flower designs and 2 joker designs cycle across the 8 physical
+   flowers / 8 jokers in the wall. */
+let flSeq=[], jkFlip=0;
+function artFor(code){
+  if(code==='FL'){ if(!flSeq.length) flSeq=[1,2,3,4,5,6,7,8].sort(()=>Math.random()-.5); return 'flower'+flSeq.pop(); }
+  if(code==='JK'){ jkFlip^=1; return 'joker'+(jkFlip+1); }
+  if(code==='GR') return 'drag-crak';
+  if(code==='GG') return 'drag-bam';
+  if(code==='G0') return 'soap';
+  if(code[0]==='W') return 'wind-'+code[1].toLowerCase();
+  return {B:'bam',C:'crak',D:'dot'}[code[0]]+code[1];
 }
+const isFullTile=(art)=>art.startsWith('bam');
 const SORT_KEY = (code)=>{
   if(code==='FL') return 0;
   if(code==='JK') return 10;
@@ -774,17 +777,15 @@ function sizeRack(){
   GAP=wide?10:6;
   // width-driven size, capped so the rack + HUD still fit vertically
   const byW=Math.floor((vw-40-6*GAP)/7);
-  const byH=Math.floor((de.clientHeight-(wide?560:430))/2.8);
+  const byH=Math.floor((de.clientHeight-(wide?560:430))/3.1);
   TW=Math.max(40, Math.min(wide?100:56, byW, Math.max(byH, wide?72:46)));
-  TH=Math.round(TW*1.38);
+  TH=Math.round(TW*1.512);   // art tile body aspect (blank.png 621x939)
   rackW=7*TW+6*GAP;
   rackEl.style.width=rackW+'px';
   rackEl.style.height=(2*TH+GAP)+'px';
   $('rackBar').style.width=Math.min(rackW+16, de.clientWidth-24)+'px';
   for(const t of S.rack){
     t.el.style.width=TW+'px'; t.el.style.height=TH+'px';
-    t.el.querySelector('.tbig').style.fontSize=Math.round(TW*.52)+'px';
-    t.el.querySelector('.tcap').style.fontSize=Math.max(6,Math.round(TW*.16))+'px';
   }
   layout();
 }
@@ -797,13 +798,14 @@ function layout(except){
   });
 }
 function makeTileEl(t){
+  if(!t.art) t.art=artFor(t.code);
   const el=document.createElement('div');
   el.className='tile';
-  const f=tileFace(t.code);
-  el.innerHTML=`<div class="tin ${f.cls}"><div class="tbig">${f.big}</div><div class="tcap">${f.cap}</div></div>`;
+  const face = isFullTile(t.art)
+    ? `<img class="body" src="tiles/${t.art}.png" alt="">`
+    : `<img class="body" src="tiles/blank.png" alt=""><img class="glyph" src="tiles/${t.art}.png" alt="">`;
+  el.innerHTML=`<div class="tin">${face}<img class="tback" src="tiles/back.png" alt=""></div>`;
   el.style.width=TW+'px'; el.style.height=TH+'px';
-  el.querySelector('.tbig').style.fontSize=Math.round(TW*.52)+'px';
-  el.querySelector('.tcap').style.fontSize=Math.max(6,Math.round(TW*.16))+'px';
   el.addEventListener('pointerdown',(e)=>onDown(e,t));
   t.el=el;
   rackEl.appendChild(el);
@@ -1202,6 +1204,12 @@ window.addEventListener('resize',()=>{sizeRack(); renderCands();});
 expandAll();
 buildCardList();
 sizeRack();
+// warm the tile-art cache so the first deal doesn't pop in piecemeal
+(()=>{ const names=['blank','back']
+    .concat([1,2,3,4,5,6,7,8,9].flatMap(n=>['bam'+n,'crak'+n,'dot'+n]))
+    .concat(['wind-n','wind-e','wind-w','wind-s','drag-bam','drag-crak','soap'])
+    .concat([1,2,3,4,5,6,7,8].map(n=>'flower'+n)).concat(['joker1','joker2']);
+  for(const n of names){ const i=new Image(); i.src='tiles/'+n+'.png'; } })();
 $('muteBtn').textContent=S.muted?'🔇':'🔊';
 $('startWarn').textContent = 'Trainer — hands follow the '+CARD_META.year+' standards. Reference your purchased official NMJL card for exact wording and rulings.'
   +(CARD_META.official?'':' Values marked † await final verification.');
