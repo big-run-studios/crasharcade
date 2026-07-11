@@ -843,6 +843,13 @@ function onUp(e){
     d.t.el.classList.remove('drag');
     layout();
   }else{
+    const now=Date.now();
+    if(S.phase==='timed' && S.lastTapId===d.t.id && now-S.lastTapT<340){
+      S.lastTapId=null;
+      doDraw(d.t);          // double-tap = instant swap
+      return;
+    }
+    S.lastTapId=d.t.id; S.lastTapT=now;
     toggleSel(d.t);
   }
 }
@@ -918,7 +925,7 @@ function charlestonDone(){
   setTimeout(()=>{ bigMsg('GO!',true); startTimed(); },3200);   // "Get Ready" holds for 2s
   setTimeout(()=>{
     $('bigMsg').classList.remove('show');
-    setMsg('Build a hand from the card.','Swap 1 tile at a time · SUBMIT or CASH OUT before 0:00');
+    setMsg('Build a hand from the card.','Double-tap a tile to swap it · SUBMIT or CASH OUT before 0:00');
   },4100);
 }
 function startTimed(){
@@ -942,10 +949,11 @@ function tick(){
 }
 const pot=()=> S.phase==='timed' ? 100 + Math.floor(120-S.remain)*2 + S.draws*15 : 0;
 
-function doDraw(){
-  if(S.phase!=='timed'||S.sel.size!==1||S.busy) return;
+function doDraw(tile){
+  if(S.phase!=='timed'||S.busy) return;
+  const i = tile ? S.rack.indexOf(tile) : S.rack.findIndex(t=>S.sel.has(t.id));
+  if(i<0) return;
   S.busy=true; S.submitArmed=0; sDraw();
-  const i=S.rack.findIndex(t=>S.sel.has(t.id));
   S.rack[i].el.classList.add('out');
   setTimeout(()=>{
     S.rack[i].el.remove();
@@ -1025,10 +1033,12 @@ function updatePhaseUI(){
   if(S.phase==='charleston'){
     $('phaseChip').textContent='CHARLESTON — PASS '+(S.passes+1)+' OF 4';
     $('mainBtn').textContent='PASS 3 TILES';
+    $('rackHint').textContent='DRAG TO ARRANGE';
   }else if(S.phase==='timed'){
     $('phaseChip').textContent='BUILD YOUR HAND';
     $('cdots').style.display='none';
     $('mainBtn').textContent='DISCARD & DRAW';
+    $('rackHint').textContent='DOUBLE-TAP TO SWAP';
   }
   updateButtons();
 }
