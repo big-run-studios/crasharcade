@@ -190,6 +190,8 @@
   .hrow .away.a1{background:rgba(255,194,51,.25);color:var(--gold);}
   .hrow .away.a2{background:rgba(255,194,51,.12);color:#d8b05e;}
   .hrow.flash{animation:rowflash 1.2s ease 2;}
+  /* hand would match if the joker could sit in a pair/single slot */
+  .cand .away.jlk,.hrow .away.jlk{background:rgba(160,74,214,.28);color:#e2b8ff;}
   @keyframes rowflash{0%,100%{background:rgba(255,255,255,.025);}50%{background:rgba(255,194,51,.22);}}
 
   /* start / result */
@@ -294,6 +296,8 @@
     <div class="rules">
       Deal a rack of 14 tiles.<br>
       <b>4 Charleston passes</b> — swap 3 tiles each, no clock.<br>
+      <b>Jokers</b> are wild in pungs, kongs &amp; quints —<br>
+      never in pairs or singles.<br>
       Then <b>120 seconds</b>: swap 1 tile at a time,<br>
       build a valid hand from the official card.<br>
       <b>SUBMIT</b> a valid hand for the big payout.<br>
@@ -707,7 +711,9 @@ function rackCounts(){
   for(const t of S.rack) c[t.code]=(c[t.code]||0)+1;
   return c;
 }
-// distance = tiles still needed (jokers may fill joker-eligible deficits)
+// distance = tiles still needed (jokers may fill joker-eligible deficits).
+// Also returns the distance if jokers were fully wild, to detect hands
+// blocked only by the jokers-never-in-pairs/singles rule.
 function variantDist(counts, variant){
   const jokers=counts['JK']||0;
   let defNJ=0, defJ=0;
@@ -717,14 +723,20 @@ function variantDist(counts, variant){
     defNJ += nj-useNJ;
     defJ  += Math.max(0, jk-(have-useNJ));
   }
-  return defNJ + Math.max(0, defJ-jokers);
+  return [defNJ + Math.max(0, defJ-jokers), Math.max(0, defNJ+defJ-jokers)];
 }
 function recompute(){
   const counts=rackCounts();
   for(const h of HANDS){
-    let best=99;
-    for(const v of h.variants){ const d=variantDist(counts,v); if(d<best) best=d; }
+    let best=99, bestW=99;
+    for(const v of h.variants){ const [d,dw]=variantDist(counts,v); if(d<best) best=d; if(dw<bestW) bestW=dw; }
     h._dist=best;
+    h._jlock = best>0 && bestW===0;   // would match if jokers could fill pairs/singles
+  }
+  if(S.phase==='timed'){
+    $('msgSub').textContent = (counts['JK']||0)>0
+      ? 'Jokers are wild in groups of 3+ — never pairs or singles'
+      : 'Double-tap a tile to swap it · SUBMIT or CASH OUT before 0:00';
   }
   S.ranked=[...HANDS].sort((a,b)=> a._dist-b._dist || b.val-a.val);
   S.match = S.ranked.filter(h=>h._dist===0)
@@ -961,6 +973,7 @@ function doDraw(tile){
     S.rack[i]=nt; makeTileEl(nt).classList.add('newt');
     clearSel(); layout(); S.draws++;
     S.busy=false; recompute();
+    if(nt.code==='JK') toastMsg('JOKER! WILD IN GROUPS OF 3+ ONLY');
   },180);
 }
 function doSubmit(){
@@ -969,7 +982,8 @@ function doSubmit(){
     if(Date.now()-S.submitArmed>1800){
       S.submitArmed=Date.now();
       const near=S.ranked[0];
-      toastMsg(near?('NO MATCH — '+near._dist+' AWAY. TAP AGAIN TO FORCE'):'NO MATCH — TAP AGAIN TO FORCE');
+      toastMsg(near&&near._jlock ? 'JOKERS CAN\'T FILL PAIRS OR SINGLES — TAP AGAIN TO FORCE'
+        : near?('NO MATCH — '+near._dist+' AWAY. TAP AGAIN TO FORCE'):'NO MATCH — TAP AGAIN TO FORCE');
       sErr(); return;
     }
     endRun('invalid'); return;
@@ -1019,7 +1033,8 @@ function endRun(kind){
     T.textContent='CRASHED'; T.classList.add('crash');
     SC.textContent='$0';
     D.innerHTML='Your rack did not match any official 2026 hand.'
-      +(near?('<br>Closest: <span class="pat">'+patternHTML(near)+'</span>'+near._dist+' tile'+(near._dist>1?'s':'')+' away'):'');
+      +(near?('<br>Closest: <span class="pat">'+patternHTML(near)+'</span>'+near._dist+' tile'+(near._dist>1?'s':'')+' away'):'')
+      +(near&&near._jlock?'<br><b>Your joker was stuck in a pair/single slot — jokers only fill groups of 3+.</b>':'');
     sFail();
   }
   if(kind==='timeout'||kind==='invalid') musicSet(false);   // music rides win/cash-out, dies on a crash
@@ -1058,8 +1073,8 @@ function renderCands(){
   const wrap=$('candRows'); wrap.innerHTML='';
   S.ranked.slice(0, document.documentElement.clientHeight>=900?5:3).forEach(h=>{
     const row=document.createElement('div'); row.className='cand';
-    const a=h._dist===0?'a0':h._dist===1?'a1':h._dist===2?'a2':'';
-    row.innerHTML='<span class="away '+a+'">'+(h._dist===0?'READY':h._dist+' AWAY')+'</span>'
+    const a=(h._dist===0?'a0':h._dist===1?'a1':h._dist===2?'a2':'')+(h._jlock?' jlk':'');
+    row.innerHTML='<span class="away '+a+'">'+(h._dist===0?'READY':h._jlock?'J✕ '+h._dist:h._dist+' AWAY')+'</span>'
       +'<span class="pat">'+patternHTML(h)+'</span><span class="hv">'+h.val+'</span>';
     row.addEventListener('click',()=>openCard(h));
     wrap.appendChild(row);
@@ -1095,8 +1110,8 @@ function updateAwayBadges(){
   for(const h of HANDS){
     if(!h._row) continue;
     const b=h._row.querySelector('.away');
-    b.className='away '+(h._dist===0?'a0':h._dist===1?'a1':h._dist===2?'a2':'');
-    b.textContent = h._dist===0?'MATCH':h._dist<99?h._dist+' AWAY':'—';
+    b.className='away '+(h._dist===0?'a0':h._dist===1?'a1':h._dist===2?'a2':'')+(h._jlock?' jlk':'');
+    b.textContent = h._dist===0?'MATCH':h._jlock?'J✕ '+h._dist:h._dist<99?h._dist+' AWAY':'—';
     h._row.style.opacity = h._dist>4?.45:1;
   }
 }
