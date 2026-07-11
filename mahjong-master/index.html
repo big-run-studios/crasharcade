@@ -216,6 +216,14 @@
     background:rgba(10,40,28,.95);border:1.5px solid var(--gold);color:var(--gold);font-family:var(--display);font-weight:800;font-size:14px;
     letter-spacing:1px;padding:12px 22px;border-radius:999px;box-shadow:0 0 24px rgba(255,194,51,.45);transition:opacity .2s;white-space:nowrap;}
   #toast.show{opacity:1;}
+
+  #bigMsg{position:absolute;left:0;right:0;top:42%;z-index:45;text-align:center;pointer-events:none;display:none;
+    font-family:var(--display);font-weight:900;font-size:30px;letter-spacing:2px;color:var(--gold);
+    text-shadow:0 0 26px rgba(255,194,51,.75),0 4px 14px rgba(0,0,0,.6);padding:0 20px;}
+  #bigMsg.show{display:block;animation:bigpop .45s ease;}
+  #bigMsg.go{color:var(--jade);text-shadow:0 0 30px rgba(61,220,151,.9),0 4px 14px rgba(0,0,0,.6);}
+  @keyframes bigpop{0%{transform:scale(.4);opacity:0;}60%{transform:scale(1.12);opacity:1;}100%{transform:scale(1);}}
+  @media (min-width:600px){ #bigMsg{font-size:46px;} }
 </style>
 </head>
 <body>
@@ -307,6 +315,7 @@
   </div>
 
   <div id="toast"></div>
+  <div id="bigMsg"></div>
 </div>
 
 <audio id="music" src="music.mp3" loop preload="auto"></audio>
@@ -792,7 +801,7 @@ function makeTileEl(t){
 /* ================= drag & select ================= */
 let dragSt=null;
 function onDown(e,t){
-  if(S.busy||S.phase==='start'||S.phase==='over') return;
+  if(S.busy||S.phase==='start'||S.phase==='over'||S.phase==='interlude') return;
   e.preventDefault();
   const r=rackEl.getBoundingClientRect();
   const i=S.rack.indexOf(t), p=slotXY(i);
@@ -885,12 +894,32 @@ function doPass(){
     clearSel(); layout(); S.passes++;
     document.querySelectorAll('.cdot').forEach((d,i)=>d.classList.toggle('done',i<S.passes));
     S.busy=false;
-    if(S.passes>=4){ startTimed(); }
+    if(S.passes>=4){ charlestonDone(); }
     else{
       updatePhaseUI(); recompute();
       setMsg('3 new tiles!','Pass '+(S.passes+1)+' of 4 — pick 3 more to swap');
     }
   },240);
+}
+function bigMsg(txt,go){
+  const el=$('bigMsg');
+  el.textContent=txt;
+  el.classList.toggle('go',!!go);
+  el.classList.remove('show'); void el.offsetWidth;
+  el.classList.add('show');
+}
+function charlestonDone(){
+  S.phase='interlude';               // input locked until GO
+  clearSel(); updatePhaseUI(); recompute();
+  $('phaseChip').textContent='CHARLESTON COMPLETE';
+  setMsg('','');
+  bigMsg('CHARLESTON COMPLETE'); sPass();
+  setTimeout(()=>{ bigMsg('GET READY…'); sTick(); },1200);
+  setTimeout(()=>{ bigMsg('GO!',true); startTimed(); },3200);   // "Get Ready" holds for 2s
+  setTimeout(()=>{
+    $('bigMsg').classList.remove('show');
+    setMsg('Build a hand from the card.','Swap 1 tile at a time · SUBMIT or CASH OUT before 0:00');
+  },4100);
 }
 function startTimed(){
   S.phase='timed';
@@ -898,8 +927,7 @@ function startTimed(){
   updatePhaseUI(); recompute();
   $('timerWrap').style.display='block';
   $('crashRow').style.display='flex';
-  toastMsg('120 SECONDS — GO!'); sGo();
-  setMsg('Build a hand from the card.','Swap 1 tile at a time · SUBMIT or CASH OUT before 0:00');
+  sGo();
   S.timerId=setInterval(tick,100);
 }
 function tick(){
@@ -1084,7 +1112,7 @@ $('cardSearch').addEventListener('input',(e)=>{
 
 /* ---- sort ---- */
 function quickSort(){
-  if(S.phase==='start'||S.phase==='over'||S.busy) return;
+  if(S.phase==='start'||S.phase==='over'||S.phase==='interlude'||S.busy) return;
   S.rack.sort((a,b)=>SORT_KEY(a.code)-SORT_KEY(b.code));
   layout(); sClick();
 }
