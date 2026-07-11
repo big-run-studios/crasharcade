@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Tile Debug — Mahjong Master</title>
+<link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@500;600;700&family=Orbitron:wght@600;700;900&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --felt:#0a2b1e; --gold:#ffc233; --jade:#3ddc97; --ice:#cfe8dc; --dim:#7fa896;
+    --tileW:100px;          /* composite tile width (slider) */
+    --glyph:84;             /* glyph width as % of tile width (slider) */
+    --glyphY:0;             /* glyph vertical offset as % of tile height (slider) */
+  }
+  *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent;}
+  body{
+    font-family:'Fredoka',sans-serif;color:var(--ice);min-height:100%;
+    background:#0a2b1e;
+    padding:16px 18px 60px;
+  }
+  h1{font-family:'Orbitron',sans-serif;font-weight:900;font-size:20px;letter-spacing:1px;color:#fff;}
+  h1 span{color:var(--gold);}
+  .sub{color:var(--dim);font-size:13px;margin:4px 0 14px;}
+  a{color:var(--jade);}
+
+  /* controls */
+  #controls{position:sticky;top:0;z-index:20;background:rgba(6,26,18,.96);border:1px solid rgba(61,220,151,.3);
+    border-radius:14px;padding:10px 14px;display:flex;flex-wrap:wrap;gap:14px 26px;align-items:center;margin-bottom:20px;
+    box-shadow:0 8px 22px rgba(0,0,0,.45);}
+  .ctl{display:flex;align-items:center;gap:8px;font-family:'Orbitron',sans-serif;font-size:10px;font-weight:700;letter-spacing:1px;color:var(--dim);}
+  .ctl output{color:var(--gold);width:52px;}
+  .ctl input[type=range]{width:130px;accent-color:var(--jade);}
+  .ctl label.tog{display:flex;gap:6px;align-items:center;cursor:pointer;color:var(--ice);}
+
+  /* the in-game composite tile */
+  .gtile{position:relative;width:var(--tileW);aspect-ratio:621/939;flex:none;
+    background:url(tiles/blank.png) center/100% 100% no-repeat;
+    filter:drop-shadow(0 4px 6px rgba(0,0,0,.45));}
+  .gtile img.glyph{position:absolute;left:50%;top:50%;width:calc(var(--glyph)*1%);
+    transform:translate(-50%,calc(-50% + var(--glyphY)*1%));}
+  .gtile.noblank{background:none;}
+
+  body.checker .gtile, body.checker .raw{
+    background-color:transparent;
+    background-image:
+      linear-gradient(45deg,#3a4a42 25%,transparent 25%,transparent 75%,#3a4a42 75%),
+      linear-gradient(45deg,#3a4a42 25%,transparent 25%,transparent 75%,#3a4a42 75%);
+    background-size:16px 16px;background-position:0 0,8px 8px;}
+  body.checker .gtile{background-image:
+      url(tiles/blank.png),
+      linear-gradient(45deg,#3a4a42 25%,transparent 25%,transparent 75%,#3a4a42 75%),
+      linear-gradient(45deg,#3a4a42 25%,transparent 25%,transparent 75%,#3a4a42 75%);
+    background-size:100% 100%,16px 16px,16px 16px;background-position:center,0 0,8px 8px;background-repeat:no-repeat,repeat,repeat;}
+  body.checker .gtile.noblank{background-image:
+      linear-gradient(45deg,#3a4a42 25%,transparent 25%,transparent 75%,#3a4a42 75%),
+      linear-gradient(45deg,#3a4a42 25%,transparent 25%,transparent 75%,#3a4a42 75%);}
+
+  /* raw asset view */
+  .raw{position:relative;width:var(--tileW);aspect-ratio:621/939;flex:none;display:flex;align-items:center;justify-content:center;}
+  .raw img{max-width:100%;max-height:100%;}
+
+  .catHead{font-family:'Orbitron',sans-serif;font-weight:800;font-size:13px;letter-spacing:2px;color:var(--jade);
+    margin:26px 2px 10px;border-bottom:1px solid rgba(61,220,151,.25);padding-bottom:5px;}
+  .grid{display:flex;flex-wrap:wrap;gap:14px;}
+  .cell{background:rgba(255,255,255,.03);border:1px solid rgba(61,220,151,.14);border-radius:12px;padding:10px;
+    display:flex;flex-direction:column;align-items:center;gap:8px;}
+  .pair{display:flex;gap:10px;align-items:flex-end;}
+  .cap{font-family:'Orbitron',sans-serif;font-size:9px;font-weight:700;letter-spacing:.8px;color:var(--ice);text-align:center;line-height:1.5;}
+  .cap small{display:block;color:var(--dim);letter-spacing:.4px;}
+  .cap .warn{display:block;color:#ff8a7a;}
+
+  /* mock rack */
+  .rackmock{position:relative;display:inline-flex;gap:6px;padding:10px;border-radius:14px;margin-top:6px;
+    background:linear-gradient(180deg,#1a4733,#0d2c1e);border:1.5px solid rgba(255,194,51,.25);
+    box-shadow:0 6px 18px rgba(0,0,0,.5), inset 0 1px 0 rgba(255,255,255,.08);}
+  #rackMockBig{gap:10px;padding:12px;border-radius:16px;}
+  .rackrow{margin-bottom:10px;}
+
+  #note{margin-top:26px;padding:12px 16px;border-radius:12px;background:rgba(255,194,51,.08);
+    border:1px solid rgba(255,194,51,.35);color:var(--gold);font-size:13px;line-height:1.55;max-width:760px;}
+</style>
+</head>
+<body>
+  <h1>MAHJONG <span>MASTER</span> — TILE ART DEBUG</h1>
+  <div class="sub">Every asset from MahjongMasterExport, shown raw and composited on <b>blank.png</b> exactly as the game would render it. <a href="index.html">→ back to game</a></div>
+
+  <div id="controls">
+    <span class="ctl">TILE SIZE <input type="range" id="szCtl" min="40" max="220" value="100"><output id="szOut">100px</output></span>
+    <span class="ctl">GLYPH SCALE <input type="range" id="glCtl" min="50" max="120" value="84"><output id="glOut">84%</output></span>
+    <span class="ctl">GLYPH Y <input type="range" id="gyCtl" min="-20" max="20" value="0"><output id="gyOut">0%</output></span>
+    <span class="ctl"><label class="tog"><input type="checkbox" id="ckCtl"> CHECKERBOARD (spot stray bg)</label></span>
+    <span class="ctl"><label class="tog"><input type="checkbox" id="rawCtl" checked> SHOW RAW</label></span>
+  </div>
+
+  <div class="catHead">MOCK RACK — PHONE SIZE (46px) AND TABLET (100px)</div>
+  <div class="rackrow"><span id="rackMock" class="rackmock"></span></div>
+  <div class="rackrow"><span id="rackMockBig" class="rackmock"></span></div>
+
+  <div id="sections"></div>
+
+  <div id="note">
+    <b>Known export issues to look for:</b> every PNG is trimmed to its content (no shared 1024 canvas), so glyph
+    scale/centering here is approximate — corner numbers won't align consistently until exports share a canvas.
+    Bam 1–9 include their own complete tile body (718×984) while every other face is a loose glyph composited onto
+    blank.png (621×939) — note the bams' slightly different tile shape/sheen in the mock rack. When the art is
+    final, tell me the GLYPH SCALE / GLYPH Y numbers that look right and I'll bake them into the game — or
+    re-export everything on a shared canvas (either all full tiles or all loose glyphs) and no tuning is needed.
+  </div>
+
+<script>
+'use strict';
+const M = {
+  "BAMS":       ["bam1","bam2","bam3","bam4","bam5","bam6","bam7","bam8","bam9"],
+  "CRAKS":      ["crak1","crak2","crak3","crak4","crak5","crak6","crak7","crak8","crak9"],
+  "DOTS":       ["dot1","dot2","dot3","dot4","dot5","dot6","dot7","dot8","dot9"],
+  "WINDS":      ["wind-n","wind-e","wind-w","wind-s"],
+  "DRAGONS + SOAP": ["drag-crak","drag-bam","soap"],
+  "FLOWERS (8 designs)": ["flower1","flower2","flower3","flower4","flower5","flower6","flower7","flower8"],
+  "JOKERS (2 designs)": ["joker1","joker2"],
+  "TILE CHROME": ["blank","back","bottom"],
+};
+// bams ship as full tiles (own body baked in) — composite without the blank underneath
+const FULLTILE = new Set(["bam1","bam2","bam3","bam4","bam5","bam6","bam7","bam8","bam9","back","blank"]);
+
+const sections=document.getElementById('sections');
+for(const [cat,names] of Object.entries(M)){
+  const h=document.createElement('div'); h.className='catHead'; h.textContent=cat;
+  sections.appendChild(h);
+  const g=document.createElement('div'); g.className='grid';
+  for(const n of names){
+    const cell=document.createElement('div'); cell.className='cell';
+    const pair=document.createElement('div'); pair.className='pair';
+    // composited in-game look
+    const t=document.createElement('div'); t.className='gtile'+(FULLTILE.has(n)?' noblank':'');
+    const im=document.createElement('img'); im.className='glyph'; im.src='tiles/'+n+'.png';
+    if(FULLTILE.has(n)){ im.style.width='100%'; im.style.transform='translate(-50%,-50%)'; }
+    t.appendChild(im); pair.appendChild(t);
+    // raw asset
+    const r=document.createElement('div'); r.className='raw';
+    const ri=document.createElement('img'); ri.src='tiles/'+n+'.png'; r.appendChild(ri);
+    pair.appendChild(r);
+    cell.appendChild(pair);
+    const cap=document.createElement('div'); cap.className='cap'; cap.innerHTML=n.toUpperCase();
+    ri.onload=()=>{
+      let extra='<small>'+ri.naturalWidth+'×'+ri.naturalHeight+'</small>';
+      if(FULLTILE.has(n)&&n.startsWith('bam')) extra+='<span class="warn">full-tile export (own body)</span>';
+      cap.innerHTML=n.toUpperCase()+extra;
+    };
+    cell.appendChild(cap);
+    g.appendChild(cell);
+  }
+  sections.appendChild(g);
+}
+
+// mock racks: one of each kind at phone size, and a tablet-size row
+const sample=['bam5','crak3','dot7','wind-n','drag-crak','soap','flower2','joker1'];
+function buildRack(el, w){
+  el.style.display='inline-flex';
+  for(const n of sample.slice(0,7)){
+    const t=document.createElement('div'); t.className='gtile'+(FULLTILE.has(n)?' noblank':'');
+    t.style.width=w+'px'; t.style.setProperty('--tileW',w+'px');
+    const im=document.createElement('img'); im.className='glyph'; im.src='tiles/'+n+'.png';
+    if(FULLTILE.has(n)){ im.style.width='100%'; im.style.transform='translate(-50%,-50%)'; }
+    t.appendChild(im); el.appendChild(t);
+  }
+}
+buildRack(document.getElementById('rackMock'),46);
+buildRack(document.getElementById('rackMockBig'),100);
+
+// controls
+const root=document.documentElement.style;
+szCtl.oninput=()=>{root.setProperty('--tileW',szCtl.value+'px');szOut.textContent=szCtl.value+'px';};
+glCtl.oninput=()=>{root.setProperty('--glyph',glCtl.value);glOut.textContent=glCtl.value+'%';};
+gyCtl.oninput=()=>{root.setProperty('--glyphY',gyCtl.value);gyOut.textContent=gyCtl.value+'%';};
+ckCtl.oninput=()=>document.body.classList.toggle('checker',ckCtl.checked);
+rawCtl.oninput=()=>document.querySelectorAll('.raw').forEach(r=>r.style.display=rawCtl.checked?'flex':'none');
+</script>
+</body>
+</html>

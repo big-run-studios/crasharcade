@@ -1,0 +1,237 @@
+{
+ "back": {
+  "h": 876,
+  "src": "MahjongTiles_0000_TileBack.png",
+  "w": 548
+ },
+ "bam1": {
+  "h": 984,
+  "src": "MahjongTiles_0000s_0008_Bam1.png",
+  "w": 718
+ },
+ "bam2": {
+  "h": 984,
+  "src": "MahjongTiles_0000s_0007_Bam2.png",
+  "w": 718
+ },
+ "bam3": {
+  "h": 984,
+  "src": "MahjongTiles_0000s_0006_Bam3.png",
+  "w": 718
+ },
+ "bam4": {
+  "h": 984,
+  "src": "MahjongTiles_0000s_0005_Bam4.png",
+  "w": 718
+ },
+ "bam5": {
+  "h": 984,
+  "src": "MahjongTiles_0000s_0004_Bam5.png",
+  "w": 718
+ },
+ "bam6": {
+  "h": 984,
+  "src": "MahjongTiles_0000s_0003_Bam6.png",
+  "w": 718
+ },
+ "bam7": {
+  "h": 984,
+  "src": "MahjongTiles_0000s_0002_Bam7.png",
+  "w": 718
+ },
+ "bam8": {
+  "h": 984,
+  "src": "MahjongTiles_0000s_0001_Bam8.png",
+  "w": 718
+ },
+ "bam9": {
+  "h": 984,
+  "src": "MahjongTiles_0000s_0000_Bam9.png",
+  "w": 718
+ },
+ "blank": {
+  "h": 939,
+  "src": "MahjongTiles_0001_BlankTile.png",
+  "w": 621
+ },
+ "bottom": {
+  "h": 146,
+  "src": "MahjongTiles_0002_BottomOfTile.png",
+  "w": 376
+ },
+ "crak1": {
+  "h": 686,
+  "src": "MahjongTiles_0002s_0000s_0008_Crak1.png",
+  "w": 534
+ },
+ "crak2": {
+  "h": 722,
+  "src": "MahjongTiles_0002s_0000s_0007_Crak2.png",
+  "w": 521
+ },
+ "crak3": {
+  "h": 731,
+  "src": "MahjongTiles_0002s_0000s_0006_Crak3.png",
+  "w": 544
+ },
+ "crak4": {
+  "h": 674,
+  "src": "MahjongTiles_0002s_0000s_0005_Crak4.png",
+  "w": 508
+ },
+ "crak5": {
+  "h": 772,
+  "src": "MahjongTiles_0002s_0000s_0004_Crak5.png",
+  "w": 567
+ },
+ "crak6": {
+  "h": 712,
+  "src": "MahjongTiles_0002s_0000s_0003_Crak6.png",
+  "w": 536
+ },
+ "crak7": {
+  "h": 658,
+  "src": "MahjongTiles_0002s_0000s_0002_Crak7.png",
+  "w": 482
+ },
+ "crak8": {
+  "h": 678,
+  "src": "MahjongTiles_0002s_0000s_0001_Crak8.png",
+  "w": 482
+ },
+ "crak9": {
+  "h": 703,
+  "src": "MahjongTiles_0002s_0000s_0000_Crak9.png",
+  "w": 522
+ },
+ "dot1": {
+  "h": 564,
+  "src": "MahjongTiles_0001s_0008_Dot1.png",
+  "w": 468
+ },
+ "dot2": {
+  "h": 574,
+  "src": "MahjongTiles_0001s_0007_Dot2.png",
+  "w": 470
+ },
+ "dot3": {
+  "h": 664,
+  "src": "MahjongTiles_0001s_0006_Dot3.png",
+  "w": 541
+ },
+ "dot4": {
+  "h": 588,
+  "src": "MahjongTiles_0001s_0005_Dot4.png",
+  "w": 476
+ },
+ "dot5": {
+  "h": 695,
+  "src": "MahjongTiles_0001s_0004_Dot5.png",
+  "w": 497
+ },
+ "dot6": {
+  "h": 667,
+  "src": "MahjongTiles_0001s_0003_Dot6.png",
+  "w": 415
+ },
+ "dot7": {
+  "h": 687,
+  "src": "MahjongTiles_0001s_0002_Dot7.png",
+  "w": 596
+ },
+ "dot8": {
+  "h": 611,
+  "src": "MahjongTiles_0001s_0001_Dot8.png",
+  "w": 553
+ },
+ "dot9": {
+  "h": 596,
+  "src": "MahjongTiles_0001s_0000_Dot9.png",
+  "w": 473
+ },
+ "drag-bam": {
+  "h": 658,
+  "src": "MahjongTiles_0003s_0003_DragBam.png",
+  "w": 522
+ },
+ "drag-crak": {
+  "h": 694,
+  "src": "MahjongTiles_0003s_0002_DragCrak.png",
+  "w": 530
+ },
+ "flower1": {
+  "h": 707,
+  "src": "MahjongTiles_0002s_0005_Flower1.png",
+  "w": 567
+ },
+ "flower2": {
+  "h": 687,
+  "src": "MahjongTiles_0002s_0006_Flower2.png",
+  "w": 562
+ },
+ "flower3": {
+  "h": 671,
+  "src": "MahjongTiles_0002s_0007_Flower3.png",
+  "w": 545
+ },
+ "flower4": {
+  "h": 679,
+  "src": "MahjongTiles_0002s_0008_Flower4.png",
+  "w": 600
+ },
+ "flower5": {
+  "h": 690,
+  "src": "MahjongTiles_0002s_0009_Flower-5.png",
+  "w": 555
+ },
+ "flower6": {
+  "h": 702,
+  "src": "MahjongTiles_0002s_0010_Flower6.png",
+  "w": 574
+ },
+ "flower7": {
+  "h": 730,
+  "src": "MahjongTiles_0002s_0011_Flower7.png",
+  "w": 524
+ },
+ "flower8": {
+  "h": 722,
+  "src": "MahjongTiles_0002s_0012_Flower8.png",
+  "w": 548
+ },
+ "joker1": {
+  "h": 730,
+  "src": "MahjongTiles_0003s_0001_Joker1.png",
+  "w": 469
+ },
+ "joker2": {
+  "h": 731,
+  "src": "MahjongTiles_0003s_0000_Joker2.png",
+  "w": 482
+ },
+ "soap": {
+  "h": 761,
+  "src": "MahjongTiles_0002s_0004_Soap.png",
+  "w": 550
+ },
+ "wind-e": {
+  "h": 809,
+  "src": "MahjongTiles_0002s_0001_East.png",
+  "w": 564
+ },
+ "wind-n": {
+  "h": 765,
+  "src": "MahjongTiles_0002s_0000_North.png",
+  "w": 528
+ },
+ "wind-s": {
+  "h": 828,
+  "src": "MahjongTiles_0002s_0003_South.png",
+  "w": 590
+ },
+ "wind-w": {
+  "h": 893,
+  "src": "MahjongTiles_0002s_0002_West.png",
+  "w": 620
+ }
+}
