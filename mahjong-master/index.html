@@ -306,9 +306,9 @@
       and falls 10/sec, −100 per tile swap.<br>
       <b>MAHJONG</b> pays the hand's point value <b>×1000</b><br>
       plus your remaining score as a time bonus.<br>
-      <b>CASH OUT</b> bonus: 1 away <b>+10,000</b> ·<br>
-      2 away <b>+5,000</b> · 3 away <b>+1,000</b>.<br>
-      4+ away, invalid hand or time up = <b>ZERO</b>.
+      Submit or cash out near a hand for a bonus:<br>
+      1 away <b>+10,000</b> · 2 away <b>+5,000</b> · 3 away <b>+1,000</b>.<br>
+      4+ away or time up = <b>ZERO</b>.
     </div>
     <div class="warnbox" id="startWarn"></div>
     <button class="bigbtn" id="dealBtn">DEAL TILES</button>
@@ -968,7 +968,8 @@ function tick(){
   $('timerWrap').classList.toggle('low',S.remain<=30);
   const sc=score(), b=cashBonus(bestDist());
   $('cashBtn').textContent = b===null ? 'CASH OUT — 4+ AWAY' : 'CASH OUT '+fmt(sc+b);
-  if(S.match) $('submitBtn').textContent='MAHJ! ✓ '+fmt(S.match.val*1000+sc);
+  $('submitBtn').textContent = S.match ? 'MAHJ! ✓ '+fmt(S.match.val*1000+sc)
+    : b===null ? 'SUBMIT — 4+ AWAY' : 'SUBMIT '+fmt(sc+b);
   if(S.remain<=10 && Math.ceil(S.remain)!==S._lastTickS){ S._lastTickS=Math.ceil(S.remain); sTick(); }
   if(S.remain<=0) endRun('timeout');
 }
@@ -1001,17 +1002,17 @@ function doDraw(tile){
 }
 function doSubmit(){
   if(S.phase!=='timed'||S.busy) return;
-  if(!S.match){
+  if(S.match){ endRun('win'); return; }
+  // no complete hand: near-misses still score — only 4+ away pays zero
+  if(cashBonus(bestDist())===null){
     if(Date.now()-S.submitArmed>1800){
       S.submitArmed=Date.now();
-      const near=S.ranked[0];
-      toastMsg(near&&near._jlock ? 'JOKERS CAN\'T FILL PAIRS OR SINGLES — TAP AGAIN TO FORCE'
-        : near?('NO MATCH — '+near._dist+' AWAY. TAP AGAIN TO FORCE'):'NO MATCH — TAP AGAIN TO FORCE');
+      toastMsg('4+ AWAY PAYS 0 — TAP AGAIN TO END THE RUN');
       sErr(); return;
     }
     endRun('invalid'); return;
   }
-  endRun('win');
+  endRun('near');
 }
 function doCash(){
   if(S.phase!=='timed'||S.busy) return;
@@ -1038,7 +1039,7 @@ function endRun(kind){
       +' + time bonus <b style="color:var(--gold)">'+fmt(bonus)+'</b>'
       +'<br>'+wasRemain.toFixed(1)+'s left · '+wasDraws+' swap'+(wasDraws===1?'':'s');
     sWin();
-  }else if(kind==='cash'){
+  }else if(kind==='cash'||kind==='near'){
     const base=scoreAt(wasRemain,wasDraws);
     const d=bestDist(), b=cashBonus(d);
     const p=b===null?0:base+b;
@@ -1049,11 +1050,13 @@ function endRun(kind){
       D.innerHTML='You were '+d+' tiles away — 4 or more banks nothing.<br>Get within 3 of a hand before cashing out.';
       sFail();
     }else{
-      T.textContent='CASHED OUT';
+      const near=S.ranked[0];
+      T.textContent = kind==='near' ? 'SO CLOSE!' : 'CASHED OUT';
       SC.textContent='+'+fmt(p);
       D.innerHTML='score '+fmt(base)+' + <b style="color:var(--gold)">'+fmt(b)+'</b> for being '
-        +(d===0?'ready':d+' away')+'<br>with '+wasRemain.toFixed(1)+'s left. That hand would have paid '
-        +fmt((S.ranked[0]?S.ranked[0].val:25)*1000)+'…';
+        +(d===0?'ready':d+' away')+' with '+wasRemain.toFixed(1)+'s left.'
+        +'<br>Mahjong on <span class="pat">'+patternHTML(near)+'</span>would have paid '+fmt(near.val*1000+base)+'…'
+        +(near._jlock?'<br><b>Your joker was stuck in a pair/single slot — jokers only fill groups of 3+.</b>':'');
       sCash();
     }
   }else if(kind==='timeout'){
@@ -1061,16 +1064,15 @@ function endRun(kind){
     T.textContent='CRASHED'; T.classList.add('crash');
     SC.textContent='0';
     D.innerHTML='Time expired before you submitted or cashed out.'
-      +(b2!==null?'<br><b>You were '+(near._dist===0?'ready':near._dist+' away')+' — CASH OUT would have banked '
+      +(b2!==null?'<br><b>You were '+(near._dist===0?'ready':near._dist+' away')+' — ending the run would have banked '
         +fmt(scoreAt(0,wasDraws)+b2)+'.</b>':'');
     sFail();
   }else{
-    const near=S.ranked[0], b2=near?cashBonus(near._dist):null;
+    const near=S.ranked[0];
     T.textContent='CRASHED'; T.classList.add('crash');
     SC.textContent='0';
-    D.innerHTML='Your rack did not match any official 2026 hand — SUBMIT pays only with a complete hand.'
-      +(near?('<br>Closest: <span class="pat">'+patternHTML(near)+'</span>'+near._dist+' tile'+(near._dist>1?'s':'')+' away'):'')
-      +(b2!==null?'<br><b>CASH OUT would have banked '+fmt(scoreAt(wasRemain,wasDraws)+b2)+' instead of 0.</b>':'')
+    D.innerHTML='You ended the run 4+ tiles from every hand — that pays 0.'
+      +(near?('<br>Closest: <span class="pat">'+patternHTML(near)+'</span>'+near._dist+' tiles away'):'')
       +(near&&near._jlock?'<br><b>Your joker was stuck in a pair/single slot — jokers only fill groups of 3+.</b>':'');
     sFail();
   }
