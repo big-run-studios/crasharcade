@@ -131,6 +131,7 @@
     border-bottom:1px solid rgba(61,220,151,.25);padding-bottom:4px;}
   .hrow{display:flex;align-items:center;gap:8px;padding:8px 8px;border-radius:10px;margin-bottom:2px;background:rgba(255,255,255,.025);}
   .hrow .pat{flex:1;font-size:13.5px;font-weight:600;letter-spacing:.6px;line-height:1.3;}
+  .hrow .hnote{display:block;font-size:10px;font-weight:500;color:var(--dim);letter-spacing:.3px;margin-top:1px;}
   .hrow .cx{font-family:var(--display);font-size:10px;font-weight:700;color:var(--dim);flex:none;width:14px;text-align:center;}
   .hrow .hv{font-family:var(--display);font-weight:800;font-size:13px;color:var(--gold);flex:none;width:30px;text-align:right;}
   .hrow .away{font-family:var(--display);font-weight:800;font-size:9px;letter-spacing:.5px;flex:none;width:54px;text-align:center;
@@ -214,7 +215,7 @@
   <!-- card reference overlay -->
   <div class="overlay" id="cardOv">
     <div class="ovhead">
-      <h2>2026 CARD — VALID HANDS</h2>
+      <h2>2026 HANDS — TRAINER REFERENCE</h2>
       <span id="cardTimer">60.0</span>
       <button class="xbtn" id="cardClose">✕</button>
     </div>
@@ -260,91 +261,285 @@
 /* =====================================================================
    MAHJONG MASTER — American Mah Jongg crash game
    =====================================================================
-   HAND DATABASE — !!! PLACEHOLDER !!!
+   HAND DATABASE — 2026 hand combinations (trainer representation)
    ---------------------------------------------------------------------
-   CARD_META.official is FALSE. The hands below are ENGINE-TEST hands
-   only. They are NOT the official National Mah Jongg League 2026 card.
-   To ship: replace HANDS[] with the licensed 2026 NMJL card data and
-   set CARD_META.official = true. The schema below supports everything
-   the NMJL card needs.
+   Encodes the 72 hand combinations of the 2026 American Mah Jongg card
+   as researched from multiple corroborating public analyses (patterns
+   cross-checked against tile photos and shape/value statistics). This is
+   our own representation — no card layout, wording, or artwork is used.
+   Entries with vfy:true carry a value or detail still to be verified
+   against a purchased official card; the UI shows those with a dagger.
 
    Hand record schema:
-     cat  : category string as printed on the card (e.g. 'CONSECUTIVE RUN')
-     val  : official point value (25/30/35/40/45/50 ...)
-     con  : true = concealed hand ("C"), false/absent = exposed ("X")
-     noJ  : true = jokers never allowed (Singles & Pairs category)
-     run  : length of the consecutive-number window this hand slides over.
-            0/absent = fixed numbers. 1 = "any like number" (window of 1).
-            4 = numbers v..v+3 for v = 1..6, etc.
-     d    : display pattern, array of [text, role?] segments; role 'a'/'b'/'c'
-            colors the segment like the printed card's suit colors.
-     g    : groups, array of [count, tileSpec]:
-              'FL'            any flower
-              'G0'            soap / white dragon (also the "0" in years)
-              {n:2, s:'a'}    number 2 in suit-role a (roles map to distinct
-                              suits: bams/craks/dots, all permutations tried)
-              {n:'v+1', s:'b'} run-relative number (needs run > 0)
-              {w:'N'}         specific wind N/E/W/S
-              {d:'a'}         dragon matching suit-role a (bam→green,
-                              crak→red, dot→soap)
-            Joker rule (NMJL): jokers may fill any slot in a group of 3+
-            identical tiles, never in pairs/singles — computed automatically
-            (count >= 3 && !noJ). Group counts must total exactly 14.
+     id   : our line label for maintenance (e.g. 'CR-5B')
+     cat  : category (as commonly named: 2026, 2468, ANY LIKE NUMBERS, ...)
+     val  : point value (25/30/35/40/45/50/75)
+     con  : true = concealed hand ("C"), else exposable ("X")
+     noJ  : true = jokers never allowed (Singles & Pairs)
+     vfy  : true = value/detail pending verification (dagger in UI)
+     note : constraint summary in our own words ("2 suits · kong 2 or 6")
+     run  : consecutive-number window length (v slides 1..10-run)
+     nums : explicit list for v instead of a run (e.g. [1,3,5,7,9])
+     nums2: list for a second independent number w (w != v enforced)
+     d    : display segments [text, role?]; roles a/b/c are colored
+     g    : groups [count, tileSpec]; alts: array of alternative group
+            sets (any one may match), each summing to 14:
+              'FL'             any flower        'G0' soap (also zero)
+              'GR'/'GG'        specific dragon
+              {n:2,s:'a'}      number in suit-role a (roles = distinct suits)
+              {n:'v+1',s:'b'}  run-relative number ('v' or 'w' base)
+              {w:'N'}          specific wind
+              {d:'a'}          dragon matching suit-role a
+              {d:'!a'}         dragon NOT matching suit-role a
+            Jokers may fill any slot in a group of 3+ identical tiles,
+            never pairs/singles (auto: count>=3 && !noJ). Groups must
+            total exactly 14.
    ===================================================================== */
 const CARD_META = { year: 2026, official: false };
 
 const HANDS = [
-  // ---- 2026 (year hands; 0 = soap) ----
-  {cat:'2026', val:25, d:[['FFFF'],['2026','a'],['222','a'],['666','a']],
-   g:[[4,'FL'],[2,{n:2,s:'a'}],[1,'G0'],[1,{n:6,s:'a'}],[3,{n:2,s:'a'}],[3,{n:6,s:'a'}]]},
-  {cat:'2026', val:30, d:[['FF'],['2026','a'],['2026','b'],['2026','c']],
-   g:[[2,'FL'],[2,{n:2,s:'a'}],[1,'G0'],[1,{n:6,s:'a'}],[2,{n:2,s:'b'}],[1,'G0'],[1,{n:6,s:'b'}],[2,{n:2,s:'c'}],[1,'G0'],[1,{n:6,s:'c'}]]},
-  {cat:'2026', val:25, d:[['222','a'],['0000'],['222','b'],['6666','b']],
-   g:[[3,{n:2,s:'a'}],[4,'G0'],[3,{n:2,s:'b'}],[4,{n:6,s:'b'}]]},
-  // ---- 2468 ----
-  {cat:'2468', val:25, d:[['222','a'],['4444','a'],['666','b'],['8888','b']],
-   g:[[3,{n:2,s:'a'}],[4,{n:4,s:'a'}],[3,{n:6,s:'b'}],[4,{n:8,s:'b'}]]},
-  {cat:'2468', val:25, d:[['FFFF'],['22','a'],['44','a'],['666','a'],['888','a']],
-   g:[[4,'FL'],[2,{n:2,s:'a'}],[2,{n:4,s:'a'}],[3,{n:6,s:'a'}],[3,{n:8,s:'a'}]]},
-  {cat:'2468', val:30, d:[['22','a'],['44','a'],['666','a'],['888','a'],['DDDD','a']],
-   g:[[2,{n:2,s:'a'}],[2,{n:4,s:'a'}],[3,{n:6,s:'a'}],[3,{n:8,s:'a'}],[4,{d:'a'}]]},
-  // ---- ANY LIKE NUMBERS ----
-  {cat:'ANY LIKE NUMBERS', val:30, run:1, d:[['FFFF'],['1111','a'],['1111','b'],['DD','c']],
-   g:[[4,'FL'],[4,{n:'v',s:'a'}],[4,{n:'v',s:'b'}],[2,{d:'c'}]]},
-  // ---- QUINTS ----
-  {cat:'QUINTS', val:40, run:3, d:[['11111','a'],['22222','a'],['3333','b']],
-   g:[[5,{n:'v',s:'a'}],[5,{n:'v+1',s:'a'}],[4,{n:'v+2',s:'b'}]]},
-  {cat:'QUINTS', val:45, run:1, d:[['FF'],['111','a'],['11111','b'],['1111','c']],
-   g:[[2,'FL'],[3,{n:'v',s:'a'}],[5,{n:'v',s:'b'}],[4,{n:'v',s:'c'}]]},
-  // ---- CONSECUTIVE RUN ----
-  {cat:'CONSECUTIVE RUN', val:25, run:4, d:[['111','a'],['2222','a'],['333','a'],['4444','a']],
-   g:[[3,{n:'v',s:'a'}],[4,{n:'v+1',s:'a'}],[3,{n:'v+2',s:'a'}],[4,{n:'v+3',s:'a'}]]},
-  {cat:'CONSECUTIVE RUN', val:25, run:4, d:[['FF'],['111','a'],['2222','a'],['33','a'],['444','a']],
-   g:[[2,'FL'],[3,{n:'v',s:'a'}],[4,{n:'v+1',s:'a'}],[2,{n:'v+2',s:'a'}],[3,{n:'v+3',s:'a'}]]},
-  {cat:'CONSECUTIVE RUN', val:30, run:4, d:[['11','a'],['22','a'],['333','a'],['333','b'],['4444','b']],
-   g:[[2,{n:'v',s:'a'}],[2,{n:'v+1',s:'a'}],[3,{n:'v+2',s:'a'}],[3,{n:'v+2',s:'b'}],[4,{n:'v+3',s:'b'}]]},
-  // ---- 13579 ----
-  {cat:'13579', val:25, d:[['1111','a'],['333','a'],['555','b'],['7777','b']],
-   g:[[4,{n:1,s:'a'}],[3,{n:3,s:'a'}],[3,{n:5,s:'b'}],[4,{n:7,s:'b'}]]},
-  {cat:'13579', val:30, con:true, d:[['FF'],['11','a'],['333','a'],['555','a'],['77','a'],['99','a']],
-   g:[[2,'FL'],[2,{n:1,s:'a'}],[3,{n:3,s:'a'}],[3,{n:5,s:'a'}],[2,{n:7,s:'a'}],[2,{n:9,s:'a'}]]},
-  // ---- WINDS AND DRAGONS ----
-  {cat:'WINDS AND DRAGONS', val:25, d:[['NNNN'],['EEE'],['WWW'],['SSSS']],
+  // ================= 2026 (year; 0 = soap) =================
+  {id:'YR-1', cat:'2026', val:25, note:'2 suits',
+   d:[['222','a'],['000'],['2222','b'],['6666','b']],
+   g:[[3,{n:2,s:'a'}],[3,'G0'],[4,{n:2,s:'b'}],[4,{n:6,s:'b'}]]},
+  {id:'YR-2', cat:'2026', val:30, vfy:true, note:'2 suits · matching dragons · kong 2s or 6s', nums:[2,6],
+   d:[['2026','a'],['DDD','a'],['2222','b'],['DDD','b']],
+   g:[[2,{n:2,s:'a'}],[1,'G0'],[1,{n:6,s:'a'}],[3,{d:'a'}],[4,{n:'v',s:'b'}],[3,{d:'b'}]]},
+  {id:'YR-3', cat:'2026', val:25, note:'3 suits',
+   d:[['FFF'],['2026','a'],['222','b'],['6666','c']],
+   g:[[3,'FL'],[2,{n:2,s:'a'}],[1,'G0'],[1,{n:6,s:'a'}],[3,{n:2,s:'b'}],[4,{n:6,s:'c'}]]},
+  {id:'YR-4', cat:'2026', val:30, con:true, note:'2 suits',
+   d:[['22','a'],['00'],['222','b'],['666','b'],['NEWS']],
+   g:[[2,{n:2,s:'a'}],[2,'G0'],[3,{n:2,s:'b'}],[3,{n:6,s:'b'}],[1,{w:'N'}],[1,{w:'E'}],[1,{w:'W'}],[1,{w:'S'}]]},
+  // ================= 2468 =================
+  {id:'EV-1A', cat:'2468', val:25, note:'1 suit',
+   d:[['222','a'],['444','a'],['6666','a'],['8888','a']],
+   g:[[3,{n:2,s:'a'}],[3,{n:4,s:'a'}],[4,{n:6,s:'a'}],[4,{n:8,s:'a'}]]},
+  {id:'EV-1B', cat:'2468', val:25, note:'2 suits',
+   d:[['222','a'],['444','a'],['6666','b'],['8888','b']],
+   g:[[3,{n:2,s:'a'}],[3,{n:4,s:'a'}],[4,{n:6,s:'b'}],[4,{n:8,s:'b'}]]},
+  {id:'EV-2', cat:'2468', val:25, note:'2 suits',
+   d:[['FF'],['2222','a'],['44','b'],['66','b'],['8888','a']],
+   g:[[2,'FL'],[4,{n:2,s:'a'}],[2,{n:4,s:'b'}],[2,{n:6,s:'b'}],[4,{n:8,s:'a'}]]},
+  {id:'EV-3', cat:'2468', val:25, note:'1 suit · East and West only',
+   d:[['EE'],['22','a'],['444','a'],['666','a'],['88','a'],['WW']],
+   g:[[2,{w:'E'}],[2,{n:2,s:'a'}],[3,{n:4,s:'a'}],[3,{n:6,s:'a'}],[2,{n:8,s:'a'}],[2,{w:'W'}]]},
+  {id:'EV-4', cat:'2468', val:25, note:'2 suits · matching dragons · 2s and 8s only',
+   d:[['2222','a'],['DDD','a'],['8888','b'],['DDD','b']],
+   g:[[4,{n:2,s:'a'}],[3,{d:'a'}],[4,{n:8,s:'b'}],[3,{d:'b'}]]},
+  {id:'EV-5', cat:'2468', val:25, note:'1 suit',
+   d:[['FFF'],['22','a'],['44','a'],['666','a'],['8888','a']],
+   g:[[3,'FL'],[2,{n:2,s:'a'}],[2,{n:4,s:'a'}],[3,{n:6,s:'a'}],[4,{n:8,s:'a'}]]},
+  {id:'EV-6', cat:'2468', val:30, vfy:true, note:'3 suits · like kongs 2, 4, 6 or 8 with matching dragons', nums:[2,4,6,8],
+   d:[['2468','a'],['2222','b'],['D','b'],['2222','c'],['D','c']],
+   g:[[1,{n:2,s:'a'}],[1,{n:4,s:'a'}],[1,{n:6,s:'a'}],[1,{n:8,s:'a'}],[4,{n:'v',s:'b'}],[1,{d:'b'}],[4,{n:'v',s:'c'}],[1,{d:'c'}]]},
+  {id:'EV-7', cat:'2468', val:25, vfy:true, note:'2 suits · kong 2, 4, 6 or 8', nums:[2,4,6,8],
+   d:[['FFF'],['2468','a'],['FFF'],['2222','b']],
+   g:[[3,'FL'],[1,{n:2,s:'a'}],[1,{n:4,s:'a'}],[1,{n:6,s:'a'}],[1,{n:8,s:'a'}],[3,'FL'],[4,{n:'v',s:'b'}]]},
+  {id:'EV-8', cat:'2468', val:30, con:true, note:'2 suits',
+   d:[['FF'],['246','a'],['888','a'],['246','b'],['888','b']],
+   g:[[2,'FL'],[1,{n:2,s:'a'}],[1,{n:4,s:'a'}],[1,{n:6,s:'a'}],[3,{n:8,s:'a'}],[1,{n:2,s:'b'}],[1,{n:4,s:'b'}],[1,{n:6,s:'b'}],[3,{n:8,s:'b'}]]},
+  // ================= ANY LIKE NUMBERS =================
+  {id:'LN-1', cat:'ANY LIKE NUMBERS', val:25, run:1, note:'2 suits · any like number',
+   d:[['1111','a'],['FFFFFF'],['1111','b']],
+   g:[[4,{n:'v',s:'a'}],[6,'FL'],[4,{n:'v',s:'b'}]]},
+  {id:'LN-2', cat:'ANY LIKE NUMBERS', val:25, run:1, note:'3 suits · matching dragons',
+   d:[['1111','a'],['D','a'],['111','b'],['D','b'],['1111','c'],['D','c']],
+   g:[[4,{n:'v',s:'a'}],[1,{d:'a'}],[3,{n:'v',s:'b'}],[1,{d:'b'}],[4,{n:'v',s:'c'}],[1,{d:'c'}]]},
+  {id:'LN-3', cat:'ANY LIKE NUMBERS', val:30, run:1, note:'3 suits · any dragon pair',
+   d:[['FF'],['1111','a'],['11','b'],['1111','c'],['DD']],
+   alts:[
+     [[2,'FL'],[4,{n:'v',s:'a'}],[2,{n:'v',s:'b'}],[4,{n:'v',s:'c'}],[2,'GR']],
+     [[2,'FL'],[4,{n:'v',s:'a'}],[2,{n:'v',s:'b'}],[4,{n:'v',s:'c'}],[2,'GG']],
+     [[2,'FL'],[4,{n:'v',s:'a'}],[2,{n:'v',s:'b'}],[4,{n:'v',s:'c'}],[2,'G0']]]},
+  // ================= QUINTS =================
+  {id:'QU-1', cat:'QUINTS', val:40, vfy:true, run:1, note:'3 suits · any like number',
+   d:[['11111','a'],['1111','b'],['11111','c']],
+   g:[[5,{n:'v',s:'a'}],[4,{n:'v',s:'b'}],[5,{n:'v',s:'c'}]]},
+  {id:'QU-2', cat:'QUINTS', val:45, vfy:true, run:3, note:'1 suit · any 3 consecutive numbers',
+   d:[['FF'],['11111','a'],['22','a'],['33333','a']],
+   g:[[2,'FL'],[5,{n:'v',s:'a'}],[2,{n:'v+1',s:'a'}],[5,{n:'v+2',s:'a'}]]},
+  {id:'QU-3', cat:'QUINTS', val:40, vfy:true, nums:[1,2,3,4,5,6,7,8,9], nums2:[1,2,3,4,5,6,7,8,9], note:'any 2 numbers in 1 suit · opposite dragon',
+   d:[['11111','a'],['44444','a'],['DDDD','b']],
+   g:[[5,{n:'v',s:'a'}],[5,{n:'w',s:'a'}],[4,{d:'!a'}]]},
+  // ================= CONSECUTIVE RUN =================
+  {id:'CR-1A', cat:'CONSECUTIVE RUN', val:25, note:'1 suit · these numbers only',
+   d:[['11','a'],['222','a'],['33','a'],['444','a'],['5555','a']],
+   g:[[2,{n:1,s:'a'}],[3,{n:2,s:'a'}],[2,{n:3,s:'a'}],[3,{n:4,s:'a'}],[4,{n:5,s:'a'}]]},
+  {id:'CR-1B', cat:'CONSECUTIVE RUN', val:25, note:'1 suit · these numbers only',
+   d:[['55','a'],['666','a'],['77','a'],['888','a'],['9999','a']],
+   g:[[2,{n:5,s:'a'}],[3,{n:6,s:'a'}],[2,{n:7,s:'a'}],[3,{n:8,s:'a'}],[4,{n:9,s:'a'}]]},
+  {id:'CR-2A', cat:'CONSECUTIVE RUN', val:25, run:5, note:'1 suit · any 5 consecutive numbers',
+   d:[['FFF'],['1111','a'],['234','a'],['5555','a']],
+   g:[[3,'FL'],[4,{n:'v',s:'a'}],[1,{n:'v+1',s:'a'}],[1,{n:'v+2',s:'a'}],[1,{n:'v+3',s:'a'}],[4,{n:'v+4',s:'a'}]]},
+  {id:'CR-2B', cat:'CONSECUTIVE RUN', val:25, run:5, note:'2 suits · any 5 consecutive numbers',
+   d:[['FFF'],['1111','a'],['234','b'],['5555','a']],
+   g:[[3,'FL'],[4,{n:'v',s:'a'}],[1,{n:'v+1',s:'b'}],[1,{n:'v+2',s:'b'}],[1,{n:'v+3',s:'b'}],[4,{n:'v+4',s:'a'}]]},
+  {id:'CR-3', cat:'CONSECUTIVE RUN', val:25, run:3, note:'3 suits · any 3 consecutive numbers',
+   d:[['11','a'],['22','a'],['111','b'],['222','b'],['3333','c']],
+   g:[[2,{n:'v',s:'a'}],[2,{n:'v+1',s:'a'}],[3,{n:'v',s:'b'}],[3,{n:'v+1',s:'b'}],[4,{n:'v+2',s:'c'}]]},
+  {id:'CR-4A', cat:'CONSECUTIVE RUN', val:25, run:4, note:'1 suit · any 4 consecutive numbers',
+   d:[['111','a'],['222','a'],['3333','a'],['4444','a']],
+   g:[[3,{n:'v',s:'a'}],[3,{n:'v+1',s:'a'}],[4,{n:'v+2',s:'a'}],[4,{n:'v+3',s:'a'}]]},
+  {id:'CR-4B', cat:'CONSECUTIVE RUN', val:25, run:4, note:'2 suits · any 4 consecutive numbers',
+   d:[['111','a'],['222','a'],['3333','b'],['4444','b']],
+   g:[[3,{n:'v',s:'a'}],[3,{n:'v+1',s:'a'}],[4,{n:'v+2',s:'b'}],[4,{n:'v+3',s:'b'}]]},
+  {id:'CR-5A', cat:'CONSECUTIVE RUN', val:25, run:3, note:'1 suit · any run · dragons match the suit',
+   d:[['FFF'],['11','a'],['22','a'],['333','a'],['DDDD','a']],
+   g:[[3,'FL'],[2,{n:'v',s:'a'}],[2,{n:'v+1',s:'a'}],[3,{n:'v+2',s:'a'}],[4,{d:'a'}]]},
+  {id:'CR-5B', cat:'CONSECUTIVE RUN', val:25, vfy:true, run:3, note:'2 suits · any run · dragons match middle number',
+   d:[['FFF'],['11','a'],['22','b'],['333','a'],['DDDD','b']],
+   g:[[3,'FL'],[2,{n:'v',s:'a'}],[2,{n:'v+1',s:'b'}],[3,{n:'v+2',s:'a'}],[4,{d:'b'}]]},
+  {id:'CR-6', cat:'CONSECUTIVE RUN', val:25, run:2, note:'1 suit · any 2 consecutive numbers',
+   d:[['1111','a'],['FFFFFF'],['2222','a']],
+   g:[[4,{n:'v',s:'a'}],[6,'FL'],[4,{n:'v+1',s:'a'}]]},
+  {id:'CR-7A', cat:'CONSECUTIVE RUN', val:25, run:3, note:'1 suit · any 3 consecutive numbers',
+   d:[['FF'],['1111','a'],['2222','a'],['3333','a']],
+   g:[[2,'FL'],[4,{n:'v',s:'a'}],[4,{n:'v+1',s:'a'}],[4,{n:'v+2',s:'a'}]]},
+  {id:'CR-7B', cat:'CONSECUTIVE RUN', val:25, run:3, note:'3 suits · any 3 consecutive numbers',
+   d:[['FF'],['1111','a'],['2222','b'],['3333','c']],
+   g:[[2,'FL'],[4,{n:'v',s:'a'}],[4,{n:'v+1',s:'b'}],[4,{n:'v+2',s:'c'}]]},
+  {id:'CR-8', cat:'CONSECUTIVE RUN', val:35, con:true, run:4, note:'3 suits · any 4 consecutive numbers',
+   d:[['1','a'],['22','a'],['333','a'],['1','b'],['22','b'],['333','b'],['44','c']],
+   g:[[1,{n:'v',s:'a'}],[2,{n:'v+1',s:'a'}],[3,{n:'v+2',s:'a'}],[1,{n:'v',s:'b'}],[2,{n:'v+1',s:'b'}],[3,{n:'v+2',s:'b'}],[2,{n:'v+3',s:'c'}]]},
+  // ================= 13579 =================
+  {id:'OD-1A', cat:'13579', val:25, note:'1 suit',
+   d:[['11','a'],['333','a'],['55','a'],['777','a'],['9999','a']],
+   g:[[2,{n:1,s:'a'}],[3,{n:3,s:'a'}],[2,{n:5,s:'a'}],[3,{n:7,s:'a'}],[4,{n:9,s:'a'}]]},
+  {id:'OD-1B', cat:'13579', val:25, note:'3 suits',
+   d:[['11','a'],['333','a'],['55','b'],['777','b'],['9999','c']],
+   g:[[2,{n:1,s:'a'}],[3,{n:3,s:'a'}],[2,{n:5,s:'b'}],[3,{n:7,s:'b'}],[4,{n:9,s:'c'}]]},
+  {id:'OD-2A', cat:'13579', val:25, note:'2 suits',
+   d:[['111','a'],['333','a'],['3333','b'],['5555','b']],
+   g:[[3,{n:1,s:'a'}],[3,{n:3,s:'a'}],[4,{n:3,s:'b'}],[4,{n:5,s:'b'}]]},
+  {id:'OD-2B', cat:'13579', val:25, note:'2 suits',
+   d:[['555','a'],['777','a'],['7777','b'],['9999','b']],
+   g:[[3,{n:5,s:'a'}],[3,{n:7,s:'a'}],[4,{n:7,s:'b'}],[4,{n:9,s:'b'}]]},
+  {id:'OD-3A', cat:'13579', val:25, note:'1 suit · North and South only',
+   d:[['NN'],['1111','a'],['33','a'],['5555','a'],['SS']],
+   g:[[2,{w:'N'}],[4,{n:1,s:'a'}],[2,{n:3,s:'a'}],[4,{n:5,s:'a'}],[2,{w:'S'}]]},
+  {id:'OD-3B', cat:'13579', val:25, note:'1 suit · North and South only',
+   d:[['NN'],['5555','a'],['77','a'],['9999','a'],['SS']],
+   g:[[2,{w:'N'}],[4,{n:5,s:'a'}],[2,{n:7,s:'a'}],[4,{n:9,s:'a'}],[2,{w:'S'}]]},
+  {id:'OD-4', cat:'13579', val:30, vfy:true, note:'3 suits · pair any odd number · kongs match the pair',
+   d:[['113579','a'],['1111','b'],['1111','c']],
+   alts:[
+     [[2,{n:1,s:'a'}],[1,{n:3,s:'a'}],[1,{n:5,s:'a'}],[1,{n:7,s:'a'}],[1,{n:9,s:'a'}],[4,{n:1,s:'b'}],[4,{n:1,s:'c'}]],
+     [[1,{n:1,s:'a'}],[2,{n:3,s:'a'}],[1,{n:5,s:'a'}],[1,{n:7,s:'a'}],[1,{n:9,s:'a'}],[4,{n:3,s:'b'}],[4,{n:3,s:'c'}]],
+     [[1,{n:1,s:'a'}],[1,{n:3,s:'a'}],[2,{n:5,s:'a'}],[1,{n:7,s:'a'}],[1,{n:9,s:'a'}],[4,{n:5,s:'b'}],[4,{n:5,s:'c'}]],
+     [[1,{n:1,s:'a'}],[1,{n:3,s:'a'}],[1,{n:5,s:'a'}],[2,{n:7,s:'a'}],[1,{n:9,s:'a'}],[4,{n:7,s:'b'}],[4,{n:7,s:'c'}]],
+     [[1,{n:1,s:'a'}],[1,{n:3,s:'a'}],[1,{n:5,s:'a'}],[1,{n:7,s:'a'}],[2,{n:9,s:'a'}],[4,{n:9,s:'b'}],[4,{n:9,s:'c'}]]]},
+  {id:'OD-5A', cat:'13579', val:25, note:'1 suit · matching dragons',
+   d:[['FFF'],['11','a'],['33','a'],['555','a'],['DDDD','a']],
+   g:[[3,'FL'],[2,{n:1,s:'a'}],[2,{n:3,s:'a'}],[3,{n:5,s:'a'}],[4,{d:'a'}]]},
+  {id:'OD-5B', cat:'13579', val:25, note:'1 suit · matching dragons',
+   d:[['FFF'],['55','a'],['77','a'],['999','a'],['DDDD','a']],
+   g:[[3,'FL'],[2,{n:5,s:'a'}],[2,{n:7,s:'a'}],[3,{n:9,s:'a'}],[4,{d:'a'}]]},
+  {id:'OD-6A', cat:'13579', val:25, vfy:true, note:'3 suits',
+   d:[['11','a'],['33','a'],['111','b'],['333','b'],['5555','c']],
+   g:[[2,{n:1,s:'a'}],[2,{n:3,s:'a'}],[3,{n:1,s:'b'}],[3,{n:3,s:'b'}],[4,{n:5,s:'c'}]]},
+  {id:'OD-6B', cat:'13579', val:25, vfy:true, note:'3 suits',
+   d:[['55','a'],['77','a'],['555','b'],['777','b'],['9999','c']],
+   g:[[2,{n:5,s:'a'}],[2,{n:7,s:'a'}],[3,{n:5,s:'b'}],[3,{n:7,s:'b'}],[4,{n:9,s:'c'}]]},
+  {id:'OD-7A', cat:'13579', val:25, note:'1 suit',
+   d:[['1111','a'],['33','a'],['55','a'],['77','a'],['9999','a']],
+   g:[[4,{n:1,s:'a'}],[2,{n:3,s:'a'}],[2,{n:5,s:'a'}],[2,{n:7,s:'a'}],[4,{n:9,s:'a'}]]},
+  {id:'OD-7B', cat:'13579', val:25, note:'2 suits',
+   d:[['1111','a'],['33','b'],['55','b'],['77','b'],['9999','a']],
+   g:[[4,{n:1,s:'a'}],[2,{n:3,s:'b'}],[2,{n:5,s:'b'}],[2,{n:7,s:'b'}],[4,{n:9,s:'a'}]]},
+  {id:'OD-8A', cat:'13579', val:35, con:true, note:'3 suits · these numbers only',
+   d:[['FF'],['11','a'],['33','a'],['55','a'],['111','b'],['111','c']],
+   g:[[2,'FL'],[2,{n:1,s:'a'}],[2,{n:3,s:'a'}],[2,{n:5,s:'a'}],[3,{n:1,s:'b'}],[3,{n:1,s:'c'}]]},
+  {id:'OD-8B', cat:'13579', val:35, con:true, note:'3 suits · these numbers only',
+   d:[['FF'],['55','a'],['77','a'],['99','a'],['555','b'],['555','c']],
+   g:[[2,'FL'],[2,{n:5,s:'a'}],[2,{n:7,s:'a'}],[2,{n:9,s:'a'}],[3,{n:5,s:'b'}],[3,{n:5,s:'c'}]]},
+  {id:'OD-9', cat:'13579', val:30, vfy:true, note:'1 suit · opposite dragon',
+   d:[['FF'],['135','a'],['777','a'],['999','a'],['DDD','b']],
+   g:[[2,'FL'],[1,{n:1,s:'a'}],[1,{n:3,s:'a'}],[1,{n:5,s:'a'}],[3,{n:7,s:'a'}],[3,{n:9,s:'a'}],[3,{d:'!a'}]]},
+  // ================= WINDS AND DRAGONS =================
+  {id:'WD-1A', cat:'WINDS AND DRAGONS', val:25, note:'',
+   d:[['NNNN'],['EEE'],['WWW'],['SSSS']],
    g:[[4,{w:'N'}],[3,{w:'E'}],[3,{w:'W'}],[4,{w:'S'}]]},
-  {cat:'WINDS AND DRAGONS', val:30, d:[['FF'],['DDDD','a'],['NEWS'],['DDDD','b']],
-   g:[[2,'FL'],[4,{d:'a'}],[1,{w:'N'}],[1,{w:'E'}],[1,{w:'W'}],[1,{w:'S'}],[4,{d:'b'}]]},
-  // ---- 369 ----
-  {cat:'369', val:25, d:[['333','a'],['6666','a'],['999','a'],['3333','b']],
-   g:[[3,{n:3,s:'a'}],[4,{n:6,s:'a'}],[3,{n:9,s:'a'}],[4,{n:3,s:'b'}]]},
-  {cat:'369', val:30, d:[['FFFF'],['33','a'],['66','a'],['99','a'],['DDDD','a']],
-   g:[[4,'FL'],[2,{n:3,s:'a'}],[2,{n:6,s:'a'}],[2,{n:9,s:'a'}],[4,{d:'a'}]]},
-  // ---- SINGLES AND PAIRS (no jokers) ----
-  {cat:'SINGLES AND PAIRS', val:50, con:true, noJ:true,
-   d:[['FF'],['11','a'],['33','a'],['55','a'],['77','a'],['99','a'],['DD','a']],
-   g:[[2,'FL'],[2,{n:1,s:'a'}],[2,{n:3,s:'a'}],[2,{n:5,s:'a'}],[2,{n:7,s:'a'}],[2,{n:9,s:'a'}],[2,{d:'a'}]]},
-  {cat:'SINGLES AND PAIRS', val:50, con:true, noJ:true, run:7,
+  {id:'WD-1B', cat:'WINDS AND DRAGONS', val:25, note:'',
+   d:[['NNN'],['EEEE'],['WWWW'],['SSS']],
+   g:[[3,{w:'N'}],[4,{w:'E'}],[4,{w:'W'}],[3,{w:'S'}]]},
+  {id:'WD-2', cat:'WINDS AND DRAGONS', val:30, vfy:true, run:4, note:'any 4 consecutive numbers in 1 suit · all 3 dragons, any one is the kong',
+   d:[['1234','a'],['DDD'],['DDD'],['DDDD']],
+   alts:[
+     [[1,{n:'v',s:'a'}],[1,{n:'v+1',s:'a'}],[1,{n:'v+2',s:'a'}],[1,{n:'v+3',s:'a'}],[3,{d:'b'}],[3,{d:'c'}],[4,{d:'a'}]],
+     [[1,{n:'v',s:'a'}],[1,{n:'v+1',s:'a'}],[1,{n:'v+2',s:'a'}],[1,{n:'v+3',s:'a'}],[3,{d:'a'}],[3,{d:'c'}],[4,{d:'b'}]]]},
+  {id:'WD-3', cat:'WINDS AND DRAGONS', val:25, nums:[1,3,5,7,9], note:'any like odd number in 2 suits',
+   d:[['NNN'],['1111','a'],['1111','b'],['SSS']],
+   g:[[3,{w:'N'}],[4,{n:'v',s:'a'}],[4,{n:'v',s:'b'}],[3,{w:'S'}]]},
+  {id:'WD-4', cat:'WINDS AND DRAGONS', val:25, nums:[2,4,6,8], note:'any like even number in 2 suits',
+   d:[['EEE'],['2222','a'],['2222','b'],['WWW']],
+   g:[[3,{w:'E'}],[4,{n:'v',s:'a'}],[4,{n:'v',s:'b'}],[3,{w:'W'}]]},
+  {id:'WD-5', cat:'WINDS AND DRAGONS', val:25, vfy:true, note:'any wind kong · any dragon kong',
+   d:[['FFF'],['NNNN'],['FFF'],['DDDD']],
+   alts:[
+     [[3,'FL'],[4,{w:'N'}],[3,'FL'],[4,{d:'a'}]],
+     [[3,'FL'],[4,{w:'E'}],[3,'FL'],[4,{d:'a'}]],
+     [[3,'FL'],[4,{w:'W'}],[3,'FL'],[4,{d:'a'}]],
+     [[3,'FL'],[4,{w:'S'}],[3,'FL'],[4,{d:'a'}]]]},
+  {id:'WD-6', cat:'WINDS AND DRAGONS', val:30, vfy:true, note:'1 suit · these numbers only',
+   d:[['1','a'],['N'],['2','a'],['EE'],['3','a'],['WWW'],['4','a'],['SSSS']],
+   g:[[1,{n:1,s:'a'}],[1,{w:'N'}],[1,{n:2,s:'a'}],[2,{w:'E'}],[1,{n:3,s:'a'}],[3,{w:'W'}],[1,{n:4,s:'a'}],[4,{w:'S'}]]},
+  {id:'WD-7A', cat:'WINDS AND DRAGONS', val:30, vfy:true, note:'any 2 different dragon pairs',
+   d:[['FF'],['NNNN'],['SSSS'],['DD','a'],['DD','b']],
+   g:[[2,'FL'],[4,{w:'N'}],[4,{w:'S'}],[2,{d:'a'}],[2,{d:'b'}]]},
+  {id:'WD-7B', cat:'WINDS AND DRAGONS', val:30, vfy:true, note:'any 2 different dragon pairs',
+   d:[['FF'],['EEEE'],['WWWW'],['DD','a'],['DD','b']],
+   g:[[2,'FL'],[4,{w:'E'}],[4,{w:'W'}],[2,{d:'a'}],[2,{d:'b'}]]},
+  {id:'WD-8', cat:'WINDS AND DRAGONS', val:30, con:true, note:'2026 in any 1 suit',
+   d:[['NN'],['EEE'],['2026','a'],['WWW'],['SS']],
+   g:[[2,{w:'N'}],[3,{w:'E'}],[2,{n:2,s:'a'}],[1,'G0'],[1,{n:6,s:'a'}],[3,{w:'W'}],[2,{w:'S'}]]},
+  // ================= 369 =================
+  {id:'TS-1A', cat:'369', val:25, note:'2 suits',
+   d:[['333','a'],['666','a'],['6666','b'],['9999','b']],
+   g:[[3,{n:3,s:'a'}],[3,{n:6,s:'a'}],[4,{n:6,s:'b'}],[4,{n:9,s:'b'}]]},
+  {id:'TS-1B', cat:'369', val:25, note:'3 suits',
+   d:[['333','a'],['666','a'],['6666','b'],['9999','c']],
+   g:[[3,{n:3,s:'a'}],[3,{n:6,s:'a'}],[4,{n:6,s:'b'}],[4,{n:9,s:'c'}]]},
+  {id:'TS-2', cat:'369', val:25, note:'3 suits',
+   d:[['33','a'],['66','a'],['333','b'],['666','b'],['9999','c']],
+   g:[[2,{n:3,s:'a'}],[2,{n:6,s:'a'}],[3,{n:3,s:'b'}],[3,{n:6,s:'b'}],[4,{n:9,s:'c'}]]},
+  {id:'TS-3A', cat:'369', val:25, note:'1 suit · matching dragons',
+   d:[['FFF'],['33','a'],['666','a'],['99','a'],['DDDD','a']],
+   g:[[3,'FL'],[2,{n:3,s:'a'}],[3,{n:6,s:'a'}],[2,{n:9,s:'a'}],[4,{d:'a'}]]},
+  {id:'TS-3B', cat:'369', val:25, note:'1 suit · opposite dragon',
+   d:[['FFF'],['33','a'],['666','a'],['99','a'],['DDDD','b']],
+   g:[[3,'FL'],[2,{n:3,s:'a'}],[3,{n:6,s:'a'}],[2,{n:9,s:'a'}],[4,{d:'!a'}]]},
+  {id:'TS-4', cat:'369', val:30, note:'2 suits',
+   d:[['33','a'],['66','a'],['666','b'],['999','b'],['NEWS']],
+   g:[[2,{n:3,s:'a'}],[2,{n:6,s:'a'}],[3,{n:6,s:'b'}],[3,{n:9,s:'b'}],[1,{w:'N'}],[1,{w:'E'}],[1,{w:'W'}],[1,{w:'S'}]]},
+  {id:'TS-5', cat:'369', val:30, vfy:true, note:'3 suits · pair 3, 6 or 9 · kongs match the pair',
+   d:[['FF'],['3369','a'],['3333','b'],['3333','c']],
+   alts:[
+     [[2,'FL'],[2,{n:3,s:'a'}],[1,{n:6,s:'a'}],[1,{n:9,s:'a'}],[4,{n:3,s:'b'}],[4,{n:3,s:'c'}]],
+     [[2,'FL'],[1,{n:3,s:'a'}],[2,{n:6,s:'a'}],[1,{n:9,s:'a'}],[4,{n:6,s:'b'}],[4,{n:6,s:'c'}]],
+     [[2,'FL'],[1,{n:3,s:'a'}],[1,{n:6,s:'a'}],[2,{n:9,s:'a'}],[4,{n:9,s:'b'}],[4,{n:9,s:'c'}]]]},
+  {id:'TS-6', cat:'369', val:30, con:true, note:'2 suits',
+   d:[['FF'],['333','a'],['666','a'],['999','a'],['369','b']],
+   g:[[2,'FL'],[3,{n:3,s:'a'}],[3,{n:6,s:'a'}],[3,{n:9,s:'a'}],[1,{n:3,s:'b'}],[1,{n:6,s:'b'}],[1,{n:9,s:'b'}]]},
+  // ================= SINGLES AND PAIRS (concealed, no jokers) =================
+  {id:'SP-1', cat:'SINGLES AND PAIRS', val:50, con:true, noJ:true, run:1, note:'3 suits · any like number with matching dragons',
+   d:[['NN'],['EE'],['WW'],['SS'],['1D','a'],['1D','b'],['1D','c']],
+   g:[[2,{w:'N'}],[2,{w:'E'}],[2,{w:'W'}],[2,{w:'S'}],[1,{n:'v',s:'a'}],[1,{d:'a'}],[1,{n:'v',s:'b'}],[1,{d:'b'}],[1,{n:'v',s:'c'}],[1,{d:'c'}]]},
+  {id:'SP-2', cat:'SINGLES AND PAIRS', val:50, con:true, noJ:true, note:'3 suits · these numbers only',
+   d:[['2','a'],['4','a'],['66','a'],['88','a'],['2','b'],['4','b'],['66','b'],['88','b'],['88','c']],
+   g:[[1,{n:2,s:'a'}],[1,{n:4,s:'a'}],[2,{n:6,s:'a'}],[2,{n:8,s:'a'}],[1,{n:2,s:'b'}],[1,{n:4,s:'b'}],[2,{n:6,s:'b'}],[2,{n:8,s:'b'}],[2,{n:8,s:'c'}]]},
+  {id:'SP-3', cat:'SINGLES AND PAIRS', val:50, con:true, noJ:true, note:'3 suits',
+   d:[['FF'],['3369','a'],['3669','b'],['3699','c']],
+   g:[[2,'FL'],[2,{n:3,s:'a'}],[1,{n:6,s:'a'}],[1,{n:9,s:'a'}],[1,{n:3,s:'b'}],[2,{n:6,s:'b'}],[1,{n:9,s:'b'}],[1,{n:3,s:'c'}],[1,{n:6,s:'c'}],[2,{n:9,s:'c'}]]},
+  {id:'SP-4', cat:'SINGLES AND PAIRS', val:50, con:true, noJ:true, run:7, note:'1 suit · any 7 consecutive numbers',
    d:[['11','a'],['22','a'],['33','a'],['44','a'],['55','a'],['66','a'],['77','a']],
    g:[[2,{n:'v',s:'a'}],[2,{n:'v+1',s:'a'}],[2,{n:'v+2',s:'a'}],[2,{n:'v+3',s:'a'}],[2,{n:'v+4',s:'a'}],[2,{n:'v+5',s:'a'}],[2,{n:'v+6',s:'a'}]]},
+  {id:'SP-5', cat:'SINGLES AND PAIRS', val:50, con:true, noJ:true, note:'2 suits',
+   d:[['11','a'],['357','a'],['99','a'],['11','b'],['357','b'],['99','b']],
+   g:[[2,{n:1,s:'a'}],[1,{n:3,s:'a'}],[1,{n:5,s:'a'}],[1,{n:7,s:'a'}],[2,{n:9,s:'a'}],[2,{n:1,s:'b'}],[1,{n:3,s:'b'}],[1,{n:5,s:'b'}],[1,{n:7,s:'b'}],[2,{n:9,s:'b'}]]},
+  {id:'SP-6', cat:'SINGLES AND PAIRS', val:75, con:true, noJ:true, note:'3 suits · the big year hand',
+   d:[['FF'],['2026','a'],['2026','b'],['2026','c']],
+   g:[[2,'FL'],[2,{n:2,s:'a'}],[1,'G0'],[1,{n:6,s:'a'}],[2,{n:2,s:'b'}],[1,'G0'],[1,{n:6,s:'b'}],[2,{n:2,s:'c'}],[1,'G0'],[1,{n:6,s:'c'}]]},
 ];
 
 /* ================= tiles & wall ================= */
@@ -385,36 +580,60 @@ function expandAll(){
     if(a!==b&&a!==c&&b!==c) suitPerms3.push([a,b,c]);
 
   for(const h of HANDS){
-    const total = h.g.reduce((s,g)=>s+g[0],0);
-    if(total!==14){ console.error('BAD HAND (counts sum '+total+', need 14):', h.d.map(x=>x[0]).join(' ')); h.variants=[]; continue; }
+    const groupSets = h.alts || [h.g];
+    let bad=false;
+    for(const gs of groupSets){
+      const total = gs.reduce((s,g)=>s+g[0],0);
+      if(total!==14){ console.error('BAD HAND '+(h.id||'?')+' (counts sum '+total+', need 14)'); bad=true; }
+    }
+    if(bad){ h.variants=[]; continue; }
     const roles=[];
-    for(const [,t] of h.g){ if(typeof t==='object'){ const r=t.s||('abc'.includes(t.d)?t.d:null); if(r&&!roles.includes(r)) roles.push(r); } }
+    for(const gs of groupSets) for(const [,t] of gs){
+      if(typeof t==='object'){
+        const r = t.s || (t.d && 'abc'.includes(t.d) ? t.d : t.d && t.d[0]==='!' ? t.d[1] : null);
+        if(r && !roles.includes(r)) roles.push(r);
+      }
+    }
     const perms = roles.length===0?[[]]:roles.length===1?suitPerms1:roles.length===2?suitPerms2:suitPerms3;
-    const vMax = h.run ? 10-h.run : 0;
+    const vList = h.nums ? h.nums : h.run ? Array.from({length:10-h.run},(_,i)=>i+1) : [0];
+    const wList = h.nums2 || [null];
     const seen=new Set(); h.variants=[];
+    for(const gs of groupSets)
     for(const perm of perms){
       const m={}; roles.forEach((r,i)=>m[r]=perm[i]);
-      for(let v = h.run?1:0; v <= (h.run?vMax:0); v++){
-        const req={}; let ok=true;
-        for(const [c,t] of h.g){
-          let code;
-          if(typeof t==='string') code=t;
-          else if(t.w) code='W'+t.w;
-          else if(t.d) code = 'abc'.includes(t.d) ? DRAGON_OF[m[t.d]] : t.d;
-          else{
-            let n = typeof t.n==='number' ? t.n : v + (t.n==='v'?0:+t.n.slice(2));
-            if(n<1||n>9){ok=false;break;}
-            code = m[t.s]+n;
+      for(const v of vList)
+      for(const w of wList){
+        if(w!==null && w===v) continue;
+        // '!x' dragon groups: iterate over the suits NOT mapped to role x
+        const bang = gs.find(([,t])=>typeof t==='object'&&t.d&&t.d[0]==='!');
+        const bangSuits = bang ? ['B','C','D'].filter(s=>s!==m[bang[1].d[1]]) : [null];
+        for(const bs of bangSuits){
+          const req={}; let ok=true;
+          for(const [c,t] of gs){
+            let code;
+            if(typeof t==='string') code=t;
+            else if(t.w) code='W'+t.w;
+            else if(t.d) code = t.d[0]==='!' ? DRAGON_OF[bs] : 'abc'.includes(t.d) ? DRAGON_OF[m[t.d]] : t.d;
+            else{
+              let n;
+              if(typeof t.n==='number') n=t.n;
+              else{
+                const base = t.n[0]==='w' ? w : v;
+                n = base + (t.n.length>1 ? +t.n.slice(2) : 0);
+              }
+              if(n<1||n>9){ok=false;break;}
+              code = m[t.s]+n;
+            }
+            const jok = !h.noJ && c>=3;
+            if(!req[code]) req[code]=[0,0];
+            req[code][jok?1:0]+=c;              // [needNoJoker, needJokerOk]
           }
-          const jok = !h.noJ && c>=3;
-          if(!req[code]) req[code]=[0,0];
-          req[code][jok?1:0]+=c;              // [needNoJoker, needJokerOk]
+          if(!ok) continue;
+          const key=JSON.stringify(Object.entries(req).sort());
+          if(seen.has(key)) continue;
+          seen.add(key);
+          h.variants.push(Object.entries(req).map(([code,[nj,jk]])=>[code,nj,jk]));
         }
-        if(!ok) continue;
-        const key=JSON.stringify(Object.entries(req).sort());
-        if(seen.has(key)) continue;
-        seen.add(key);
-        h.variants.push(Object.entries(req).map(([code,[nj,jk]])=>[code,nj,jk]));
       }
     }
   }
@@ -674,7 +893,8 @@ function endRun(kind){
   if(kind==='win'){
     const h=S.match;
     const jokers=rackCounts()['JK']||0;
-    const timeMult=1+wasRemain/60, riskMult=1+wasDraws*0.04, conMult=h.con?1.15:1, jlMult=jokers===0?1.3:1;
+    // no jokerless bonus on Singles & Pairs — the card value already assumes no jokers
+    const timeMult=1+wasRemain/60, riskMult=1+wasDraws*0.04, conMult=h.con?1.15:1, jlMult=(jokers===0&&!h.noJ)?1.3:1;
     const score=Math.round(h.val*14*timeMult*riskMult*conMult*jlMult);
     S.bank+=score;
     T.textContent='VALID HAND!';
@@ -682,7 +902,7 @@ function endRun(kind){
     D.innerHTML='<span class="pat">'+patternHTML(h)+'</span>'
       +h.cat+' · '+h.val+' points'+(h.con?' · concealed':'')
       +'<br>time bonus ×'+timeMult.toFixed(2)+' · risk ×'+riskMult.toFixed(2)
-      +(jokers===0?' · <b style="color:var(--gold)">JOKERLESS ×1.3</b>':' · '+jokers+' joker'+(jokers>1?'s':''));
+      +(jlMult>1?' · <b style="color:var(--gold)">JOKERLESS ×1.3</b>':jokers>0?' · '+jokers+' joker'+(jokers>1?'s':''):'');
     sWin();
   }else if(kind==='cash'){
     const p=100+Math.floor(60-wasRemain)*2+wasDraws*15;
@@ -757,18 +977,19 @@ function buildCardList(){
       list.appendChild(ch);
     }
     const row=document.createElement('div'); row.className='hrow';
-    row.innerHTML='<span class="pat">'+patternHTML(h)+'</span>'
+    row.innerHTML='<span class="pat">'+patternHTML(h)
+      +(h.note?'<small class="hnote">'+h.note+'</small>':'')+'</span>'
       +'<span class="cx">'+(h.con?'C':'X')+'</span>'
-      +'<span class="hv">'+h.val+'</span>'
+      +'<span class="hv">'+h.val+(h.vfy?'†':'')+'</span>'
       +'<span class="away">—</span>';
     h._row=row;
-    h._searchText=(h.cat+' '+h.d.map(x=>x[0]).join(' ')).toLowerCase();
+    h._searchText=(h.cat+' '+(h.id||'')+' '+(h.note||'')+' '+h.d.map(x=>x[0]).join(' ')).toLowerCase();
     list.appendChild(row);
   }
-  $('cardWarn').textContent = CARD_META.official
-    ? ''
-    : '⚠ PLACEHOLDER TEST HANDS — this is NOT the official '+CARD_META.year+' NMJL card. Replace HANDS[] with the licensed card data before release.';
-  $('cardWarn').style.display = CARD_META.official?'none':'block';
+  $('cardWarn').innerHTML = 'Trainer aid — our own representation of the '+CARD_META.year
+    +' American Mah Jongg hands. For exact wording, colors, values and rulings, consult your purchased official NMJL card.'
+    +(CARD_META.official?'':' <b>† = value pending verification.</b>');
+  $('cardWarn').style.display='block';
 }
 function updateAwayBadges(){
   for(const h of HANDS){
@@ -867,9 +1088,9 @@ expandAll();
 buildCardList();
 sizeRack();
 $('muteBtn').textContent=S.muted?'🔇':'🔊';
-$('startWarn').textContent = CARD_META.official ? '' :
-  '⚠ DEV BUILD: using placeholder test hands, not the licensed official '+CARD_META.year+' NMJL card.';
-$('startWarn').style.display = CARD_META.official?'none':'block';
+$('startWarn').textContent = 'Trainer — hands follow the '+CARD_META.year+' standards. Reference your purchased official NMJL card for exact wording and rulings.'
+  +(CARD_META.official?'':' Values marked † await final verification.');
+$('startWarn').style.display='block';
 
 // dev helper (harmless in prod): window.MM.setRack(['B1','B1',...14 codes])
 window.MM={S, HANDS,
