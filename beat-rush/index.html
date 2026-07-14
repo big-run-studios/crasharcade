@@ -52,6 +52,23 @@
   .htp .tx u{color:var(--gold);text-decoration:none;font-weight:700;}
   .pb{font-family:'Fredoka',sans-serif;font-weight:700;font-size:14px;color:var(--dim);letter-spacing:1px;margin-top:12px;}
 
+  /* song picker dropdown */
+  #songPick{position:relative;width:100%;max-width:320px;margin-bottom:14px;}
+  #songSel{width:100%;border:2px solid rgba(176,107,255,.5);background:rgba(16,10,44,.85);color:var(--txt);
+    font-family:var(--display);font-weight:800;font-size:16px;letter-spacing:1px;padding:14px 18px;border-radius:14px;cursor:pointer;
+    display:flex;align-items:center;justify-content:space-between;gap:10px;}
+  #songSel .arrow{color:var(--violet);font-size:12px;transition:transform .15s;}
+  #songSel.open .arrow{transform:rotate(180deg);}
+  #songList{position:absolute;top:calc(100% + 6px);left:0;right:0;z-index:45;max-height:38vh;overflow-y:auto;-webkit-overflow-scrolling:touch;touch-action:pan-y;
+    background:rgba(13,8,36,.97);border:2px solid rgba(176,107,255,.5);border-radius:14px;
+    box-shadow:0 12px 30px rgba(0,0,0,.6),0 0 20px rgba(176,107,255,.25);}
+  #songList.hide{display:none;}
+  .songItem{padding:13px 16px;font-family:var(--display);font-weight:700;font-size:14px;letter-spacing:1px;color:var(--txt);cursor:pointer;
+    display:flex;justify-content:space-between;align-items:center;gap:10px;border-bottom:1px solid rgba(176,107,255,.15);text-align:left;}
+  .songItem:last-child{border-bottom:none;}
+  .songItem:active,.songItem:hover{background:rgba(176,107,255,.18);}
+  .songItem.cur{color:var(--gold);}
+
   #over .big{font-size:36px;font-weight:900;letter-spacing:2px;color:var(--crash);margin:10px 0 2px;text-shadow:var(--crash-glow);}
   #over .why{font-family:'Fredoka',sans-serif;font-weight:700;font-size:15px;color:var(--gold);margin-bottom:6px;text-shadow:0 0 8px rgba(255,194,51,.5);}
   .lbl{font-size:12px;font-weight:700;letter-spacing:3px;color:var(--dim);margin-top:12px;}
@@ -138,8 +155,11 @@
         <div class="row"><div class="ic">🔥</div><div class="tx"><b>Jam meter</b>: +2.5% per hit, −20% per miss — empty = <i>CRASH, pot gone</i></div></div>
         <div class="row"><div class="ic">💰</div><div class="tx">Tap <u>CASH OUT</u> (top right) any time to bank the pot — every section you survive <i>boosts all points ahead</i></div></div>
       </div>
-      <button class="btn" id="play0">▶ OH MY POP</button>
-      <button class="btn" id="play1" style="margin-top:10px">▶ WAKING UP</button>
+      <div id="songPick">
+        <button id="songSel"><span id="songSelName">—</span><span class="arrow">▼</span></button>
+        <div id="songList" class="hide"></div>
+      </div>
+      <button class="btn" id="playBtn">▶ PLAY</button>
       <div class="pb" id="loadStat" style="min-height:18px;margin-top:8px;color:var(--cyan)"></div>
       <button class="btn ghost" id="editorBtn">🎛 CHART EDITOR</button>
       <button class="btn ghost" id="calibBtn">⏱ CALIBRATE</button>
@@ -202,7 +222,7 @@
   <div id="editor" class="hide">
     <div id="edTop">
       <button class="eb" id="ebBack">‹ MENU</button>
-      <select id="ebSong"><option value="0">OH MY POP</option><option value="1">WAKING UP</option></select>
+      <select id="ebSong"></select>
       <button class="eb" id="ebPlay">▶</button>
       <button class="eb" id="ebStop">⏹</button>
       <button class="eb" id="ebSpeed">100%</button>
@@ -873,13 +893,35 @@ function drawMenuBg(t){
 }
 
 /* ================================================================ menu / settings / calibration wiring */
+/* ---- song picker: dropdown, alphabetical, scrollable (built for a 100+ song library) ---- */
+const songsAZ=[...SONGS.keys()].sort((a,b)=>SONGS[a].title.localeCompare(SONGS[b].title));
+let selSong=SONGS.findIndex(x=>x.id===store.get('br_song'));
+if(selSong<0) selSong=songsAZ[0];
+function updateSongSel(){ el('songSelName').textContent=SONGS[selSong].title; }
+function toggleSongList(open){
+  const L=el('songList'), o=open==null?L.classList.contains('hide'):open;
+  el('songSel').classList.toggle('open',o);
+  L.classList.toggle('hide',!o);
+  if(!o) return;
+  L.innerHTML='';
+  for(const i of songsAZ){
+    const d=document.createElement('div');
+    d.className='songItem'+(i===selSong?' cur':'');
+    d.innerHTML='<span>'+SONGS[i].title+'</span>'+(i===selSong?'<span>✓</span>':'');
+    d.addEventListener('click',e=>{ e.stopPropagation();
+      selSong=i; store.set('br_song',SONGS[i].id); updateSongSel(); toggleSongList(false); sfx('ui'); });
+    L.appendChild(d);
+  }
+}
+el('songSel').addEventListener('click',e=>{ e.stopPropagation(); ac(); toggleSongList(); });
+menuEl.addEventListener('click',e=>{ if(!e.target.closest('#songPick')) toggleSongList(false); });
+updateSongSel();
 function playSong(i){
   ac(); const st=el('loadStat');
   loadSong(SONGS[i],m=>st.textContent=m).then(()=>{ st.textContent=''; testMode=null; startRun(0,SONG_DUR); })
     .catch(e=>{ st.textContent='⚠ could not load song'; });
 }
-el('play0').addEventListener('click',()=>playSong(0));
-el('play1').addEventListener('click',()=>playSong(1));
+el('playBtn').addEventListener('click',()=>{ toggleSongList(false); playSong(selSong); });
 el('againBtn').addEventListener('click',()=>{ testMode=null; startRun(0,SONG_DUR); });
 el('cashAgainBtn').addEventListener('click',()=>{ testMode=null; startRun(0,SONG_DUR); });
 el('menuBtn').addEventListener('click',toMenu);
@@ -889,7 +931,7 @@ el('editorBtn').addEventListener('click',()=>{
   ac();
   if(songReady){ hideAll(); openEditor(true); return; }
   const st=el('loadStat');
-  loadSong(SONGS[0],m=>st.textContent=m).then(()=>{ st.textContent=''; hideAll(); openEditor(true); el('ebSong').value='0'; });
+  loadSong(SONGS[selSong],m=>st.textContent=m).then(()=>{ st.textContent=''; hideAll(); openEditor(true); el('ebSong').value=String(selSong); });
 });
 el('setBtn').addEventListener('click',()=>{ hideAll(); el('settings').classList.remove('hide'); });
 el('setClose').addEventListener('click',()=>{ saveSet(); toMenu(); });
@@ -1009,8 +1051,10 @@ function openEditor(fresh){
 }
 function closeEditor(){ edEl.classList.add('hide'); }
 el('ebBack').addEventListener('click',()=>{ stopRec(true); pauseSong(); closeEditor(); toMenu(); });
+{ const sel=el('ebSong'); for(const i of songsAZ){ const o=document.createElement('option'); o.value=String(i); o.textContent=SONGS[i].title; sel.appendChild(o); } }
 el('ebSong').addEventListener('change',()=>{
   stopRec(true); pauseSong();
+  selSong=+el('ebSong').value; store.set('br_song',SONGS[selSong].id); updateSongSel();
   loadSong(SONGS[+el('ebSong').value],m=>edMsg(m)).then(()=>{
     ED.sel=null; ED.selN.clear(); ED.undo=[]; ED.redo=[]; ED.t0=0; seekSong(0);
     edMsg('<b>'+song.title+'</b> loaded — '+chart.notes.length+' notes ('+BPM+' BPM)');
