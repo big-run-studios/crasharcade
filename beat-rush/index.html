@@ -709,12 +709,7 @@ function drawGame(){
   const heat=run?clamp((run.mult-1)/3,0,1):0;
   g.addColorStop(0,'#0d0630'); g.addColorStop(.6,'#0a0622'); g.addColorStop(1,'#12082e');
   ctx.fillStyle=g; ctx.fillRect(vx0,vy0,vx1-vx0,vy1-vy0);
-  // beat-synced bg pulse rings
-  const ph=(st/SPB)%1, pl=Math.pow(1-ph,3)*(playing?1:0);
-  ctx.globalAlpha=.05+.09*pl+.06*heat;
-  ctx.fillStyle='#b06bff';
-  ctx.beginPath(); ctx.arc(W/2,BEAT_Y,(vx1-vx0)*.5*(.6+.4*ph),0,TAU); ctx.fill();
-  ctx.globalAlpha=1;
+  const pl=Math.pow(1-((st/SPB)%1),3)*(playing&&st>0?1:0);   // beat phase → subtle beat-line pulse
   // decorative EQ bars across the whole visible width
   ctx.globalAlpha=.16;
   for(let x=vx0+10;x<vx1;x+=26){
@@ -741,8 +736,8 @@ function drawGame(){
   }
   // shared beat line
   ctx.save();
-  ctx.shadowColor='#b06bff'; ctx.shadowBlur=14+16*beatPulse;
-  ctx.strokeStyle='rgba(240,225,255,'+(.8+.2*beatPulse)+')'; ctx.lineWidth=3.5+2*beatPulse;
+  ctx.shadowColor='#b06bff'; ctx.shadowBlur=12+5*pl+16*beatPulse;
+  ctx.strokeStyle='rgba(240,225,255,'+Math.min(1,.72+.14*pl+.2*beatPulse)+')'; ctx.lineWidth=3.2+1.1*pl+2*beatPulse;
   ctx.beginPath(); ctx.moveTo(vx0+6,BEAT_Y); ctx.lineTo(vx1-6,BEAT_Y); ctx.stroke();
   ctx.restore();
 
