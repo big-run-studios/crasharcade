@@ -64,17 +64,18 @@
   #cashed .big{font-size:38px;font-weight:900;letter-spacing:2px;color:var(--green);margin:10px 0 4px;text-shadow:0 0 12px rgba(57,255,160,.7),0 0 30px rgba(57,255,160,.5);}
   #cashed .pts{font-size:58px;font-weight:900;color:var(--gold);line-height:1.05;text-shadow:0 0 10px rgba(255,194,51,.7),0 0 28px rgba(255,194,51,.5);}
 
-  /* cash-out decision window */
-  #decide .dtitle{font-size:22px;font-weight:900;letter-spacing:2px;color:var(--gold);text-shadow:0 0 12px rgba(255,194,51,.6);margin-bottom:4px;}
-  #decide .dsub{font-family:'Fredoka',sans-serif;font-weight:600;font-size:14px;color:var(--dim);margin-bottom:14px;}
-  #decide .pot{font-size:52px;font-weight:900;color:#fff;text-shadow:var(--score-glow);line-height:1;}
-  .dcard{background:rgba(16,10,44,.8);border:1.5px solid rgba(176,107,255,.4);border-radius:16px;padding:14px 22px;margin:12px 0;min-width:290px;}
-  .dcard .drow{display:flex;justify-content:space-between;gap:26px;font-family:'Fredoka',sans-serif;font-weight:700;font-size:14.5px;color:var(--dim);padding:3px 0;}
-  .dcard .drow b{color:var(--txt);}
-  .dcard .drow b.up{color:var(--magenta);}
-  .risk{display:inline-flex;gap:4px;}
-  .risk i{width:10px;height:10px;border-radius:2px;background:rgba(255,255,255,.14);}
-  .risk i.on{background:var(--red);box-shadow:0 0 8px rgba(255,90,110,.8);}
+  /* always-available cash-out button (top right, under mute) */
+  #cashBtn{position:absolute;top:calc(max(14px,env(safe-area-inset-top)) + 54px);right:14px;z-index:24;width:58px;height:58px;border-radius:50%;cursor:pointer;border:2px solid rgba(255,255,255,.6);
+    display:none;flex-direction:column;align-items:center;justify-content:center;line-height:1.05;
+    font-family:var(--display);font-weight:900;letter-spacing:.5px;font-size:10px;color:#2a1c04;
+    background:radial-gradient(100% 100% at 50% 28%, #ffe9a8, #ffc233 55%, #d9941e);
+    box-shadow:0 0 16px rgba(255,194,51,.6), 0 4px 12px rgba(0,0,0,.4), inset 0 0 0 2px rgba(255,255,255,.3);
+    animation:cashpulse 1.5s ease-in-out infinite;}
+  #cashBtn.on{display:flex;}
+  #cashBtn:active{transform:scale(.92);}
+  #cashBtn small{font-size:9px;font-weight:700;color:#5a3a06;letter-spacing:0;margin-top:1px;}
+  @keyframes cashpulse{0%,100%{box-shadow:0 0 10px rgba(255,194,51,.45),0 4px 12px rgba(0,0,0,.4),inset 0 0 0 2px rgba(255,255,255,.3);}
+    50%{box-shadow:0 0 22px rgba(255,194,51,.9),0 4px 12px rgba(0,0,0,.4),inset 0 0 0 2px rgba(255,255,255,.4);}}
 
   #pause .big{font-size:30px;font-weight:900;letter-spacing:3px;color:var(--txt);}
   #pause .note{font-family:'Fredoka',sans-serif;font-size:13px;color:var(--dim);margin:8px 0 18px;}
@@ -125,6 +126,7 @@
   <div class="ui">
     <button id="backArcade" title="Back">‹</button>
     <button id="muteBtn" title="Mute">🔊</button>
+    <button id="cashBtn" title="Cash out"><span>CASH</span><small>OUT</small></button>
 
     <div id="menu" class="overlay">
       <div class="title">BEAT <span>RUSH</span></div>
@@ -134,7 +136,7 @@
         <div class="row"><div class="ic">🎯</div><div class="tx"><i>PERFECT</i> hits build your <b>combo &amp; multiplier</b></div></div>
         <div class="row"><div class="ic">🔨</div><div class="tx">A miss <i>BONKS</i> the band down to <b>bass &amp; drums</b> — hit the next note to bring the song back</div></div>
         <div class="row"><div class="ic">🔥</div><div class="tx"><b>Jam meter</b>: +2.5% per hit, −20% per miss — empty = <i>CRASH, pot gone</i></div></div>
-        <div class="row"><div class="ic">💰</div><div class="tx">Between sections: <u>cash out</u> and bank it, or ride on for <i>bigger multipliers</i></div></div>
+        <div class="row"><div class="ic">💰</div><div class="tx">Tap <u>CASH OUT</u> (top right) any time to bank the pot — every section you survive <i>boosts all points ahead</i></div></div>
       </div>
       <button class="btn" id="play0">▶ OH MY POP</button>
       <button class="btn" id="play1" style="margin-top:10px">▶ WAKING UP</button>
@@ -143,20 +145,6 @@
       <button class="btn ghost" id="calibBtn">⏱ CALIBRATE</button>
       <button class="btn ghost" id="setBtn">⚙ SETTINGS</button>
       <div class="pb" id="menuBest"></div>
-    </div>
-
-    <div id="decide" class="overlay hide">
-      <div class="dtitle">💰 CASHOUT WINDOW</div>
-      <div class="dsub" id="decideDone"></div>
-      <div class="lbl">POT ON THE LINE</div>
-      <div class="pot" id="decidePot">0</div>
-      <div class="dcard">
-        <div class="drow"><span>Next section</span><b id="decideNext">—</b></div>
-        <div class="drow"><span>Payout boost</span><b class="up" id="decideBoost">—</b></div>
-        <div class="drow"><span>Risk</span><b><span class="risk" id="decideRisk"></span></b></div>
-      </div>
-      <button class="btn" id="continueBtn">KEEP PLAYING</button>
-      <button class="btn gold small" id="cashoutBtn">CASH OUT NOW</button>
     </div>
 
     <div id="over" class="overlay hide">
@@ -447,7 +435,7 @@ function stopSrc(){ for(const sc of srcs){ try{sc.stop();}catch(e){} try{sc.disc
 function seekSong(t){ const was=playing; if(was) pauseSong(); startSong=clamp(t,0,SONG_DUR); if(was) playFrom(startSong); }
 
 /* ================================================================ game state */
-let state='menu';                 // menu | play | decide | pause | over | cashed | calib | editor
+let state='menu';                 // menu | play | pause | over | cashed | calib | editor
 let run=null, testMode=null;      // testMode = {from,to} → return to editor when done
 let btnLit=[0,0,0,0,0];           // press flash timers
 let laneGlow=[0,0,0,0,0];         // lane light-up toward the beat line
@@ -583,10 +571,13 @@ function updateGame(dt){
     if(noteT(n)-st>WIN.good+.05) break;
   }
   run.reached=sectionAt(Math.min(st,SONG_DUR-.01)).name;
-  // cashout windows at section boundaries
+  // section boundaries: no pause — surviving a section auto-boosts all points ahead
   if(!testMode) for(const s of SECTIONS){
     if(s.cashoutAfter && !run.decided[s.id] && st>=s.end && s.end>run.from && s.end<run.endAt){
-      run.decided[s.id]=true; openDecide(s); return;
+      run.decided[s.id]=true; run.potMult*=s.boost;
+      run.maxMult=Math.max(run.maxMult,run.mult*run.potMult);
+      pops.push({x:W/2,y:BEAT_Y-150,txt:s.name+' CLEARED — ×'+run.potMult.toFixed(1)+' POT',col:'#ffc233',t:1.1,big:true});
+      beatPulse=1; sfx('great');
     }
   }
   // end of run
@@ -598,8 +589,8 @@ function updateGame(dt){
 
 /* ---- crash / cashout / decide ---- */
 const el=id=>document.getElementById(id);
-const menuEl=el('menu'), overEl=el('over'), cashedEl=el('cashed'), decideEl=el('decide'), pauseEl=el('pause');
-function hideAll(){ for(const e of [menuEl,overEl,cashedEl,decideEl,pauseEl,el('calib'),el('settings')]) e.classList.add('hide'); }
+const menuEl=el('menu'), overEl=el('over'), cashedEl=el('cashed'), pauseEl=el('pause'), cashBtn=el('cashBtn');
+function hideAll(){ for(const e of [menuEl,overEl,cashedEl,pauseEl,el('calib'),el('settings')]) e.classList.add('hide'); }
 function statsLine(){
   const c=run.counts, tot=c.perfect+c.great+c.good+c.miss;
   const acc=tot? Math.round((c.perfect+c.great*.75+c.good*.5)/tot*100):0;
@@ -608,6 +599,7 @@ function statsLine(){
 let best=+(store.get('br_best')||0);
 function doCrash(){
   if(state!=='play') return;
+  cashBtn.classList.remove('on');
   pauseSong(); sfx('crash'); crashFx=1;
   if(testMode){ endTest('crashed'); return; }
   state='over';
@@ -617,6 +609,7 @@ function doCrash(){
   setTimeout(()=>overEl.classList.remove('hide'),550);
 }
 function doCashout(completed){
+  cashBtn.classList.remove('on');
   pauseSong(); state='cashed'; cashFx=1; sfx('cash');
   if(run.score>best){ best=run.score; store.set('br_best',best); }
   el('cashedTitle').textContent=completed?'SONG COMPLETE!':'CASHED OUT';
@@ -628,36 +621,24 @@ function doCashout(completed){
   else { b.textContent='BEST '+best.toLocaleString(); b.className='best'; }
   setTimeout(()=>cashedEl.classList.remove('hide'),500);
 }
-function openDecide(sec){
-  pauseSong(); state='decide';
-  const idx=SECTIONS.indexOf(sec), next=SECTIONS[idx+1];
-  el('decideDone').textContent=sec.name+' cleared — bank it or ride on?';
-  el('decidePot').textContent=run.score.toLocaleString();
-  el('decideNext').textContent=next?next.name:'—';
-  el('decideBoost').textContent='×'+sec.boost.toFixed(1)+' on all points ahead';
-  const riskEl=el('decideRisk'); riskEl.innerHTML='';
-  for(let i=0;i<5;i++){ const d=document.createElement('i'); if(next&&i<next.risk) d.className='on'; riskEl.appendChild(d); }
-  decideEl.classList.remove('hide');
-}
-el('continueBtn').addEventListener('click',()=>{
-  if(state!=='decide') return;
-  run.potMult*=sectionAt(songTime()-.01).boost;
-  decideEl.classList.add('hide'); state='play'; playFrom(songTime(),1); sfx('ui');
-});
-el('cashoutBtn').addEventListener('click',()=>{ if(state==='decide'){ decideEl.classList.add('hide'); doCashout(false); } });
+// cash-out button: available for the whole run (not in editor test-play)
+function tryCashout(){ if(state==='play'&&!testMode){ cashBtn.classList.remove('on'); doCashout(false); } }
+cashBtn.addEventListener('click',e=>{ e.stopPropagation(); tryCashout(); });
+cashBtn.addEventListener('pointerdown',e=>{ e.stopPropagation(); });
 
 function startRun(from,to){
   if(!songReady) return;
   ac(); setDegraded(false); newRun(from==null?0:from, to==null?SONG_DUR:to);
   hideAll(); state='play';
+  cashBtn.classList.toggle('on',!testMode);
   playFrom(run.from - Math.max(SET.travel,1.6), 1);   // lead-in: notes fill the highway before the first one lands
 }
 function endTest(why){
-  testMode=null; pauseSong(); state='editor';
+  testMode=null; pauseSong(); state='editor'; cashBtn.classList.remove('on');
   openEditor(false); edMsg('test over — '+why);
 }
 function toMenu(){
-  pauseSong(); setDegraded(false); state='menu'; testMode=null; hideAll();
+  pauseSong(); setDegraded(false); state='menu'; testMode=null; hideAll(); cashBtn.classList.remove('on');
   menuEl.classList.remove('hide');
   el('menuBest').textContent=best>0?('BEST '+best.toLocaleString()):'';
 }
@@ -692,8 +673,7 @@ window.addEventListener('keydown',e=>{
   if(state==='editor'){ editorKey(e); return; }
   const lane=KEYMAP[e.code];
   if(lane!=null&&state==='play'){ keysDown[e.code]=true; pressLane(lane,'k'+lane); slideVisit(lane,'k-any'); for(let l=0;l<5;l++) if(keysDown['Key'+'ASDFG'[l]]&&l!==lane) slideVisit(lane,'k'+l); e.preventDefault(); }
-  else if(e.code==='Space'){ if(state==='decide') el('cashoutBtn').click(); e.preventDefault(); }
-  else if(e.code==='Enter'){ if(state==='decide') el('continueBtn').click(); }
+  else if(e.code==='Space'){ tryCashout(); e.preventDefault(); }
   else if(e.code==='Escape'){
     if(state==='play'){ if(testMode){ endTest('stopped'); } else { pauseSong(); state='pause'; pauseEl.classList.remove('hide'); } }
     else if(state==='pause'){ el('resumeBtn').click(); }
@@ -1436,7 +1416,6 @@ window.__br={
   chart:()=>chart.notes.map(n=>({t:n.time,lanes:n.lanes,type:n.type,dur:n.duration,end:n.endLane})),
   sections:()=>SECTIONS.map(s=>({id:s.id,start:s.start,end:s.end,cash:s.cashoutAfter})),
   start:(a,b)=>startRun(a,b),
-  decide:i=>openDecide(SECTIONS[i==null?1:i]),
   song:()=>song&&song.id,
   load:i=>loadSong(SONGS[i||0],m=>console.log(m)),
 };
