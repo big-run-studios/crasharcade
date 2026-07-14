@@ -167,7 +167,7 @@
     <button id="cashBtn"><div id="cashFill"></div><span id="cashTxt">HOLD TO CASH OUT</span></button>
   </div>
 
-  <div class="brand">CRASHARCADE · UNICORN HORDE v0.5.3</div>
+  <div class="brand">CRASHARCADE · UNICORN HORDE v0.5.4</div>
 </div>
 
 <audio id="music" src="music.mp3" loop preload="auto"></audio>
@@ -296,6 +296,7 @@ let wpNext=0, slamLast=-99, gateNext=0, gateT=0;
 // entities
 let enemies=[], proj=[], seeds=[], bombs=[], pend=[], trails=[], expl=[], parts=[], pops=[], pickups=[];
 let stains=[];   // juice splats left by defeated fruit (inside-of-the-fruit colors)
+let paint=[];    // juice ON the unicorn+rider from close-range kills — accumulates all run
 let trailTick=0;
 
 // slam
@@ -621,9 +622,25 @@ function killEnemy(e,w){
       blobs.push({dx:Math.cos(a)*dd,dy:Math.sin(a)*dd,r:R(0.22,0.45)*main}); }
     stains.push({x:e.x,y:e.y,col:d.juice,blobs,t:0,life:14});
     if(stains.length>150) stains.shift(); }
+  // pop right next to the unicorn → juice splashes onto the character (persists all run)
+  { const pd=Math.hypot(e.x-px,e.y-py);
+    if(pd<d.r+75){
+      const n=(d.big?3:pd<d.r+40?2:1);
+      for(let i=0;i<n;i++){ const s=paintSpot();
+        paint.push({x:s.x,y:s.y,r:R(2.2,4.6)+(d.big?1.6:0),sq:R(0.55,0.95),rot:R(0,3.14),col:d.juice}); }
+      if(paint.length>70) paint.splice(0,paint.length-70);
+    } }
   if(w && weap.lv<9){ weap.xp+=d.xp; checkLevel(); }   // all weapon kills feed the rider's one mastery pool
   if(e.type==='melon'){ for(let i=0;i<3;i++){ const a=R(0,6.28); spawnAt('slice',e.x+Math.cos(a)*24,e.y+Math.sin(a)*24); } }
   sfx(d.big?'splat':'pop');
+}
+function paintSpot(){
+  // random spot on the character, in unicorn-local coords (matches drawUnicorn's frame)
+  const r=Math.random();
+  if(r<0.66){ const a=R(0,6.283), q=Math.sqrt(Math.random());        // body ellipse
+    return {x:Math.cos(a)*24*q, y:-34+Math.sin(a)*13*q}; }
+  if(r<0.85) return {x:R(24,40), y:R(-70,-52)};                      // neck / head
+  return {x:R(-9,1), y:R(-64,-50)};                                  // rider torso
 }
 function hurtPlayer(dmg){
   if(state!=='play') return;
@@ -947,7 +964,7 @@ function reset(){
   budget=8; spawnT=0.8; waveN=0; baseAng=R(0,6.283); melonSeen=false; melonCd=0;
   wpNext=CFG.wpFirst; slamLast=0; gateNext=CFG.gateFirst; gateT=0;
   enemies=[]; proj=[]; seeds=[]; bombs=[]; pend=[]; trails=[]; expl=[]; parts=[]; pops=[]; pickups=[];
-  stains=[];
+  stains=[]; paint=[];
   slamState=null; slamT=0; cashHeld=false; cashT=0;
   kills=0; eliteKills=0; maxMult=1; weaponsUsed=new Set(['bow']);
   buildStructs(); resolveCircle({get x(){return px;},set x(v){px=v;},get y(){return py;},set y(v){py=v;},r:CFG.playerR});
@@ -1534,6 +1551,22 @@ function drawUnicorn(){
     ctx.quadraticCurveTo(17-i*2.6+sw,-62+i*4.2,15-i*2.6+sw,-52+i*3.6); ctx.stroke(); }
   ctx.fillStyle='#22103a'; ctx.beginPath(); ctx.arc(33,-66,1.9,0,6.283); ctx.fill();
 
+  // battle paint: juice from point-blank kills, clipped to the body so it reads as stains ON the character
+  if(paint.length){
+    ctx.save();
+    ctx.beginPath();
+    ctx.ellipse(0,-34,27,16,0,0,6.283);                                            // body
+    ctx.moveTo(14,-44); ctx.lineTo(30,-64); ctx.lineTo(36,-56); ctx.lineTo(24,-38); ctx.closePath(); // neck
+    ctx.ellipse(33,-64,11,7.5,-0.35,0,6.283);                                      // head
+    ctx.rect(-11,-67,14,19);                                                       // rider torso zone
+    ctx.clip();
+    ctx.globalAlpha=0.66;
+    for(const sp of paint){ ctx.fillStyle=sp.col;
+      ctx.beginPath(); ctx.ellipse(sp.x,sp.y,sp.r,sp.r*sp.sq,sp.rot,0,6.283); ctx.fill(); }
+    ctx.globalAlpha=1;
+    ctx.restore();
+  }
+
   // rider
   ctx.save(); ctx.translate(-4,-48);
   ctx.fillStyle='#ff3d9a'; ctx.beginPath();
@@ -1794,7 +1827,7 @@ window.__game={
     weapon:weap?weap.cur:null,lv:weap?weap.lv:0,xp:weap?+weap.xp.toFixed(1):0,
     x:+px.toFixed(0),y:+py.toFixed(0),cam:[+camX.toFixed(0),+camY.toFixed(0)],target:target?target.type:null,
     enemies:enemies.length,proj:proj.length,pickups:pickups.map(p=>p.kind),slam:slamState,gate:+gateT.toFixed(1),
-    budget:+budget.toFixed(1),wave:waveN,cashT:+cashT.toFixed(2),secured}; },
+    budget:+budget.toFixed(1),wave:waveN,paint:paint.length,cashT:+cashT.toFixed(2),secured}; },
   waveNow:()=>{ spawnT=0; },
   step:d=>{ try{update(d);}catch(e){console.error(e);} },
   startRun, toMenu,
