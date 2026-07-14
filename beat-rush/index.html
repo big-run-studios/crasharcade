@@ -223,6 +223,7 @@
     <div id="edTop">
       <button class="eb" id="ebBack">‹ MENU</button>
       <select id="ebSong"></select>
+      <button class="eb" id="ebRew" title="Back to start (Enter)">⏮</button>
       <button class="eb" id="ebPlay">▶</button>
       <button class="eb" id="ebStop">⏹</button>
       <button class="eb" id="ebSpeed">100%</button>
@@ -1074,6 +1075,11 @@ function edTogglePlay(){
   el('ebPlay').textContent=playing?'⏸':'▶';
 }
 el('ebPlay').addEventListener('click',()=>{ ac(); edTogglePlay(); });
+el('ebRew').addEventListener('click',()=>{   // back to the top of the song, keep playing if playing
+  ac(); stopRec(true);
+  const was=playing; pauseSong(); seekSong(0); ED.t0=0;
+  if(was) playFrom(0,ED.speed); else el('ebPlay').textContent='▶';
+});
 el('ebStop').addEventListener('click',()=>{ stopRec(true); pauseSong(); seekSong(ED.sel?ED.sel.a:0); el('ebPlay').textContent='▶'; });
 el('ebSpeed').addEventListener('click',()=>{
   ED.speed=ED.speed===1?.75:ED.speed===.75?.5:1;
@@ -1162,6 +1168,7 @@ function editorKey(e){
   if(lane!=null){ if(!keysDown[e.code]){ keysDown[e.code]=true; document.querySelectorAll('.padBtn')[lane].classList.add('lit'); recPress(lane); } e.preventDefault(); return; }
   if(e.code==='Space'){ edTogglePlay(); e.preventDefault(); }
   else if(e.code==='KeyR'){ if(ED.rec) stopRec(); else startRec(); }
+  else if(e.code==='Enter'||e.code==='Home'){ el('ebRew').click(); e.preventDefault(); }
   else if(e.code==='KeyL'){ el('ebLoop').click(); }
   else if(e.code==='KeyQ'){ el('ebQuant').click(); }
   else if(e.code==='Escape'){ el('ebBack').click(); }
