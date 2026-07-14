@@ -174,7 +174,7 @@
     <button id="cashBtn"><div id="cashFill"></div><span id="cashTxt">HOLD TO CASH OUT</span></button>
   </div>
 
-  <div class="brand">CRASHARCADE · UNICORN HORDE v0.3.0</div>
+  <div class="brand">CRASHARCADE · UNICORN HORDE v0.4.0</div>
 </div>
 
 <audio id="music" src="music.mp3" loop preload="auto"></audio>
@@ -184,7 +184,7 @@
 'use strict';
 /* ================================================================= constants / config */
 const W=450, H=820, CX=225, CY=410;      // logical design rect (camera window)
-const WW=1500, WH=1150, WALL=40;         // world (festival plaza) + perimeter wall thickness
+const WW=3000, WH=2300, WALL=40;         // world (festival plaza) + perimeter wall thickness
 const WALLH=46;                          // wall visual height (iso extrusion)
 const RAINBOW=['#ff4d6e','#ff9a2e','#ffe14d','#3ddc74','#4dc3ff','#b06cff'];
 
@@ -197,48 +197,69 @@ const CFG={
   gateFirst:30, gateEvery:26, gateDur:6, gateBonus:0.10,
   multCurve:[[0,1],[20,1.5],[40,2.5],[60,4],[90,7],[120,12]], multLateGrow:1.022,
   combo:[[0,1],[10,1.25],[25,1.5],[50,2],[100,2.5]], comboWindow:3.0,
-  maxEnemies:88,
-  hpScaleStart:40, hpScaleRate:0.013,
+  maxEnemies:120,
+  hpScaleStart:35, hpScaleRate:0.016,
   spdScaleStart:90, spdScaleRate:0.0045,
-  eliteStart:65, eliteBase:0.06, eliteGrow:0.002, eliteHp:2.5, eliteSpd:1.15, eliteScore:3,
-  wpFirst:18, wpEvery:24, wpLife:12,
+  eliteStart:55, eliteBase:0.08, eliteGrow:0.002, eliteHp:2.5, eliteSpd:1.15, eliteScore:3,
+  wpFirst:12, wpEvery:14, wpLife:14, wpMax:2,
   slamStart:40, slamMinGap:26, slamLife:14, slamDmg:60,
-  budgetBase:2.2, budgetRate:0.075, budgetLate:0.05,
-  spawnIntBase:1.15, spawnIntMin:0.5,
+  budgetBase:3, budgetRate:0.12, budgetLate:0.08,
+  waveIntMax:6.2, waveIntMin:3.2, waveIntRate:0.022,
+  waveScaleCap:3.2,
   spawnMinDist:430,
 };
 
 /* weapons — 3 fully built; the table shape supports all 10 later */
+/* steep mastery curve: L2 is an investment, L3 is a journey — dupe pickups (+60% of the bar) matter */
 const WEAP={
-  bow:  {name:'PRISM BOW',       lvName:['BRIGHT ARROW','SPLIT SHOT','RAINBOW VOLLEY'],   mast:[26,58], cd:[0.42,0.40,0.38]},
-  gat:  {name:'GLITTER GATLING', lvName:['GLITTER STREAM','SPARK BARRAGE','DISCO INFERNO'],mast:[30,64], cd:[0.085,0.068,0.055]},
-  bomb: {name:'SPARKLE BOMBS',   lvName:['GLITTER BOMB','CLUSTER BOMB','CELEBRATION CANNON'],mast:[24,54], cd:[0.9,0.85,0.8]},
+  bow:  {name:'PRISM BOW',       lvName:['BRIGHT ARROW','SPLIT SHOT','RAINBOW VOLLEY'],   mast:[90,220], cd:[0.42,0.40,0.38]},
+  gat:  {name:'GLITTER GATLING', lvName:['GLITTER STREAM','SPARK BARRAGE','DISCO INFERNO'],mast:[100,240],cd:[0.085,0.068,0.055]},
+  bomb: {name:'SPARKLE BOMBS',   lvName:['GLITTER BOMB','CLUSTER BOMB','CELEBRATION CANNON'],mast:[80,200],cd:[0.9,0.85,0.8]},
 };
 const WKEYS=Object.keys(WEAP);
 
 /* fruit roster — prototype five (+ melon slices) */
 const FRUIT={
-  grape: {r:9, hp:2.4, spd:44, dmg:4, cd:0.9, score:15, xp:1,  threat:1,  col:'#b06cff', dark:'#5a2a9a'},
-  straw: {r:11,hp:3.4, spd:96, dmg:6, cd:0.9, score:25, xp:2,  threat:2,  col:'#ff4d6e', dark:'#a01f3a'},
-  lemon: {r:13,hp:7,   spd:56, dmg:0, cd:0,   score:40, xp:3,  threat:4,  col:'#ffe14d', dark:'#b8930f'},
-  orange:{r:19,hp:30,  spd:26, dmg:12,cd:1.1, score:80, xp:6,  threat:6,  col:'#ff9a2e', dark:'#b05e10', kbRes:0.85},
-  melon: {r:31,hp:110, spd:15, dmg:18,cd:1.2, score:300,xp:14, threat:15, col:'#3ddc74', dark:'#1b7a42', kbRes:0.9, big:1},
-  slice: {r:12,hp:9,   spd:74, dmg:8, cd:0.9, score:40, xp:3,  threat:3,  col:'#ff5a7a', dark:'#2a9a52'},
+  grape: {r:9, hp:2.4, spd:52, dmg:5, cd:0.9, score:15, xp:1,  threat:1,  col:'#b06cff', dark:'#5a2a9a'},
+  straw: {r:11,hp:3.4, spd:96, dmg:7, cd:0.9, score:25, xp:2,  threat:2,  col:'#ff4d6e', dark:'#a01f3a'},
+  lemon: {r:13,hp:7,   spd:60, dmg:0, cd:0,   score:40, xp:3,  threat:4,  col:'#ffe14d', dark:'#b8930f'},
+  orange:{r:19,hp:30,  spd:30, dmg:14,cd:1.1, score:80, xp:6,  threat:6,  col:'#ff9a2e', dark:'#b05e10', kbRes:0.85},
+  melon: {r:31,hp:110, spd:16, dmg:20,cd:1.2, score:300,xp:14, threat:15, col:'#3ddc74', dark:'#1b7a42', kbRes:0.9, big:1},
+  slice: {r:12,hp:9,   spd:74, dmg:9, cd:0.9, score:40, xp:3,  threat:3,  col:'#ff5a7a', dark:'#2a9a52'},
 };
 
-/* structures — curated plaza layout; rect footprints, iso-extruded boxes */
+/* structures — curated plaza layout for the 3000×2300 grounds; rect footprints, iso-extruded boxes */
 const BASE_STRUCTS=[
-  {x:690,y:470,w:130,h:92, hh:34,kind:'fountain'},
-  {x:250,y:210,w:150,h:58, hh:52,kind:'stall'},
-  {x:1080,y:195,w:150,h:58,hh:52,kind:'stall'},
-  {x:245,y:840,w:150,h:58, hh:52,kind:'stall'},
-  {x:1090,y:855,w:150,h:58,hh:52,kind:'stall'},
-  {x:160,y:520,w:66,h:62,  hh:74,kind:'crystal'},
-  {x:1274,y:520,w:66,h:62, hh:74,kind:'crystal'},
-  {x:555,y:170,w:62,h:48,  hh:34,kind:'crate'},
-  {x:880,y:205,w:66,h:52,  hh:34,kind:'crate'},
-  {x:930,y:770,w:62,h:48,  hh:34,kind:'crate'},
-  {x:600,y:895,w:66,h:52,  hh:34,kind:'crate'},
+  // central plaza fountain (landmark)
+  {x:1435,y:1010,w:130,h:92,hh:34,kind:'fountain'},
+  // crystals mark the quadrants
+  {x:880,y:540,w:66,h:62,  hh:74,kind:'crystal'},
+  {x:2054,y:540,w:66,h:62, hh:74,kind:'crystal'},
+  {x:880,y:1680,w:66,h:62, hh:74,kind:'crystal'},
+  {x:2054,y:1680,w:66,h:62,hh:74,kind:'crystal'},
+  // market streets (paired stalls = alleys to kite through)
+  {x:500,y:400,w:150,h:58, hh:52,kind:'stall'},
+  {x:740,y:400,w:150,h:58, hh:52,kind:'stall'},
+  {x:2110,y:400,w:150,h:58,hh:52,kind:'stall'},
+  {x:2350,y:400,w:150,h:58,hh:52,kind:'stall'},
+  {x:500,y:1845,w:150,h:58, hh:52,kind:'stall'},
+  {x:740,y:1845,w:150,h:58, hh:52,kind:'stall'},
+  {x:2110,y:1845,w:150,h:58,hh:52,kind:'stall'},
+  {x:2350,y:1845,w:150,h:58,hh:52,kind:'stall'},
+  // mid-field stalls
+  {x:1420,y:310,w:160,h:58, hh:52,kind:'stall'},
+  {x:1420,y:1935,w:160,h:58,hh:52,kind:'stall'},
+  {x:300,y:1090,w:150,h:58, hh:52,kind:'stall'},
+  {x:2550,y:1090,w:150,h:58,hh:52,kind:'stall'},
+  // scattered crates
+  {x:1140,y:740,w:62,h:48, hh:34,kind:'crate'},
+  {x:1810,y:740,w:66,h:52, hh:34,kind:'crate'},
+  {x:1140,y:1470,w:66,h:52,hh:34,kind:'crate'},
+  {x:1810,y:1470,w:62,h:48,hh:34,kind:'crate'},
+  {x:620,y:1250,w:62,h:48, hh:34,kind:'crate'},
+  {x:2320,y:1250,w:66,h:52,hh:34,kind:'crate'},
+  {x:1020,y:230,w:66,h:52, hh:34,kind:'crate'},
+  {x:1950,y:2030,w:62,h:48,hh:34,kind:'crate'},
 ];
 let structs=[];
 
@@ -344,7 +365,7 @@ function popTxt(x,y,txt,col){ if(pops.length>44) pops.shift(); pops.push({x,y,tx
 function buildStructs(){
   structs=BASE_STRUCTS.map(s=>({...s}));
   // a few random crates per run for variety
-  for(let i=0;i<3;i++){
+  for(let i=0;i<6;i++){
     const p=openSpot(260,30,120);
     if(p) structs.push({x:p.x-30,y:p.y-24,w:60,h:48,hh:34,kind:'crate'});
   }
@@ -397,42 +418,81 @@ function spawnAt(type,x,y,forceElite){
   return e;
 }
 
-/* formations — the director spends threat on these (spec §24/§25) */
-function grp(type,n){ for(let i=0;i<n;i++) spawnEnemy(type); }
-const FORMS=[
-  {min:0,  cost:5,  go:()=>grp('grape',5)},
-  {min:8,  cost:6,  go:()=>grp('straw',3)},
-  {min:12, cost:9,  go:()=>grp('grape',7)},
-  {min:15, cost:8,  go:()=>{grp('grape',4); grp('straw',1);}},
-  {min:30, cost:10, go:()=>{grp('lemon',1); grp('grape',3);}},
-  {min:38, cost:14, go:()=>{grp('lemon',2); grp('straw',2);}},
-  {min:45, cost:12, go:()=>{grp('orange',1); grp('straw',2);}},
-  {min:52, cost:16, go:()=>{grp('orange',1); grp('lemon',1); grp('grape',3);}},
-  {min:60, cost:15, melon:1, go:()=>grp('melon',1)},
-  {min:75, cost:22, go:()=>{grp('orange',2); grp('grape',4);}},
-  {min:90, cost:30, melon:1, go:()=>{grp('melon',1); grp('straw',4);}},
+/* waves — enemies drop in coherent squads with real geometry, and the squads keep growing.
+   Each wave spends the accrued threat budget on ONE template, scaling its counts up
+   (spec §24/§25 threat budget, reshaped from random dribbles into readable group drops). */
+const WAVES=[
+  {min:0,  cost:5,  comp:[['grape',5]],                            form:'arc'},
+  {min:8,  cost:7,  comp:[['straw',3]],                            form:'line'},
+  {min:15, cost:10, comp:[['grape',4],['straw',1]],                form:'pincer'},
+  {min:30, cost:14, comp:[['lemon',2],['grape',4]],                form:'arc'},
+  {min:45, cost:18, comp:[['orange',1],['straw',2],['grape',4]],   form:'cluster'},
+  {min:60, cost:26, comp:[['melon',1],['grape',6]],                form:'cluster', melon:1},
+  {min:75, cost:32, comp:[['orange',2],['lemon',2],['grape',7]],   form:'line'},
+  {min:90, cost:40, comp:[['straw',6],['grape',10]],               form:'ring'},
+  {min:105,cost:52, comp:[['melon',1],['orange',2],['straw',4],['grape',8]], form:'ring', melon:1},
 ];
+let waveN=0, baseAng=0;
+function waveInterval(){ return Math.max(CFG.waveIntMin, CFG.waveIntMax - runT*CFG.waveIntRate); }
 function director(dt){
   budget += (CFG.budgetBase + runT*CFG.budgetRate + Math.max(0,runT-90)*CFG.budgetLate)*dt;
   melonCd-=dt;
   spawnT-=dt;
   if(spawnT>0) return;
-  spawnT=Math.max(CFG.spawnIntMin, CFG.spawnIntBase - runT*0.006)+R(0,0.3);
-  if(enemies.length>=CFG.maxEnemies){ budget=Math.min(budget,45); return; }
-  let pool=FORMS.filter(f=>f.min<=runT && f.cost<=budget && (!f.melon||melonCd<=0));
+  spawnT=waveInterval();
+  if(enemies.length>=CFG.maxEnemies){ budget=Math.min(budget,60); return; }
+  let pool=WAVES.filter(w=>w.min<=runT && (!w.melon||melonCd<=0));
   // scripted first juggernaut ~60s (spec §29): bank budget until it's affordable
   if(runT>=60 && !melonSeen){
-    const m=FORMS.find(f=>f.melon&&f.min<=runT);
-    if(m){ if(m.cost<=budget) pool=[m]; else return; }
+    const m=WAVES.find(w=>w.melon&&w.min<=runT);
+    if(m){ if(m.cost<=budget) pool=[m]; else { spawnT=1.2; return; } }
   }
-  if(!pool.length) return;
-  const f=rand(pool);
-  budget-=f.cost;
-  if(f.melon){ melonCd=16; melonSeen=true; }
-  f.go();
-  if(runT>50 && budget>24){
-    const pool2=FORMS.filter(g=>g.min<=runT && g.cost<=budget && !g.melon);
-    if(pool2.length){ const g=rand(pool2); budget-=g.cost; g.go(); }
+  pool=pool.filter(w=>w.cost<=Math.max(budget,WAVES[0].cost));
+  if(!pool.length) pool=[WAVES[0]];
+  const w=rand(pool.slice(-3));   // bias toward the biggest templates unlocked — escalation reads
+  const scale=clamp(budget/w.cost,1,CFG.waveScaleCap);
+  budget=Math.max(0,budget-w.cost*scale);
+  if(w.melon){ melonCd=18; melonSeen=true; }
+  spawnWave(w,scale);
+}
+function spawnWave(w,scale){
+  waveN++;
+  baseAng+=2.4+R(-0.25,0.25);     // golden-angle rotation: direction varies, but never feels scattershot
+  const dist=R(470,560);
+  const ax=clamp(px+Math.cos(baseAng)*dist,WALL+80,WW-WALL-80);
+  const ay=clamp(py+Math.sin(baseAng)*dist,WALL+80,WH-WALL-80);
+  const list=[];
+  for(const [type,n] of w.comp){
+    const cnt=type==='melon'?Math.max(1,Math.round(n*Math.min(scale,1.6))):Math.max(1,Math.round(n*scale));
+    for(let i=0;i<cnt;i++) list.push(type);
+  }
+  const total=Math.min(list.length, CFG.maxEnemies-enemies.length);
+  const toPlayer=Math.atan2(py-ay,px-ax);
+  for(let i=0;i<total;i++){
+    if(w.form==='ring'){          // surround the player at range — nowhere feels safe
+      const a=i/total*6.283+baseAng;
+      spawnAt(list[i], clamp(px+Math.cos(a)*dist,WALL+60,WW-WALL-60), clamp(py+Math.sin(a)*dist,WALL+60,WH-WALL-60));
+      continue;
+    }
+    if(w.form==='pincer'){        // two flanks, opposite-ish sides
+      const side=i%2?1:-1, a=baseAng+side*Math.PI*0.72;
+      const bx=clamp(px+Math.cos(a)*dist,WALL+70,WW-WALL-70), by=clamp(py+Math.sin(a)*dist,WALL+70,WH-WALL-70);
+      spawnAt(list[i], bx+R(-55,55), by+R(-55,55));
+      continue;
+    }
+    let ox=0,oy=0;
+    if(w.form==='arc'){           // crescent facing the player
+      const span=Math.min(2.4,0.5+total*0.14);
+      const a=toPlayer+Math.PI+(i/Math.max(1,total-1)-0.5)*span;
+      ox=Math.cos(a)*(70+(i%2)*28); oy=Math.sin(a)*(70+(i%2)*28);
+    }else if(w.form==='line'){    // marching rows, 8 wide
+      const pa=toPlayer+Math.PI/2, row=Math.floor(i/8), k=i%8-3.5;
+      ox=Math.cos(pa)*k*36-Math.cos(toPlayer)*row*42; oy=Math.sin(pa)*k*36-Math.sin(toPlayer)*row*42;
+    }else{                        // cluster — blob that grows with the wave
+      const a=R(0,6.283), rr2=R(0,30+total*6);
+      ox=Math.cos(a)*rr2; oy=Math.sin(a)*rr2;
+    }
+    spawnAt(list[i], clamp(ax+ox,WALL+50,WW-WALL-50), clamp(ay+oy,WALL+50,WH-WALL-50));
   }
 }
 
@@ -521,7 +581,7 @@ function updateSeeds(dt){
   for(const s of seeds){
     s.x+=s.vx*dt; s.y+=s.vy*dt; s.t-=dt;
     if(s.t<=0||inStruct(s.x,s.y,3)){ s.dead=true; continue; }   // walls & stalls block spit
-    if(Math.hypot(s.x-px,s.y-py)<CFG.playerR+6){ s.dead=true; hurtPlayer(7); }
+    if(Math.hypot(s.x-px,s.y-py)<CFG.playerR+6){ s.dead=true; hurtPlayer(8); }
   }
   seeds=seeds.filter(s=>!s.dead);
 }
@@ -677,10 +737,10 @@ function updateExpl(dt){
 
 /* ================================================================= pickups (walk over them) */
 function schedulePickups(dt){
-  if(runT>=wpNext && !pickups.some(p=>p.kind==='weapon')){
-    wpNext=runT+CFG.wpEvery+R(-4,4);
+  if(runT>=wpNext && pickups.filter(p=>p.kind==='weapon').length<CFG.wpMax){
+    wpNext=runT+CFG.wpEvery+R(-3,3);
     const others=WKEYS.filter(k=>k!==weap.cur);
-    spawnPickup('weapon',rand(others));
+    spawnPickup('weapon',Math.random()<0.3?weap.cur:rand(others));   // dupes drop too — they feed the steep mastery curve
   }
   // adaptive rainbow slam (uncommon, crowd-aware, never guaranteed — spec §19)
   if(runT>CFG.slamStart && runT-slamLast>CFG.slamMinGap && !slamState && !pickups.some(p=>p.kind==='slam')){
@@ -696,7 +756,7 @@ function schedulePickups(dt){
 function spawnPickup(kind,wtype){
   // reachable but a real trip: ring around the player, clamped into open floor
   for(let tries=0;tries<24;tries++){
-    const a=R(0,6.283), r=R(230,520);
+    const a=R(0,6.283), r=R(280,650);
     const x=clamp(px+Math.cos(a)*r,WALL+60,WW-WALL-60), y=clamp(py+Math.sin(a)*r,WALL+60,WH-WALL-60);
     if(inStruct(x,y,30)) continue;
     if(Math.hypot(x-px,y-py)<160) continue;
@@ -856,7 +916,7 @@ function reset(){
   combo=0; comboT=0; shake=0; flashT=0; slowT=0; seqT=0; shattered=false; secured=0; gateWin=false;
   weap=newWeap(); fireCd=0.4; gatHits=0; aimAng=-Math.PI/2; target=null;
   px=WW/2; py=WH/2+180; face=1; moving=0; walkPh=0;
-  budget=6; spawnT=0.6; melonSeen=false; melonCd=0;
+  budget=8; spawnT=0.8; waveN=0; baseAng=R(0,6.283); melonSeen=false; melonCd=0;
   wpNext=CFG.wpFirst; slamLast=0; gateNext=CFG.gateFirst; gateT=0;
   enemies=[]; proj=[]; seeds=[]; bombs=[]; pend=[]; trails=[]; expl=[]; parts=[]; pops=[]; pickups=[];
   slamState=null; slamT=0; cashHeld=false; cashT=0;
@@ -1046,11 +1106,11 @@ function update(rdt){
 /* ================================================================= rendering — iso plaza */
 let patches=[];
 (function(){ // precomputed pastel floor diamonds
-  for(let i=0;i<90;i++) patches.push({x:R(80,WW-80),y:R(80,WH-80),c:rand(RAINBOW),a:R(0.03,0.08),s:R(18,34)});
+  for(let i=0;i<260;i++) patches.push({x:R(80,WW-80),y:R(80,WH-80),c:rand(RAINBOW),a:R(0.03,0.08),s:R(18,34)});
 })();
 function drawGround(){
   const x0=camX+vx0, x1=camX+vx1, y0=camY+vy0, y1=camY+vy1;
-  const g=ctx.createRadialGradient(WW/2,WH/2,120,WW/2,WH/2,900);
+  const g=ctx.createRadialGradient(WW/2,WH/2,200,WW/2,WH/2,1700);
   g.addColorStop(0,'#1b0f31'); g.addColorStop(0.6,'#130a25'); g.addColorStop(1,'#0a0518');
   ctx.fillStyle=g; ctx.fillRect(x0,y0,x1-x0,y1-y0);
   // iso diamond grid (slope ±0.5 lines)
@@ -1654,7 +1714,8 @@ window.__game={
     weapon:weap?weap.cur:null,lv:weap?weap[weap.cur].lv:0,xp:weap?+weap[weap.cur].xp.toFixed(1):0,
     x:+px.toFixed(0),y:+py.toFixed(0),cam:[+camX.toFixed(0),+camY.toFixed(0)],target:target?target.type:null,
     enemies:enemies.length,proj:proj.length,pickups:pickups.map(p=>p.kind),slam:slamState,gate:+gateT.toFixed(1),
-    budget:+budget.toFixed(1),cashT:+cashT.toFixed(2),secured}; },
+    budget:+budget.toFixed(1),wave:waveN,cashT:+cashT.toFixed(2),secured}; },
+  waveNow:()=>{ spawnT=0; },
   step:d=>{ try{update(d);}catch(e){console.error(e);} },
   startRun, toMenu,
   crashNow:()=>{ hp=1; invulnT=0; hurtPlayer(99); },
