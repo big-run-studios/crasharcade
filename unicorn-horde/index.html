@@ -167,7 +167,7 @@
     <button id="cashBtn"><div id="cashFill"></div><span id="cashTxt">HOLD TO CASH OUT</span></button>
   </div>
 
-  <div class="brand">CRASHARCADE · UNICORN HORDE v0.5.1</div>
+  <div class="brand">CRASHARCADE · UNICORN HORDE v0.5.2</div>
 </div>
 
 <audio id="music" src="music.mp3" loop preload="auto"></audio>
@@ -202,16 +202,15 @@ const CFG={
 };
 
 /* weapons — 3 fully built; the table shape supports all 10 later */
-/* 9 levels per weapon, evolutions at 3/6/9 (four states; L9 = multi-attack, 3× projectiles).
-   Mastery is a logarithmic-feel curve: dirt-cheap early (L3 arrives fast), then each step
-   costs ~1.6× the last — L9 is the run-defining journey. mast[i] = xp for level i+1 → i+2. */
+/* 9 levels, evolutions at 3/6/9 (four states; L9 = multi-attack, 3× projectiles).
+   Mastery belongs to the RIDER, not the weapon: one global level/xp pool shared by all
+   weapons, so picking up a new weapon keeps your level — switching is never a downgrade.
+   Log-feel curve: dirt-cheap early (L3 fast), each step ~1.6× the last; L9 is the journey. */
+const MAST=[6,10,16,26,42,68,110,180];   // MAST[i] = xp for level i+1 → i+2
 const WEAP={
-  bow:  {name:'PRISM BOW',       lvName:['BRIGHT ARROW','SPLIT SHOT','RAINBOW VOLLEY','PRISM STORM'],
-         mast:[6,10,16,26,42,68,110,180],  cd:[0.42,0.40,0.38,0.36]},
-  gat:  {name:'GLITTER GATLING', lvName:['GLITTER STREAM','SPARK BARRAGE','DISCO INFERNO','GALAXY BARRAGE'],
-         mast:[7,11,18,29,46,75,120,195],  cd:[0.085,0.07,0.058,0.052]},
-  bomb: {name:'SPARKLE BOMBS',   lvName:['GLITTER BOMB','CLUSTER BOMB','CELEBRATION CANNON','GRAND FINALE'],
-         mast:[5,9,15,24,39,63,100,165],   cd:[0.9,0.85,0.8,0.75]},
+  bow:  {name:'PRISM BOW',       lvName:['BRIGHT ARROW','SPLIT SHOT','RAINBOW VOLLEY','PRISM STORM'],   cd:[0.42,0.40,0.38,0.36]},
+  gat:  {name:'GLITTER GATLING', lvName:['GLITTER STREAM','SPARK BARRAGE','DISCO INFERNO','GALAXY BARRAGE'],cd:[0.085,0.07,0.058,0.052]},
+  bomb: {name:'SPARKLE BOMBS',   lvName:['GLITTER BOMB','CLUSTER BOMB','CELEBRATION CANNON','GRAND FINALE'],cd:[0.9,0.85,0.8,0.75]},
 };
 const weapState=lv=>lv>=9?3:lv>=6?2:lv>=3?1:0;
 const WKEYS=Object.keys(WEAP);
@@ -609,7 +608,7 @@ function killEnemy(e,w){
   popTxt(e.x,e.y-d.r-8,'+'+pts.toLocaleString(), e.elite?'#ffe14d':(e.type==='melon'?'#7dffb0':'#fff'));
   for(let i=0;i<(d.big?16:8);i++){ const a=R(0,6.28),v=R(40,d.big?220:150);
     parts.push({x:e.x,y:e.y,vx:Math.cos(a)*v,vy:Math.sin(a)*v,r:R(2,d.big?6:4),c:Math.random()<.6?d.col:'#fff',t:R(.25,.5)}); }
-  if(w && weap[w] && weap[w].lv<3){ weap[w].xp+=d.xp; checkLevel(w); }
+  if(w && weap.lv<9){ weap.xp+=d.xp; checkLevel(); }   // all weapon kills feed the rider's one mastery pool
   if(e.type==='melon'){ for(let i=0;i<3;i++){ const a=R(0,6.28); spawnAt('slice',e.x+Math.cos(a)*24,e.y+Math.sin(a)*24); } }
   sfx(d.big?'splat':'pop');
 }
@@ -627,16 +626,15 @@ function hurtPlayer(dmg){
 }
 
 /* ================================================================= weapons (auto-aim) */
-function newWeap(){ return {cur:'bow', bow:{lv:1,xp:0}, gat:{lv:1,xp:0}, bomb:{lv:1,xp:0}}; }
-function checkLevel(w){
-  const wr=weap[w];
-  while(wr.lv<9 && wr.xp>=WEAP[w].mast[wr.lv-1]){
-    wr.xp-=WEAP[w].mast[wr.lv-1]; wr.lv++;
-    if(w===weap.cur) levelUpFx(w, wr.lv===3||wr.lv===6||wr.lv===9);
+function newWeap(){ return {cur:'bow', lv:1, xp:0}; }
+function checkLevel(){
+  while(weap.lv<9 && weap.xp>=MAST[weap.lv-1]){
+    weap.xp-=MAST[weap.lv-1]; weap.lv++;
+    levelUpFx(weap.cur, weap.lv===3||weap.lv===6||weap.lv===9);
   }
 }
 function levelUpFx(w,evolved){
-  const wr=weap[w];
+  const wr=weap;
   if(!evolved){   // ordinary level: quick, non-blocking feedback under the rider
     callout(WEAP[w].name+' LV '+wr.lv,null,'#9fe8ff'); sfx('equip');
     for(let i=0;i<7;i++){ const a=R(0,6.28),v=R(50,150);
@@ -658,7 +656,7 @@ function acquireTarget(){
   return (b&&bd<=CFG.aimRange[weap.cur])?b:null;
 }
 function fireWeapon(){
-  const w=weap.cur, lv=weap[w].lv, st=weapState(lv);
+  const w=weap.cur, lv=weap.lv, st=weapState(lv);
   const dmgMul=1+0.07*(lv-1);              // smooth per-level growth between evolutions
   const mx=px+Math.cos(aimAng)*24, my=py-24+Math.sin(aimAng)*24;
   if(w==='bow'){
@@ -702,7 +700,7 @@ function updateProj(dt){
         const L=Math.hypot(p.vx,p.vy)||1;
         damageEnemy(e,p.dmg,p.vx/L*p.kb,p.vy/L*p.kb,p.w);
         parts.push({x:p.x,y:p.y,vx:R(-40,40),vy:R(-40,40),r:2.2,c:'#fff',t:.16});
-        if(p.w==='gat' && weap.gat.lv>=6){ gatHits++; if(gatHits%20===0) explode(p.x,p.y,55,5,120,'gat'); } // disco inferno
+        if(p.w==='gat' && weap.lv>=6){ gatHits++; if(gatHits%20===0) explode(p.x,p.y,55,5,120,'gat'); } // disco inferno
         if(p.pierce>0){ p.pierce--; } else { p.dead=true; }
         break;
       }
@@ -792,12 +790,11 @@ function collectPickup(p){
   slowmo(0.35,0.3);
   if(p.kind==='slam'){ startSlam(); return; }
   if(p.wtype===weap.cur){ // same weapon → big mastery jolt
-    const wr=weap[p.wtype];
-    if(wr.lv<9){ wr.xp+=WEAP[p.wtype].mast[wr.lv-1]*0.6; checkLevel(p.wtype); }
+    if(weap.lv<9){ weap.xp+=MAST[weap.lv-1]*0.6; checkLevel(); }
     callout('MASTERY +',null,'#5fe0ff');
-  }else{
+  }else{                  // new weapon inherits your level — switching is never a downgrade
     weap.cur=p.wtype; weaponsUsed.add(p.wtype);
-    callout(WEAP[p.wtype].name,'EQUIPPED · LV '+weap[p.wtype].lv,'#5fe0ff');
+    callout(WEAP[p.wtype].name,'EQUIPPED · LV '+weap.lv,'#5fe0ff');
   }
   sfx('equip'); beams('95,224,255',0.45);
 }
@@ -1111,7 +1108,7 @@ function update(rdt){
   updateSeeds(dt);
 
   fireCd-=dt;
-  if(fireCd<=0 && target && !slamState){ fireWeapon(); fireCd=WEAP[weap.cur].cd[weapState(weap[weap.cur].lv)]; }
+  if(fireCd<=0 && target && !slamState){ fireWeapon(); fireCd=WEAP[weap.cur].cd[weapState(weap.lv)]; }
 
   updateProj(dt);
   updateBombs(dt);
@@ -1520,7 +1517,7 @@ function drawUnicorn(){
   ctx.fillStyle='#b06cff'; ctx.beginPath(); ctx.arc(-1,-27,6,Math.PI*0.9,Math.PI*2.05); ctx.fill();
   // aim arm + weapon (auto-aim) — the weapon grows and glows at each evolution state
   ctx.save(); ctx.translate(2,-14); ctx.rotate(la);
-  const st=weap?weapState(weap[weap.cur].lv):0, wsc=1+st*0.22;
+  const st=weap?weapState(weap.lv):0, wsc=1+st*0.22;
   ctx.fillStyle='#eafcff'; ctx.fillRect(0,-2.5,15,5);
   ctx.scale(wsc,wsc);
   if(st===3){ ctx.fillStyle='hsla('+(time*260%360)+',95%,70%,.28)'; ctx.beginPath(); ctx.arc(17,0,15,0,6.283); ctx.fill(); }
@@ -1656,13 +1653,13 @@ function drawVignette(){
 }
 function drawDebug(){
   if(!dbg) return;
-  const wr=weap?weap[weap.cur]:null;
+  const wr=weap;
   const lines=[
     'fps '+fps.toFixed(0)+' · '+state+(paused?' (paused)':''),
     't '+runT.toFixed(1)+'s · '+phaseName(),
     'score '+score+' · mult ×'+mult+' bar '+multProg+'/'+(mult<CFG.multMax?CFG.multBar[mult-1]:'MAX'),
     'hp '+hp.toFixed(0)+' · pos '+px.toFixed(0)+','+py.toFixed(0)+' · cam '+camX.toFixed(0)+','+camY.toFixed(0),
-    'weapon '+ (weap?weap.cur+' lv'+wr.lv+' xp '+wr.xp.toFixed(1)+'/'+(wr.lv<9?WEAP[weap.cur].mast[wr.lv-1]:'MAX'):'-')+' tgt '+(target?target.type:'-'),
+    'weapon '+ (weap?weap.cur+' lv'+wr.lv+' xp '+wr.xp.toFixed(1)+'/'+(wr.lv<9?MAST[wr.lv-1]:'MAX'):'-')+' tgt '+(target?target.type:'-'),
     'enemies '+enemies.length+' · proj '+proj.length+' · seeds '+seeds.length,
     'budget '+budget.toFixed(1)+' · spawnT '+spawnT.toFixed(2)+' · hpMul '+hpMul().toFixed(2),
     'pickups '+pickups.map(p=>p.kind).join(',')+' · slam '+(slamState||'-')+' · gate '+(gateT>0?gateT.toFixed(1):'-'),
@@ -1682,10 +1679,9 @@ function render(){
   const mp=mult>=CFG.multMax?100:Math.round(multProg/CFG.multBar[mult-1]*100);
   if(lastMultP!==mp){ multFill.style.width=mp+'%'; lastMultP=mp; }
   if(weap){
-    const wt=WEAP[weap.cur].name+'|'+weap[weap.cur].lv;
-    if(lastWeapTxt!==wt){ weapNameEl.textContent=WEAP[weap.cur].name; weapLvEl.textContent='LV '+weap[weap.cur].lv; lastWeapTxt=wt; }
-    const wr=weap[weap.cur];
-    const m=wr.lv>=9?100:Math.min(100,wr.xp/WEAP[weap.cur].mast[wr.lv-1]*100);
+    const wt=WEAP[weap.cur].name+'|'+weap.lv;
+    if(lastWeapTxt!==wt){ weapNameEl.textContent=WEAP[weap.cur].name; weapLvEl.textContent='LV '+weap.lv; lastWeapTxt=wt; }
+    const m=weap.lv>=9?100:Math.min(100,weap.xp/MAST[weap.lv-1]*100);
     if(Math.abs(m-lastMast)>0.5){ mastFill.style.width=m+'%'; lastMast=m; }
   }
   if(state==='play'){
@@ -1767,7 +1763,7 @@ reset(); state='menu';
 /* ================================================================= debug hook */
 window.__game={
   get s(){ return {state,runT:+runT.toFixed(1),score,mult,multProg,hp,phase:phaseName(),
-    weapon:weap?weap.cur:null,lv:weap?weap[weap.cur].lv:0,xp:weap?+weap[weap.cur].xp.toFixed(1):0,
+    weapon:weap?weap.cur:null,lv:weap?weap.lv:0,xp:weap?+weap.xp.toFixed(1):0,
     x:+px.toFixed(0),y:+py.toFixed(0),cam:[+camX.toFixed(0),+camY.toFixed(0)],target:target?target.type:null,
     enemies:enemies.length,proj:proj.length,pickups:pickups.map(p=>p.kind),slam:slamState,gate:+gateT.toFixed(1),
     budget:+budget.toFixed(1),wave:waveN,cashT:+cashT.toFixed(2),secured}; },
@@ -1783,7 +1779,7 @@ window.__game={
   hpSet:v=>{ hp=v; },
   invuln:(v=1e9)=>{ invulnT=v; },
   give:w=>{ weap.cur=w; weaponsUsed.add(w); },
-  lvl:()=>{ const wr=weap[weap.cur]; if(wr.lv<9){ wr.xp=WEAP[weap.cur].mast[wr.lv-1]; checkLevel(weap.cur); } },
+  lvl:()=>{ if(weap.lv<9){ weap.xp=MAST[weap.lv-1]; checkLevel(); } },
   pickW:t=>spawnPickup('weapon',t||rand(WKEYS.filter(k=>k!==weap.cur))),
   pickS:()=>spawnPickup('slam'),
   slamNow:startSlam,
