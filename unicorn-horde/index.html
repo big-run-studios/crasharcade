@@ -167,7 +167,7 @@
     <button id="cashBtn"><div id="cashFill"></div><span id="cashTxt">HOLD TO CASH OUT</span></button>
   </div>
 
-  <div class="brand">CRASHARCADE · UNICORN HORDE v0.5.4</div>
+  <div class="brand">CRASHARCADE · UNICORN HORDE v0.6.0</div>
 </div>
 
 <audio id="music" src="music.mp3" loop preload="auto"></audio>
@@ -183,7 +183,7 @@ const RAINBOW=['#ff4d6e','#ff9a2e','#ffe14d','#3ddc74','#4dc3ff','#b06cff'];
 
 // every balancing knob lives here (spec §37)
 const CFG={
-  maxHp:100, invuln:0.85, playerR:15, moveSpd:182,
+  maxHp:50, invuln:0.85, playerR:15, moveSpd:182,
   aimRange:{bow:360,gat:330,bomb:300},
   pickupR:34, lemonStand:230,
   cashUnlock:15, cashHold:0.6,
@@ -206,7 +206,7 @@ const CFG={
    Mastery belongs to the RIDER, not the weapon: one global level/xp pool shared by all
    weapons, so picking up a new weapon keeps your level — switching is never a downgrade.
    Log-feel curve: dirt-cheap early (L3 fast), each step ~1.6× the last; L9 is the journey. */
-const MAST=[6,10,16,26,42,68,110,180];   // MAST[i] = xp for level i+1 → i+2
+const MAST=[12,20,32,52,84,136,220,360];   // MAST[i] = xp for level i+1 → i+2
 const WEAP={
   bow:  {name:'PRISM BOW',       lvName:['BRIGHT ARROW','SPLIT SHOT','RAINBOW VOLLEY','PRISM STORM'],   cd:[0.42,0.40,0.38,0.36]},
   gat:  {name:'GLITTER GATLING', lvName:['GLITTER STREAM','SPARK BARRAGE','DISCO INFERNO','GALAXY BARRAGE'],cd:[0.085,0.07,0.058,0.052]},
@@ -218,12 +218,12 @@ const WKEYS=Object.keys(WEAP);
 /* fruit roster — prototype five (+ melon slices) */
 /* juice = the fruit's INSIDE color (melon is red inside, not green) — used for death stains */
 const FRUIT={
-  grape: {r:9, hp:2.4, spd:70, dmg:5, cd:0.9, score:15, xp:1,  threat:1,  col:'#b06cff', dark:'#5a2a9a', juice:'#8a4de0'},
-  straw: {r:11,hp:3.4, spd:120,dmg:7, cd:0.9, score:25, xp:2,  threat:2,  col:'#ff4d6e', dark:'#a01f3a', juice:'#ff4d6e'},
-  lemon: {r:13,hp:7,   spd:78, dmg:0, cd:0,   score:40, xp:3,  threat:4,  col:'#ffe14d', dark:'#b8930f', juice:'#ffe98a'},
-  orange:{r:19,hp:30,  spd:46, dmg:14,cd:1.1, score:80, xp:6,  threat:6,  col:'#ff9a2e', dark:'#b05e10', juice:'#ffb14d', kbRes:0.85},
-  melon: {r:31,hp:110, spd:26, dmg:20,cd:1.2, score:300,xp:14, threat:15, col:'#3ddc74', dark:'#1b7a42', juice:'#ff4d5e', kbRes:0.9, big:1},
-  slice: {r:12,hp:9,   spd:95, dmg:9, cd:0.9, score:40, xp:3,  threat:3,  col:'#ff5a7a', dark:'#2a9a52', juice:'#ff4d5e'},
+  grape: {r:9, hp:2.4, spd:105,dmg:5, cd:0.9, score:15, xp:1,  threat:1,  col:'#b06cff', dark:'#5a2a9a', juice:'#8a4de0'},
+  straw: {r:11,hp:3.4, spd:180,dmg:7, cd:0.9, score:25, xp:2,  threat:2,  col:'#ff4d6e', dark:'#a01f3a', juice:'#ff4d6e'},
+  lemon: {r:13,hp:7,   spd:117,dmg:0, cd:0,   score:40, xp:3,  threat:4,  col:'#ffe14d', dark:'#b8930f', juice:'#ffe98a'},
+  orange:{r:19,hp:30,  spd:69, dmg:14,cd:1.1, score:80, xp:6,  threat:6,  col:'#ff9a2e', dark:'#b05e10', juice:'#ffb14d', kbRes:0.85},
+  melon: {r:31,hp:110, spd:39, dmg:20,cd:1.2, score:300,xp:14, threat:15, col:'#3ddc74', dark:'#1b7a42', juice:'#ff4d5e', kbRes:0.9, big:1},
+  slice: {r:12,hp:9,   spd:143,dmg:9, cd:0.9, score:40, xp:3,  threat:3,  col:'#ff5a7a', dark:'#2a9a52', juice:'#ff4d5e'},
 };
 
 /* structures — curated plaza layout for the 3000×2300 grounds; rect footprints, iso-extruded boxes */
@@ -528,7 +528,7 @@ function updateEnemies(dt){
       }
     }
     else if(e.type==='melon'){
-      if(e.chargeT>0){ e.chargeT-=dt; vx=e.cdx*205; vy=e.cdy*205; }
+      if(e.chargeT>0){ e.chargeT-=dt; vx=e.cdx*305; vy=e.cdy*305; }
       else if(e.telT>0){ e.telT-=dt; vx=0; vy=0; if(e.telT<=0){ e.chargeT=0.8; e.cdx=dx; e.cdy=dy; sfx('charge'); } }
       else{ e.chargeCd-=dt; if(e.chargeCd<=0 && dist<430){ e.telT=0.6; e.chargeCd=6.5; } }
     }
@@ -547,7 +547,7 @@ function updateEnemies(dt){
     }
     // juggernaut slams into a wall/structure → dazed stop
     if(e.chargeT>0){
-      if(movedD<205*dt*0.35){ e.chargeT=0; e.stun=0.7; shake=Math.max(shake,8); sfx('thud');
+      if(movedD<305*dt*0.35){ e.chargeT=0; e.stun=0.7; shake=Math.max(shake,8); sfx('thud');
         for(let i=0;i<8;i++){ const a=R(0,6.28),v=R(40,140);
           parts.push({x:e.x,y:e.y,vx:Math.cos(a)*v,vy:Math.sin(a)*v,r:R(2,4),c:'#9fe8ff',t:R(.2,.45)}); } }
     }
@@ -1486,8 +1486,8 @@ function drawUnicorn(){
       ctx.strokeStyle='rgba(0,0,0,.62)';                                 // remaining life (the shadow)
       ctx.beginPath(); ctx.ellipse(px,py+6,rx,ry,0,a0,a0+6.283*f); ctx.stroke();
       const rim = hurtFx>0 ? 'rgba(255,255,255,.9)'
-        : hp>60 ? 'rgba(120,235,255,.55)'
-        : hp>30 ? 'rgba(255,194,51,.65)'
+        : hp>CFG.maxHp*0.6 ? 'rgba(120,235,255,.55)'
+        : hp>CFG.maxHp*0.3 ? 'rgba(255,194,51,.65)'
         : 'rgba(255,61,110,'+(0.55+0.35*Math.sin(time*8))+')';           // danger pulse
       ctx.strokeStyle=rim; ctx.lineWidth=2.6*lw;
       ctx.beginPath(); ctx.ellipse(px,py+6,rx,ry,0,a0,a0+6.283*f); ctx.stroke();
@@ -1705,8 +1705,9 @@ function drawOffscreenArrows(){
   ctx.globalAlpha=1;
 }
 function drawVignette(){
-  if(state!=='play'||hp>30) return;
-  const a=(0.25+0.15*Math.sin(time*6))*(1-hp/30);
+  const lim=CFG.maxHp*0.3;
+  if(state!=='play'||hp>lim) return;
+  const a=(0.25+0.15*Math.sin(time*6))*(1-hp/lim);
   const g=ctx.createRadialGradient(CX,CY,H*0.3,CX,CY,H*0.75);
   g.addColorStop(0,'rgba(255,40,80,0)'); g.addColorStop(1,'rgba(255,40,80,'+a+')');
   ctx.fillStyle=g; ctx.fillRect(vx0,vy0,vx1-vx0,vy1-vy0);
