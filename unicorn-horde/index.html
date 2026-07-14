@@ -42,15 +42,6 @@
     100%{transform:translateX(-50%) translateY(110px) rotate(-14deg);opacity:0;}
   }
 
-  /* rainbow health bar */
-  #hpWrap{position:absolute;top:calc(max(12px,env(safe-area-inset-top)) + 68px);left:50%;transform:translateX(-50%);
-    width:230px;height:13px;border-radius:8px;background:rgba(255,255,255,.1);border:1.5px solid rgba(176,108,255,.5);overflow:hidden;}
-  #hpFill{height:100%;width:100%;border-radius:6px;transition:width .18s;
-    background:linear-gradient(90deg,#ff4d6e,#ff9a2e,#ffe14d,#3ddc74,#4dc3ff,#b06cff);
-    box-shadow:0 0 10px rgba(255,120,220,.7);}
-  #hpWrap.hurt{animation:hpflash .35s;}
-  @keyframes hpflash{0%,100%{transform:translateX(-50%)}25%{transform:translateX(calc(-50% - 4px))}75%{transform:translateX(calc(-50% + 4px))}}
-
   /* weapon pill (bottom-left, above cash) */
   #weapPill{position:absolute;left:12px;bottom:calc(max(16px,env(safe-area-inset-bottom)) + 84px);
     background:var(--panel);border:var(--panel-bd);border-radius:14px;padding:8px 12px;min-width:150px;backdrop-filter:blur(4px);}
@@ -140,7 +131,6 @@
         <div id="scoreVal">0</div>
         <div id="multRow">×1.0</div>
       </div>
-      <div id="hpWrap"><div id="hpFill"></div></div>
       <div id="weapPill"><span id="weapName">PRISM BOW</span><span id="weapLv">LV 1</span><div id="mastWrap"><div id="mastFill"></div></div></div>
       <div id="comboPill"><span id="comboVal">×1.25</span><small id="comboSub">12 COMBO</small></div>
     </div>
@@ -154,8 +144,8 @@
       <div class="htp">
         <div class="row"><div class="ic">👆</div><div class="tx"><b>Hold anywhere</b> — your unicorn <b>runs to your finger</b> · the hero auto-aims</div></div>
         <div class="row"><div class="ic">🍇</div><div class="tx">Angry fruit floods in from <i>everywhere</i> — dodge, kite, use the <b>stalls as cover</b></div></div>
-        <div class="row"><div class="ic">✨</div><div class="tx"><b>Run over pickups</b>: weapons, hearts · <u>RAINBOW SLAM</u> clears the screen</div></div>
-        <div class="row"><div class="ic">💰</div><div class="tx"><u>Hold CASH OUT</u> to bank the pot · crash and it's <i>all gone</i></div></div>
+        <div class="row"><div class="ic">✨</div><div class="tx"><b>Run over pickups</b>: new weapons · <u>RAINBOW SLAM</u> clears the screen</div></div>
+        <div class="row"><div class="ic">💰</div><div class="tx">Your <b>shadow ring is your life</b> — it never refills · <u>hold CASH OUT</u> before it runs out</div></div>
       </div>
       <button class="btn" id="playBtn">SADDLE UP</button>
       <div class="pb" id="menuBest"></div>
@@ -184,7 +174,7 @@
     <button id="cashBtn"><div id="cashFill"></div><span id="cashTxt">HOLD TO CASH OUT</span></button>
   </div>
 
-  <div class="brand">CRASHARCADE · UNICORN HORDE v0.2.1</div>
+  <div class="brand">CRASHARCADE · UNICORN HORDE v0.3.0</div>
 </div>
 
 <audio id="music" src="music.mp3" loop preload="auto"></audio>
@@ -213,7 +203,6 @@ const CFG={
   eliteStart:65, eliteBase:0.06, eliteGrow:0.002, eliteHp:2.5, eliteSpd:1.15, eliteScore:3,
   wpFirst:18, wpEvery:24, wpLife:12,
   slamStart:40, slamMinGap:26, slamLife:14, slamDmg:60,
-  heartHeal:16, heartLife:11,
   budgetBase:2.2, budgetRate:0.075, budgetLate:0.05,
   spawnIntBase:1.15, spawnIntMin:0.5,
   spawnMinDist:430,
@@ -281,7 +270,7 @@ let weap=null, fireCd=0, gatHits=0, aimAng=-Math.PI/2, target=null;
 
 // director
 let budget=0, spawnT=1, melonSeen=false, melonCd=0;
-let wpNext=0, slamLast=-99, heartCd=0, gateNext=0, gateT=0;
+let wpNext=0, slamLast=-99, gateNext=0, gateT=0;
 
 // entities
 let enemies=[], proj=[], seeds=[], bombs=[], pend=[], trails=[], expl=[], parts=[], pops=[], pickups=[];
@@ -316,7 +305,6 @@ function sfx(k){
   else if(k==='seed') tone('triangle',520,240,0,.12,.035);
   else if(k==='lvl'){ tone('sine',520,0,0,.09,.06); tone('sine',780,0,.09,.09,.06); tone('sine',1170,0,.18,.16,.07);}
   else if(k==='equip'){tone('sine',660,0,0,.08,.06); tone('sine',990,0,.08,.14,.06);}
-  else if(k==='heart'){tone('sine',520,0,0,.09,.05); tone('sine',780,0,.09,.14,.05);}
   else if(k==='slamUp'){tone('sine',200,900,0,.4,.07);}
   else if(k==='slam'){ tone('sawtooth',120,30,0,.5,.14); tone('sine',60,28,0,.45,.12);}
   else if(k==='thud'){ tone('sawtooth',110,40,0,.2,.09);}
@@ -568,7 +556,6 @@ function hurtPlayer(dmg){
   invulnT=CFG.invuln; hurtFx=0.32;
   combo=0; comboT=0;                                // damage breaks the combo
   flash('#ff3d6e',0.15); shake=Math.max(shake,10); sfx('hurt');
-  hpWrap.classList.remove('hurt'); void hpWrap.offsetWidth; hpWrap.classList.add('hurt');
   for(let i=0;i<10;i++){ const a=R(0,6.28),v=R(60,200);
     parts.push({x:px,y:py,vx:Math.cos(a)*v,vy:Math.sin(a)*v,r:R(2,4.5),c:Math.random()<.5?'#ff3d6e':'#fff',t:R(.25,.5)}); }
   if(hp<=0) startCrash();
@@ -700,11 +687,6 @@ function schedulePickups(dt){
     let p=0.015 + (enemies.length>26?0.05:0) + (runT-slamLast>50?0.02:0);
     if(Math.random()<p*dt){ spawnPickup('slam'); slamLast=runT; }
   }
-  // hearts when hurting
-  heartCd-=dt;
-  if(hp<70 && heartCd<=0 && !pickups.some(p=>p.kind==='heart') && Math.random()<0.03){
-    spawnPickup('heart'); heartCd=18;
-  }
   for(const p of pickups){ p.t-=dt; p.ph+=dt*3;
     if(p.t<=0){ p.dead=true; continue; }
     if(Math.hypot(p.x-px,p.y-py)<CFG.pickupR) collectPickup(p);
@@ -720,8 +702,8 @@ function spawnPickup(kind,wtype){
     if(Math.hypot(x-px,y-py)<160) continue;
     if(pickups.some(q=>Math.hypot(q.x-x,q.y-y)<90)) continue;
     pickups.push({kind,wtype,x,y,
-      t:kind==='slam'?CFG.slamLife:kind==='heart'?CFG.heartLife:CFG.wpLife,
-      max:kind==='slam'?CFG.slamLife:kind==='heart'?CFG.heartLife:CFG.wpLife,ph:0});
+      t:kind==='slam'?CFG.slamLife:CFG.wpLife,
+      max:kind==='slam'?CFG.slamLife:CFG.wpLife,ph:0});
     sfx('warn');
     return;
   }
@@ -730,13 +712,6 @@ function collectPickup(p){
   p.dead=true;
   slowmo(0.35,0.3);
   if(p.kind==='slam'){ startSlam(); return; }
-  if(p.kind==='heart'){
-    hp=Math.min(CFG.maxHp,hp+CFG.heartHeal);
-    popTxt(px,py-44,'+'+CFG.heartHeal+' HP','#ff8ad2'); sfx('heart'); flash('#ff8ad2',0.08);
-    for(let i=0;i<8;i++){ const a=R(0,6.28),v=R(40,120);
-      parts.push({x:px,y:py-20,vx:Math.cos(a)*v,vy:Math.sin(a)*v,r:R(2,3.5),c:'#ff8ad2',t:R(.3,.5)}); }
-    return;
-  }
   if(p.wtype===weap.cur){ // same weapon → big mastery jolt
     const wr=weap[p.wtype];
     if(wr.lv<3){ wr.xp+=WEAP[p.wtype].mast[wr.lv-1]*0.6; checkLevel(p.wtype); }
@@ -850,7 +825,6 @@ const menuEl=document.getElementById('menu'), overEl=document.getElementById('ov
 const cashedEl=document.getElementById('cashed'), cashBtn=document.getElementById('cashBtn');
 const cashFill=document.getElementById('cashFill'), cashTxt=document.getElementById('cashTxt');
 const scoreBox=document.getElementById('scoreBox'), scoreEl=document.getElementById('scoreVal'), multEl=document.getElementById('multRow');
-const hpWrap=document.getElementById('hpWrap'), hpFill=document.getElementById('hpFill');
 const weapNameEl=document.getElementById('weapName'), weapLvEl=document.getElementById('weapLv'), mastFill=document.getElementById('mastFill');
 const comboPill=document.getElementById('comboPill'), comboVal=document.getElementById('comboVal'), comboSub=document.getElementById('comboSub');
 const lvlBanner=document.getElementById('lvlBanner'), gateBanner=document.getElementById('gateBanner');
@@ -883,7 +857,7 @@ function reset(){
   weap=newWeap(); fireCd=0.4; gatHits=0; aimAng=-Math.PI/2; target=null;
   px=WW/2; py=WH/2+180; face=1; moving=0; walkPh=0;
   budget=6; spawnT=0.6; melonSeen=false; melonCd=0;
-  wpNext=CFG.wpFirst; slamLast=0; heartCd=6; gateNext=CFG.gateFirst; gateT=0;
+  wpNext=CFG.wpFirst; slamLast=0; gateNext=CFG.gateFirst; gateT=0;
   enemies=[]; proj=[]; seeds=[]; bombs=[]; pend=[]; trails=[]; expl=[]; parts=[]; pops=[]; pickups=[];
   slamState=null; slamT=0; cashHeld=false; cashT=0;
   kills=0; eliteKills=0; maxCombo=0; weaponsUsed=new Set(['bow']);
@@ -1327,7 +1301,7 @@ function drawPickup(p){
   ctx.save(); ctx.translate(p.x,p.y);
   ctx.fillStyle='rgba(0,0,0,.3)'; ctx.beginPath(); ctx.ellipse(0,10,14,5,0,0,6.283); ctx.fill();
   ctx.translate(0,bob-8);
-  ctx.strokeStyle=p.kind==='slam'?'rgba(255,255,255,.8)':p.kind==='heart'?'rgba(255,138,210,.85)':'rgba(95,224,255,.8)';
+  ctx.strokeStyle=p.kind==='slam'?'rgba(255,255,255,.8)':'rgba(95,224,255,.8)';
   ctx.lineWidth=3;
   ctx.beginPath(); ctx.arc(0,0,26,-Math.PI/2,-Math.PI/2+6.283*frac); ctx.stroke();
   if(p.kind==='slam'){
@@ -1342,12 +1316,6 @@ function drawPickup(p){
     ctx.rotate(-p.ph*0.5);
     ctx.fillStyle='#fff'; ctx.font='900 9px Orbitron'; ctx.textAlign='center'; ctx.textBaseline='middle';
     ctx.fillText('SLAM',0,36);
-  }else if(p.kind==='heart'){
-    ctx.fillStyle='#ff5ab8';
-    ctx.beginPath();
-    ctx.moveTo(0,10); ctx.bezierCurveTo(-14,-2,-9,-14,0,-6); ctx.bezierCurveTo(9,-14,14,-2,0,10);
-    ctx.fill();
-    ctx.fillStyle='rgba(255,255,255,.5)'; ctx.beginPath(); ctx.arc(-4,-5,2.4,0,6.283); ctx.fill();
   }else{
     ctx.fillStyle='rgba(10,20,40,.85)'; rr(-19,-19,38,38,10); ctx.fill();
     ctx.strokeStyle='#5fe0ff'; ctx.lineWidth=2; rr(-19,-19,38,38,10); ctx.stroke();
@@ -1380,7 +1348,31 @@ function drawUnicorn(){
   const rear=(state==='cashing'&&seqT<0.45)?Math.min(1,seqT/0.3):0;
   const gy=py+offY;
   const shScale=clamp(1+offY/640,0.25,1);
-  ctx.fillStyle='rgba(0,0,0,.35)'; ctx.beginPath(); ctx.ellipse(px,py+6,42*shScale,11*shScale,0,0,6.283); ctx.fill();
+  // the shadow IS the health bar: a hollow ring that drains clockwise and never refills
+  {
+    const f=Math.max(0,hp/CFG.maxHp);
+    const rx=40*shScale, ry=11*shScale, a0=-Math.PI/2, lw=Math.max(0.4,shScale);
+    ctx.lineCap='round';
+    ctx.setLineDash([5,6]);                                              // drained part: the shadow has worn away
+    ctx.lineWidth=2*lw;
+    ctx.strokeStyle='rgba(255,255,255,.14)';
+    ctx.beginPath(); ctx.ellipse(px,py+6,rx,ry,0,a0+6.283*f,a0+6.283); ctx.stroke();
+    ctx.setLineDash([]);
+    if(f>0.005){
+      ctx.lineWidth=9*lw;
+      ctx.strokeStyle='rgba(0,0,0,.62)';                                 // remaining life (the shadow)
+      ctx.beginPath(); ctx.ellipse(px,py+6,rx,ry,0,a0,a0+6.283*f); ctx.stroke();
+      const rim = hurtFx>0 ? 'rgba(255,255,255,.9)'
+        : hp>60 ? 'rgba(120,235,255,.55)'
+        : hp>30 ? 'rgba(255,194,51,.65)'
+        : 'rgba(255,61,110,'+(0.55+0.35*Math.sin(time*8))+')';           // danger pulse
+      ctx.strokeStyle=rim; ctx.lineWidth=2.6*lw;
+      ctx.beginPath(); ctx.ellipse(px,py+6,rx,ry,0,a0,a0+6.283*f); ctx.stroke();
+    }
+    ctx.lineCap='butt';
+    ctx.fillStyle='rgba(0,0,0,.16)';                                     // soft core so the unicorn stays grounded
+    ctx.beginPath(); ctx.ellipse(px,py+6,rx*0.55,ry*0.55,0,0,6.283); ctx.fill();
+  }
 
   if(state==='cashing'&&seqT>0.9) return;
   if(state==='play'&&invulnT>0&&!slamState&&Math.floor(invulnT*18)%2===0) return;
@@ -1523,7 +1515,7 @@ function drawOffscreenArrows(){
     if(sx>vx0+20&&sx<vx1-20&&sy>vy0+20&&sy<vy1-20) continue;
     const cx2=clamp(sx,vx0+30,vx1-30), cy2=clamp(sy,vy0+96,vy1-96);
     const a=Math.atan2(sy-cy2,sx-cx2);
-    const col=p.kind==='slam'?'#ffe14d':p.kind==='heart'?'#ff5ab8':'#5fe0ff';
+    const col=p.kind==='slam'?'#ffe14d':'#5fe0ff';
     ctx.save(); ctx.translate(cx2,cy2); ctx.rotate(a);
     ctx.globalAlpha=0.75+0.25*Math.sin(time*5);
     ctx.fillStyle=col;
@@ -1532,7 +1524,7 @@ function drawOffscreenArrows(){
     ctx.fillStyle='rgba(8,10,26,.75)'; ctx.beginPath(); ctx.arc(-14,0,10,0,6.283); ctx.fill();
     ctx.strokeStyle=col; ctx.lineWidth=1.6; ctx.beginPath(); ctx.arc(-14,0,10,0,6.283); ctx.stroke();
     ctx.fillStyle=col; ctx.font='900 10px Orbitron'; ctx.textAlign='center'; ctx.textBaseline='middle';
-    ctx.fillText(p.kind==='slam'?'★':p.kind==='heart'?'♥':'W',-14,0.5);
+    ctx.fillText(p.kind==='slam'?'★':'W',-14,0.5);
     ctx.restore();
   }
   ctx.globalAlpha=1;
@@ -1564,12 +1556,11 @@ function drawDebug(){
 }
 
 /* HUD DOM sync (cached to avoid layout churn) */
-let lastScore=-1,lastMult=-1,lastHp=-1,lastWeapTxt='',lastMast=-1,lastCombo=-1,lastCash='';
+let lastScore=-1,lastMult=-1,lastWeapTxt='',lastMast=-1,lastCombo=-1,lastCash='';
 function render(){
   if(lastScore!==score){ scoreEl.textContent=score.toLocaleString(); lastScore=score; }
   const mr=Math.round(mult*10)/10;
   if(lastMult!==mr){ multEl.textContent='×'+mr.toFixed(1); multEl.style.fontSize=(14+Math.min(15,mr*0.9))+'px'; lastMult=mr; }
-  if(lastHp!==hp){ hpFill.style.width=(hp/CFG.maxHp*100)+'%'; lastHp=hp; }
   if(weap){
     const wt=WEAP[weap.cur].name+'|'+weap[weap.cur].lv;
     if(lastWeapTxt!==wt){ weapNameEl.textContent=WEAP[weap.cur].name; weapLvEl.textContent='LV '+weap[weap.cur].lv; lastWeapTxt=wt; }
@@ -1678,7 +1669,6 @@ window.__game={
   lvl:()=>{ const wr=weap[weap.cur]; if(wr.lv<3){ wr.xp=WEAP[weap.cur].mast[wr.lv-1]; checkLevel(weap.cur); } },
   pickW:t=>spawnPickup('weapon',t||rand(WKEYS.filter(k=>k!==weap.cur))),
   pickS:()=>spawnPickup('slam'),
-  pickH:()=>spawnPickup('heart'),
   slamNow:startSlam,
   gateNow:()=>{ gateNext=runT; },
   goto:(x,y)=>{ goTarget={x,y}; },               // headless "hold finger at world point"
