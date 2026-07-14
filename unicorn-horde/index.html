@@ -38,6 +38,8 @@
   #multWrap{width:96px;height:5px;border-radius:3px;background:rgba(255,255,255,.13);margin:4px auto 0;overflow:hidden;}
   #multFill{height:100%;width:0%;background:linear-gradient(90deg,#ffc233,#ff8ad2);border-radius:3px;}
   #multWrap.maxed #multFill{width:100%;background:linear-gradient(90deg,#ffe14d,#ff3d9a,#5fe0ff);}
+  #timeRow{margin-top:4px;font-size:11px;font-weight:800;letter-spacing:2px;color:var(--dim);}
+  #timeRow.hot{color:#ff5a7a;text-shadow:0 0 8px rgba(255,61,110,.7);}
   #scoreBox.shatter{animation:shatter .9s forwards;}
   @keyframes shatter{
     15%{transform:translateX(-50%) rotate(3deg);}
@@ -125,6 +127,7 @@
         <div id="scoreVal">0</div>
         <div id="multRow">×1</div>
         <div id="multWrap"><div id="multFill"></div></div>
+        <div id="timeRow">2:00</div>
       </div>
       <div id="weapPill"><span id="weapName">PRISM BOW</span><span id="weapLv">LV 1</span><div id="mastWrap"><div id="mastFill"></div></div></div>
     </div>
@@ -138,7 +141,7 @@
         <div class="row"><div class="ic">👆</div><div class="tx"><b>Hold anywhere</b> — your unicorn <b>runs to your finger</b> · the hero auto-aims</div></div>
         <div class="row"><div class="ic">🍇</div><div class="tx">Angry fruit floods in from <i>everywhere</i> — dodge, kite, use the <b>stalls as cover</b></div></div>
         <div class="row"><div class="ic">✨</div><div class="tx"><b>Run over pickups</b>: new weapons · <u>RAINBOW SLAM</u> clears the screen</div></div>
-        <div class="row"><div class="ic">💰</div><div class="tx">Your <b>shadow ring is your life</b> — it never refills · <u>hold CASH OUT</u> before it runs out</div></div>
+        <div class="row"><div class="ic">💰</div><div class="tx">Your <b>shadow ring is your life</b> — no refills · <u>hold CASH OUT</u> to bank it · outlive the <i>whole song</i> for +25%</div></div>
       </div>
       <button class="btn" id="playBtn">SADDLE UP</button>
       <div class="pb" id="menuBest"></div>
@@ -167,7 +170,7 @@
     <button id="cashBtn"><div id="cashFill"></div><span id="cashTxt">HOLD TO CASH OUT</span></button>
   </div>
 
-  <div class="brand">CRASHARCADE · UNICORN HORDE v0.6.0</div>
+  <div class="brand">CRASHARCADE · UNICORN HORDE v0.6.1</div>
 </div>
 
 <audio id="music" src="music.mp3" loop preload="auto"></audio>
@@ -186,6 +189,7 @@ const CFG={
   maxHp:50, invuln:0.85, playerR:15, moveSpd:182,
   aimRange:{bow:360,gat:330,bomb:300},
   pickupR:34, lemonStand:230,
+  maxRun:120, surviveBonus:0.25,   // the run IS the song — outlive it and the pot banks itself +25%
   cashUnlock:15, cashHold:0.6,
   gateFirst:30, gateEvery:26, gateDur:6, gateBonus:0.10,
   multBar:[15,25,35,50], multMax:5,   // kills to climb ×1→×2→…→×5; any hit resets to ×1
@@ -280,7 +284,7 @@ let shake=0;
 let beamFx=[];      // light-beam rings rising around the player (replaces all screen flashes)
 let callouts=[];    // level/multiplier announcements anchored under the unicorn
 let slowT=0, slowF=1, paused=false, dbg=false, fps=60;
-let seqT=0, shattered=false, secured=0, gateWin=false;
+let seqT=0, shattered=false, secured=0, gateWin=false, surviveWin=false, finaleWarned=false;
 
 // player
 let px=WW/2, py=WH/2+180, face=1, moving=0, walkPh=0;
@@ -887,9 +891,9 @@ function updateCash(dt){
     if(cashT>=CFG.cashHold) completeCash();
   }else cashT=Math.max(0,cashT-dt*3);
 }
-function completeCash(){
-  gateWin=gateT>0;
-  secured=Math.round(score*(gateWin?1+CFG.gateBonus:1));
+function completeCash(survived){
+  gateWin=gateT>0; surviveWin=!!survived;
+  secured=Math.round(score*(1+(gateWin?CFG.gateBonus:0)+(surviveWin?CFG.surviveBonus:0)));
   state='cashing'; seqT=0; cashHeld=false; cashT=0;
   cashBtn.classList.remove('on','gate'); gateBanner.classList.remove('show');
   sfx('cash'); beams('57,255,160',0.9); syncMusic();
@@ -932,6 +936,7 @@ const cashFill=document.getElementById('cashFill'), cashTxt=document.getElementB
 const scoreBox=document.getElementById('scoreBox'), scoreEl=document.getElementById('scoreVal'), multEl=document.getElementById('multRow');
 const weapNameEl=document.getElementById('weapName'), weapLvEl=document.getElementById('weapLv'), mastFill=document.getElementById('mastFill');
 const multWrap=document.getElementById('multWrap'), multFill=document.getElementById('multFill');
+const timeRow=document.getElementById('timeRow');
 const gateBanner=document.getElementById('gateBanner');
 
 function statLine(){
@@ -942,7 +947,9 @@ function showCashed(){
   if(secured>best){ best=secured; store.set('uni_best',best); }
   hudEl.classList.remove('on');
   document.getElementById('cashPts').textContent=secured.toLocaleString();
-  document.getElementById('cashChips').innerHTML=statLine()+(gateWin?'<br>🌈 GATE BONUS +'+Math.round(CFG.gateBonus*100)+'%':'');
+  document.getElementById('cashChips').innerHTML=statLine()
+    +(gateWin?'<br>🌈 GATE BONUS +'+Math.round(CFG.gateBonus*100)+'%':'')
+    +(surviveWin?'<br>🎵 FULL SONG SURVIVED +'+Math.round(CFG.surviveBonus*100)+'%':'');
   const b=document.getElementById('cashBest');
   if(secured>=best&&secured>0){ b.textContent='★ NEW BEST ★'; b.className='best newbest'; }
   else{ b.textContent='BEST '+best.toLocaleString(); b.className='best'; }
@@ -958,7 +965,7 @@ function showOver(){
 }
 function reset(){
   runT=0; mult=1; multProg=0; score=0; hp=CFG.maxHp; invulnT=1.0; hurtFx=0;
-  shake=0; slowT=0; seqT=0; shattered=false; secured=0; gateWin=false;
+  shake=0; slowT=0; seqT=0; shattered=false; secured=0; gateWin=false; surviveWin=false; finaleWarned=false;
   weap=newWeap(); fireCd=0.4; gatHits=0; aimAng=-Math.PI/2; target=null;
   px=WW/2; py=WH/2+180; face=1; moving=0; walkPh=0;
   budget=8; spawnT=0.8; waveN=0; baseAng=R(0,6.283); melonSeen=false; melonCd=0;
@@ -1119,6 +1126,15 @@ function update(rdt){
   const dt=rdt*(slowT>0?slowF:1);
   slowT-=rdt;
   runT+=dt;
+  // the song is the clock: finale warning at -10s, forced encore cash-out when it ends
+  if(!finaleWarned && runT>=CFG.maxRun-10){ finaleWarned=true;
+    callout('FINALE','10 SECONDS — CASH OUT OR RIDE IT OUT','#ff5a7a'); sfx('warn'); }
+  if(runT>=CFG.maxRun){
+    callout('ENCORE!','FULL SONG SURVIVED +'+Math.round(CFG.surviveBonus*100)+'%','#ffe14d');
+    beams('255,225,77',1.0);
+    completeCash(true);
+    return;
+  }
   invulnT-=dt; hurtFx-=dt;
   if(shake>0) shake=Math.max(0,shake-rdt*26);
 
@@ -1732,13 +1748,16 @@ function drawDebug(){
 }
 
 /* HUD DOM sync (cached to avoid layout churn) */
-let lastScore=-1,lastMult=-1,lastMultP=-1,lastWeapTxt='',lastMast=-1,lastCash='';
+let lastScore=-1,lastMult=-1,lastMultP=-1,lastWeapTxt='',lastMast=-1,lastCash='',lastTime='';
 function render(){
   if(lastScore!==score){ scoreEl.textContent=score.toLocaleString(); lastScore=score; }
   if(lastMult!==mult){ multEl.textContent='×'+mult; multEl.style.fontSize=(14+mult*2.2)+'px';
     multWrap.classList.toggle('maxed',mult>=CFG.multMax); lastMult=mult; }
   const mp=mult>=CFG.multMax?100:Math.round(multProg/CFG.multBar[mult-1]*100);
   if(lastMultP!==mp){ multFill.style.width=mp+'%'; lastMultP=mp; }
+  { const rem=Math.max(0,Math.ceil(CFG.maxRun-runT));
+    const ts=Math.floor(rem/60)+':'+String(rem%60).padStart(2,'0');
+    if(lastTime!==ts){ timeRow.textContent=ts; timeRow.classList.toggle('hot',rem<=10); lastTime=ts; } }
   if(weap){
     const wt=WEAP[weap.cur].name+'|'+weap.lv;
     if(lastWeapTxt!==wt){ weapNameEl.textContent=WEAP[weap.cur].name; weapLvEl.textContent='LV '+weap.lv; lastWeapTxt=wt; }
