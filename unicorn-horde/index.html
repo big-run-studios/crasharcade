@@ -60,7 +60,7 @@
 
   /* hold-to-cash-out */
   #cashBtn{position:absolute;left:50%;transform:translateX(-50%);bottom:max(14px,env(safe-area-inset-bottom));z-index:24;
-    width:min(44%,190px);height:44px;border-radius:999px;cursor:pointer;border:1.5px solid rgba(255,255,255,.55);
+    width:min(44%,190px);height:44px;border-radius:999px;cursor:default;pointer-events:none;border:1.5px solid rgba(255,255,255,.55);
     display:none;align-items:center;justify-content:center;overflow:hidden;
     font-family:var(--display);font-weight:900;letter-spacing:.7px;font-size:10.5px;color:#2a1c04;
     background:radial-gradient(120% 160% at 50% 20%, #ffe9a8, #ffc233 55%, #d9941e);
@@ -140,8 +140,8 @@
       <div class="htp">
         <div class="row"><div class="ic">👆</div><div class="tx"><b>Hold anywhere</b> to run to your finger · or grab the <b>stick</b> at the bottom edge · the hero auto-aims</div></div>
         <div class="row"><div class="ic">🍇</div><div class="tx">Angry fruit floods in from <i>everywhere</i> — dodge, kite, use the <b>stalls as cover</b></div></div>
-        <div class="row"><div class="ic">✨</div><div class="tx"><b>Run over pickups</b>: new weapons · <u>RAINBOW SLAM</u> clears the screen</div></div>
-        <div class="row"><div class="ic">💰</div><div class="tx">Your <b>shadow ring is your life</b> — no refills · <u>hold CASH OUT</u> to bank it · outlive the <i>whole song</i> for +25%</div></div>
+        <div class="row"><div class="ic">✨</div><div class="tx"><b>Run over pickups</b> · headbutt <u>chests</u> open for big loot · <u>RAINBOW SLAM</u> clears the screen</div></div>
+        <div class="row"><div class="ic">💰</div><div class="tx">Stand on the <b>center platform</b> for 3s to <u>EXTRACT</u> your pot · outlive the <i>whole song</i> for +25%</div></div>
       </div>
       <button class="btn" id="playBtn">SADDLE UP</button>
       <button class="btn ghost" id="to3dBtn">PLAY IN 3D</button>
@@ -168,10 +168,10 @@
       <button class="btn ghost" id="cashMenuBtn">ARCADE</button>
     </div>
 
-    <button id="cashBtn"><div id="cashFill"></div><span id="cashTxt">HOLD TO CASH OUT</span></button>
+    <button id="cashBtn"><div id="cashFill"></div><span id="cashTxt">EXTRACT AT CENTER</span></button>
   </div>
 
-  <div class="brand">CRASHARCADE · UNICORN HORDE v0.7.5</div>
+  <div class="brand">CRASHARCADE · UNICORN HORDE v0.9.0</div>
 </div>
 
 <audio id="music" src="music.mp3" loop preload="auto"></audio>
@@ -192,7 +192,9 @@ const CFG={
   aimRange:{bow:360,gat:330,bomb:300},
   pickupR:34, lemonStand:230,
   maxRun:120, surviveBonus:0.25,   // the run IS the song — outlive it and the pot banks itself +25%
-  cashUnlock:15, cashHold:0.6,
+  cashUnlock:15,
+  extractR:95, extractTime:3,   // cash out = STAND on the center platform for 3s — exposed, committed
+  chestOpen:3, chestN:5, clearBombR:480,
   gateFirst:30, gateEvery:26, gateDur:6, gateBonus:0.10,
   multBar:[15,25,35,50], multMax:5,   // kills to climb ×1→×2→…→×5; any hit resets to ×1
   maxEnemies:120,
@@ -234,9 +236,8 @@ const FRUIT={
 };
 
 /* structures — curated plaza layout for the 3000×2300 grounds; rect footprints, iso-extruded boxes */
+const PADX=1500, PADY=1150;   // extraction platform at world centre (walkable — replaces the fountain)
 const BASE_STRUCTS=[
-  // central plaza fountain (landmark)
-  {x:1435,y:1010,w:130,h:92,hh:34,kind:'fountain'},
   // crystals mark the quadrants
   {x:880,y:540,w:66,h:62,  hh:74,kind:'crystal'},
   {x:2054,y:540,w:66,h:62, hh:74,kind:'crystal'},
@@ -310,8 +311,9 @@ let trailTick=0;
 // slam
 let slamState=null, slamT=0;
 
-// cash-out
-let cashHeld=false, cashT=0, cashTick=0;
+// extraction + chests
+let extractT=0, extTick=0;
+let chests=[], buttInfo=null;
 
 // stats
 let kills=0, eliteKills=0, maxMult=1, weaponsUsed=null;
@@ -843,6 +845,12 @@ function collectPickup(p){
   p.dead=true;
   slowmo(0.2,0.55);   // light tick, not a movement stall — pickups happen mid-dodge
   if(p.kind==='slam'){ startSlam(); return; }
+  if(p.kind==='levelup'){   // chest drop: a whole weapon level, on the spot
+    if(weap.lv<9){ weap.xp=0; weap.lv++; levelUpFx(weap.cur, weap.lv===3||weap.lv===6||weap.lv===9); }
+    else{ callout('MAX LEVEL',null,'#ffe14d'); }
+    sfx('lvl'); beams('255,194,51',0.5); return;
+  }
+  if(p.kind==='clearbomb'){ clearBomb(); return; }
   if(p.wtype===weap.cur){ // same weapon → big mastery jolt
     if(weap.lv<9){ weap.xp+=MAST[weap.lv-1]*0.6; checkLevel(); }
     callout('MASTERY +',null,'#5fe0ff');
@@ -891,7 +899,7 @@ function updateGates(dt){
     gateNext+=CFG.gateEvery; gateT=CFG.gateDur;
     slowmo(0.5,0.55); sfx('gate');
     const nxt=runT<42?'LEMON SPITTERS INCOMING':runT<58?'ORANGE BRUISERS INCOMING':runT<72?'JUGGERNAUT INCOMING':'ELITE WAVE INCOMING';
-    gateBanner.innerHTML='🌈 RAINBOW GATE — CASH OUT NOW FOR +'+Math.round(CFG.gateBonus*100)+'%<small>'+nxt+'</small>';
+    gateBanner.innerHTML='🌈 RAINBOW GATE — EXTRACT NOW FOR +'+Math.round(CFG.gateBonus*100)+'%<small>'+nxt+'</small>';
     gateBanner.classList.add('show');
     cashBtn.classList.add('gate');
   }
@@ -901,22 +909,77 @@ function updateGates(dt){
     if(gateT<=0) cashBtn.classList.remove('gate');
   }
 }
-function startCashHold(){ if(state!=='play'||runT<CFG.cashUnlock) return; cashHeld=true; }
-function cancelCashHold(){ cashHeld=false; }
-function updateCash(dt){
-  if(cashHeld && runT>=CFG.cashUnlock){
-    cashT+=dt;
-    cashTick-=dt;
-    if(cashTick<=0){ cashTick=0.14; sfx('tick'); }
-    if(cashT>=CFG.cashHold) completeCash();
-  }else cashT=Math.max(0,cashT-dt*3);
+function onPad(){ return Math.hypot(px-PADX,py-PADY)<CFG.extractR; }
+function updateExtract(dt){
+  if(runT>=CFG.cashUnlock && onPad()){
+    extractT+=dt;
+    extTick-=dt;
+    if(extTick<=0){ extTick=0.25; sfx('tick'); }
+    if(extractT>=CFG.extractTime) completeCash();
+  }else extractT=Math.max(0,extractT-dt*2);   // step off and the charge bleeds away fast
 }
 function completeCash(survived){
   gateWin=gateT>0; surviveWin=!!survived;
   secured=Math.round(score*(1+(gateWin?CFG.gateBonus:0)+(surviveWin?CFG.surviveBonus:0)));
-  state='cashing'; seqT=0; cashHeld=false; cashT=0;
+  state='cashing'; seqT=0; extractT=0;
   cashBtn.classList.remove('on','gate'); gateBanner.classList.remove('show');
   sfx('cash'); beams('57,255,160',0.9); syncMusic();
+}
+/* ================================================================= chests */
+function chestSpots(){
+  const spots=[];
+  for(let i=0;i<8;i++){ const a=i*Math.PI/4;                        // 8 evenly around the outside border
+    spots.push({x:PADX+Math.cos(a)*1200, y:PADY+Math.sin(a)*880}); }
+  for(let i=0;i<4;i++){ const a=i*Math.PI/2+Math.PI/4;              // 4 between the platform and the border
+    spots.push({x:PADX+Math.cos(a)*620, y:PADY+Math.sin(a)*470}); }
+  return spots;
+}
+function buildChests(){
+  chests=[];
+  const s=chestSpots(), idx=[...s.keys()];
+  for(let i=0;i<CFG.chestN;i++){
+    const k=idx.splice(Math.floor(Math.random()*idx.length),1)[0];
+    let {x,y}=s[k];
+    for(let n=0;n<4 && inStruct(x,y,44);n++) y+=70;   // nudge off any structure
+    chests.push({x,y,t:CFG.chestOpen,butt:0,shake:0,opened:0,t2:0});
+  }
+}
+function updateChests(dt){
+  buttInfo=null;
+  for(const c of chests){
+    if(c.opened){ c.t2+=dt; continue; }
+    c.shake=Math.max(0,c.shake-dt*3);
+    const dx=px-c.x, dy=py-c.y, dd=Math.hypot(dx,dy)||1, min=CFG.playerR+30;
+    if(dd<min){
+      px=c.x+dx/dd*min; py=c.y+dy/dd*min;   // lean against it
+      c.t-=dt; c.butt-=dt;
+      if(c.butt<=0){ c.butt=0.45; c.shake=1; sfx('thud');
+        for(let i=0;i<5;i++){ const a=R(0,6.28),v=R(30,110);
+          parts.push({x:c.x,y:c.y,vx:Math.cos(a)*v,vy:Math.sin(a)*v,r:R(1.6,3),c:Math.random()<.5?'#ffc233':'#c98940',t:R(.2,.4)}); } }
+      buttInfo={x:c.x,y:c.y,p:1-Math.max(0,c.butt)/0.45};
+      if(c.t<=0){
+        c.opened=1; c.t2=0;
+        pickups.push({kind:Math.random()<0.5?'levelup':'clearbomb',wtype:null,
+          x:clamp(c.x+R(-25,25),WALL+50,WW-WALL-50),y:clamp(c.y+R(30,55),WALL+50,WH-WALL-50),t:9999,max:9999,ph:0});
+        popTxt(c.x,c.y,'CHEST OPENED!','#ffc233');
+        sfx('lvl'); beams('255,194,51',0.5);
+      }
+    }
+  }
+  chests=chests.filter(c=>!c.opened||c.t2<0.6);
+}
+function clearBomb(){
+  shake=18; beams('255,255,255',0.8); sfx('slam'); slowmo(0.3,0.4);
+  expl.push({x:px,y:py,r:0,mx:CFG.clearBombR,t:0,life:0.5,slam:true});
+  for(let i=0;i<22;i++){ const a=R(0,6.28),v=R(100,380);
+    parts.push({x:px,y:py,vx:Math.cos(a)*v,vy:Math.sin(a)*v,r:R(2,5),c:rand(RAINBOW),t:R(.3,.7)}); }
+  for(const e of enemies){ if(e.dead) continue;
+    const dd=Math.hypot(e.x-px,e.y-py)||1;
+    if(dd<CFG.clearBombR+e.r){
+      if(e.elite||e.type==='melon') damageEnemy(e,CFG.slamDmg,(e.x-px)/dd*320,(e.y-py)/dd*320,null);
+      else killEnemy(e,null);
+    } }
+  invulnT=Math.max(invulnT,1);
 }
 function updCashing(rdt){
   for(const p of parts){ p.x+=p.vx*rdt; p.y+=p.vy*rdt; p.t-=rdt; }
@@ -931,7 +994,7 @@ function updCashing(rdt){
 /* ================================================================= crash */
 function startCrash(){
   state='dying'; seqT=0; shattered=false;
-  cashHeld=false; cashT=0; cashBtn.classList.remove('on','gate');
+  extractT=0; cashBtn.classList.remove('on','gate');
   gateBanner.classList.remove('show');
   slowT=0; sfx('crash'); beams('255,61,110',1.0); shake=16; syncMusic();
   for(let i=0;i<26;i++){ const a=R(0,6.28),v=R(80,300);
@@ -992,9 +1055,10 @@ function reset(){
   wpNext=CFG.wpFirst; slamLast=0; gateNext=CFG.gateFirst; gateT=0;
   enemies=[]; proj=[]; seeds=[]; bombs=[]; pend=[]; trails=[]; expl=[]; parts=[]; pops=[]; pickups=[];
   stains=[]; paint=[];
-  slamState=null; slamT=0; cashHeld=false; cashT=0;
+  slamState=null; slamT=0; extractT=0; extTick=0; buttInfo=null;
   kills=0; eliteKills=0; maxMult=1; weaponsUsed=new Set([weap.cur]);
-  buildStructs(); resolveCircle({get x(){return px;},set x(v){px=v;},get y(){return py;},set y(v){py=v;},r:CFG.playerR});
+  buildStructs();
+  buildChests(); resolveCircle({get x(){return px;},set x(v){px=v;},get y(){return py;},set y(v){py=v;},r:CFG.playerR});
   beamFx=[]; callouts=[];
   scoreBox.classList.remove('shatter');
   gateBanner.classList.remove('show');
@@ -1023,12 +1087,7 @@ document.getElementById('backArcade').addEventListener('click',()=>{ location.hr
 document.getElementById('to3dBtn').addEventListener('click',()=>{ location.href='3d.html'; });
 document.getElementById('menuBest').textContent=best>0?('BEST '+best.toLocaleString()):'';
 
-/* cash button: deliberate hold, never a tap (spec §5) */
-cashBtn.addEventListener('pointerdown',e=>{ e.stopPropagation(); startCashHold(); });
-cashBtn.addEventListener('pointerup',e=>{ e.stopPropagation(); cancelCashHold(); });
-cashBtn.addEventListener('pointercancel',()=>cancelCashHold());
-cashBtn.addEventListener('pointerleave',()=>cancelCashHold());
-cashBtn.addEventListener('click',e=>e.stopPropagation());
+// the cash pill is a status indicator now — extraction happens by STANDING on the platform
 
 /* ================================================================= input — two ways to drive
    1) hold anywhere in the field: the unicorn runs to the point under your finger
@@ -1083,13 +1142,12 @@ window.addEventListener('keydown',e=>{
   if(e.code==='KeyR'&&state!=='menu'){ startRun(); return; }
   if(state!=='play') return;
   if(e.code==='Escape'){ paused=!paused; return; }
-  if(e.code==='Space'&&!e.repeat){ startCashHold(); e.preventDefault(); return; }
   if(e.code==='Digit1'){ weap.cur='bow'; weaponsUsed.add('bow'); }
   if(e.code==='Digit2'){ weap.cur='gat'; weaponsUsed.add('gat'); }
   if(e.code==='Digit3'){ weap.cur='bomb'; weaponsUsed.add('bomb'); }
   keys.add(e.code);
 });
-window.addEventListener('keyup',e=>{ if(e.code==='Space') cancelCashHold(); keys.delete(e.code); });
+window.addEventListener('keyup',e=>{ keys.delete(e.code); });
 
 /* ================================================================= player movement + camera */
 let moveTgt=null;   // current destination (world coords) — drawn as a ground marker
@@ -1229,6 +1287,7 @@ function update(rdt){
   if(shake>0) shake=Math.max(0,shake-rdt*26);
 
   movePlayer(dt);
+  updateChests(dt);
   updateCam();
 
   // auto-aim: track the nearest fruit in range
@@ -1252,7 +1311,7 @@ function update(rdt){
   updateBombs(dt);
   updateExpl(dt);
   updateSlam(dt);
-  updateCash(dt);
+  updateExtract(dt);
 
   for(const p of parts){ p.x+=p.vx*dt; p.y+=p.vy*dt; p.vx*=1-2*dt; p.vy*=1-2*dt; p.t-=dt; }
   parts=parts.filter(p=>p.t>0);
@@ -1381,6 +1440,31 @@ function drawStruct(s){
     ctx.fillStyle='rgba(255,194,51,.25)'; ctx.fillRect(x,y+h-hh+2.5,w,3);
   }
   ctx.restore();
+}
+function drawPad(){
+  ctx.fillStyle='rgba(14,60,90,.55)';
+  ctx.beginPath(); ctx.ellipse(PADX,PADY,CFG.extractR,CFG.extractR*0.55,0,0,6.283); ctx.fill();
+  ctx.strokeStyle='rgba(95,224,255,.8)'; ctx.lineWidth=3;
+  ctx.beginPath(); ctx.ellipse(PADX,PADY,CFG.extractR,CFG.extractR*0.55,0,0,6.283); ctx.stroke();
+  const ef=extractT/CFG.extractTime;
+  if(ef>0.01){ ctx.strokeStyle='rgba(255,194,51,.95)'; ctx.lineWidth=7; ctx.lineCap='round';
+    ctx.beginPath(); ctx.ellipse(PADX,PADY,CFG.extractR+10,CFG.extractR*0.55+7,0,-Math.PI/2,-Math.PI/2+6.283*ef); ctx.stroke();
+    ctx.lineCap='butt'; }
+  ctx.fillStyle='rgba(159,232,255,.45)'; ctx.font='900 12px Orbitron'; ctx.textAlign='center'; ctx.textBaseline='middle';
+  ctx.fillText('EXTRACT',PADX,PADY);
+}
+function drawChest(c){
+  ctx.save(); ctx.translate(c.x,c.y);
+  if(c.shake>0) ctx.rotate(Math.sin(time*42)*0.08*c.shake);
+  ctx.fillStyle='rgba(0,0,0,.3)'; ctx.beginPath(); ctx.ellipse(0,12,26,9,0,0,6.283); ctx.fill();
+  ctx.fillStyle='#6a4520'; rr(-19,-18,38,28,4); ctx.fill();
+  ctx.fillStyle='#7a5228'; rr(-21,c.opened?-36:-26,42,12,4); ctx.fill();
+  ctx.fillStyle='#ffc233'; ctx.fillRect(-21,-12,42,5);
+  ctx.beginPath(); ctx.arc(0,-8,3.4,0,6.283); ctx.fill();
+  ctx.restore();
+  if(!c.opened&&c.t<CFG.chestOpen){ const bw=44, fb=1-c.t/CFG.chestOpen;
+    ctx.fillStyle='rgba(0,0,0,.5)'; ctx.fillRect(c.x-bw/2,c.y-46,bw,5);
+    ctx.fillStyle='#ffc233'; ctx.fillRect(c.x-bw/2,c.y-46,bw*fb,5); }
 }
 function drawStains(){
   const x0=camX+vx0-60, x1=camX+vx1+60, y0=camY+vy0-60, y1=camY+vy1+60;
@@ -1530,10 +1614,27 @@ function drawPickup(p){
   ctx.save(); ctx.translate(p.x,p.y);
   ctx.fillStyle='rgba(0,0,0,.3)'; ctx.beginPath(); ctx.ellipse(0,10,14,5,0,0,6.283); ctx.fill();
   ctx.translate(0,bob-8);
-  ctx.strokeStyle=p.kind==='slam'?'rgba(255,255,255,.8)':'rgba(95,224,255,.8)';
+  ctx.strokeStyle=p.kind==='slam'?'rgba(255,255,255,.8)':p.kind==='levelup'?'rgba(255,194,51,.85)':p.kind==='clearbomb'?'rgba(255,61,154,.85)':'rgba(95,224,255,.8)';
   ctx.lineWidth=3;
   ctx.beginPath(); ctx.arc(0,0,26,-Math.PI/2,-Math.PI/2+6.283*frac); ctx.stroke();
-  if(p.kind==='slam'){
+  if(p.kind==='levelup'){
+    ctx.fillStyle='#ffc233';
+    ctx.beginPath();
+    for(let i=0;i<10;i++){ const r2=i%2?5.5:13, a=i*Math.PI/5-Math.PI/2;
+      ctx[i?'lineTo':'moveTo'](Math.cos(a)*r2,Math.sin(a)*r2); }
+    ctx.closePath(); ctx.fill();
+    ctx.strokeStyle='rgba(255,233,138,.8)'; ctx.lineWidth=2;
+    ctx.beginPath(); ctx.arc(0,8,15,0.3,Math.PI-0.3); ctx.stroke();
+    ctx.fillStyle='#ffe98a'; ctx.font='900 8.5px Orbitron'; ctx.textAlign='center'; ctx.textBaseline='middle';
+    ctx.fillText('LV+',0,32);
+  }else if(p.kind==='clearbomb'){
+    ctx.fillStyle='#1a1026'; ctx.beginPath(); ctx.arc(0,2,12,0,6.283); ctx.fill();
+    RAINBOW.forEach((cc,i)=>{ ctx.strokeStyle=cc; ctx.lineWidth=1.8;
+      ctx.beginPath(); ctx.arc(0,2,12,Math.PI+i*0.5,Math.PI+i*0.5+0.45); ctx.stroke(); });
+    ctx.fillStyle='#ffe14d'; ctx.beginPath(); ctx.arc(5,-11,3,0,6.283); ctx.fill();
+    ctx.fillStyle='#ff9ad2'; ctx.font='900 8.5px Orbitron'; ctx.textAlign='center'; ctx.textBaseline='middle';
+    ctx.fillText('CLEAR',0,32);
+  }else if(p.kind==='slam'){
     ctx.rotate(p.ph*0.5);
     for(let i=0;i<RAINBOW.length;i++){ ctx.strokeStyle=RAINBOW[i]; ctx.lineWidth=3; ctx.globalAlpha=.9;
       ctx.beginPath(); ctx.arc(0,0,20-i*2.6,0,6.283); ctx.stroke(); }
@@ -1573,7 +1674,7 @@ function unicornOffY(){
 }
 function drawUnicorn(){
   const offY=unicornOffY();
-  const cashGlow=cashT>0||state==='cashing';
+  const cashGlow=extractT>0||state==='cashing';
   const rear=(state==='cashing'&&seqT<0.45)?Math.min(1,seqT/0.3):0;
   const gy=py+offY;
   const shScale=clamp(1+offY/640,0.25,1);
@@ -1726,7 +1827,7 @@ function drawTargetMark(){
 }
 function drawPortal(){
   let p=0;
-  if(state==='play'&&cashT>0) p=cashT/CFG.cashHold*0.5;
+  if(state==='play'&&extractT>0) p=extractT/CFG.extractTime*0.5;
   else if(state==='cashing') p=0.5+Math.min(1,seqT/0.5)*0.5;
   if(p<=0) return;
   const pxx=px, pyy=py-120, r=p*70;
@@ -1826,7 +1927,7 @@ function drawOffscreenArrows(){
     if(sx>vx0+20&&sx<vx1-20&&sy>vy0+20&&sy<vy1-20) continue;
     const cx2=clamp(sx,vx0+30,vx1-30), cy2=clamp(sy,vy0+96,vy1-96);
     const a=Math.atan2(sy-cy2,sx-cx2);
-    const col=p.kind==='slam'?'#ffe14d':'#5fe0ff';
+    const col=p.kind==='slam'?'#ffe14d':p.kind==='levelup'?'#ffc233':p.kind==='clearbomb'?'#ff3d9a':'#5fe0ff';
     ctx.save(); ctx.translate(cx2,cy2); ctx.rotate(a);
     ctx.globalAlpha=0.75+0.25*Math.sin(time*5);
     ctx.fillStyle=col;
@@ -1835,7 +1936,26 @@ function drawOffscreenArrows(){
     ctx.fillStyle='rgba(8,10,26,.75)'; ctx.beginPath(); ctx.arc(-14,0,10,0,6.283); ctx.fill();
     ctx.strokeStyle=col; ctx.lineWidth=1.6; ctx.beginPath(); ctx.arc(-14,0,10,0,6.283); ctx.stroke();
     ctx.fillStyle=col; ctx.font='900 10px Orbitron'; ctx.textAlign='center'; ctx.textBaseline='middle';
-    ctx.fillText(p.kind==='slam'?'★':'W',-14,0.5);
+    ctx.fillText(p.kind==='slam'?'★':p.kind==='levelup'?'▲':p.kind==='clearbomb'?'✹':'W',-14,0.5);
+    ctx.restore();
+  }
+  // off-screen chest arrows
+  for(const c of chests){
+    if(c.opened) continue;
+    const sx=c.x-camX, sy=c.y-camY;
+    if(sx>vx0+20&&sx<vx1-20&&sy>vy0+96&&sy<vy1-96) continue;
+    const cx2=clamp(sx,vx0+30,vx1-30), cy2=clamp(sy,vy0+96,vy1-96);
+    const a=Math.atan2(sy-cy2,sx-cx2);
+    ctx.save(); ctx.translate(cx2,cy2);
+    ctx.globalAlpha=0.6+0.2*Math.sin(time*4);
+    ctx.rotate(a);
+    ctx.fillStyle='#c9a15a';
+    ctx.beginPath(); ctx.moveTo(14,0); ctx.lineTo(-4,-8); ctx.lineTo(-4,8); ctx.closePath(); ctx.fill();
+    ctx.rotate(-a);
+    ctx.fillStyle='rgba(8,10,26,.75)'; ctx.beginPath(); ctx.arc(-14,0,10,0,6.283); ctx.fill();
+    ctx.strokeStyle='#c9a15a'; ctx.lineWidth=1.6; ctx.beginPath(); ctx.arc(-14,0,10,0,6.283); ctx.stroke();
+    ctx.fillStyle='#ffc233'; ctx.font='900 10px Orbitron'; ctx.textAlign='center'; ctx.textBaseline='middle';
+    ctx.fillText('C',-14,0.5);
     ctx.restore();
   }
   ctx.globalAlpha=1;
@@ -1886,10 +2006,11 @@ function render(){
   }
   if(state==='play'){
     let txt;
-    if(runT<CFG.cashUnlock){ txt='CASHOUT IN '+Math.ceil(CFG.cashUnlock-runT)+'s'; cashBtn.classList.add('locked'); }
-    else{ txt='HOLD TO CASH OUT<small>'+score.toLocaleString()+(gateT>0?' +'+Math.round(CFG.gateBonus*100)+'% 🌈':'')+'</small>'; cashBtn.classList.remove('locked'); }
+    if(runT<CFG.cashUnlock){ txt='EXTRACTION IN '+Math.ceil(CFG.cashUnlock-runT)+'s'; cashBtn.classList.add('locked'); }
+    else if(extractT>0){ txt='EXTRACTING '+Math.round(extractT/CFG.extractTime*100)+'%<small>HOLD THE PLATFORM</small>'; cashBtn.classList.remove('locked'); }
+    else{ txt='EXTRACT AT CENTER<small>'+score.toLocaleString()+(gateT>0?' +'+Math.round(CFG.gateBonus*100)+'% 🌈':'')+'</small>'; cashBtn.classList.remove('locked'); }
     if(txt!==lastCash){ cashTxt.innerHTML=txt; lastCash=txt; }
-    cashFill.style.width=(cashT/CFG.cashHold*100)+'%';
+    cashFill.style.width=(extractT/CFG.extractTime*100)+'%';
   }
 
   ctx.save();
@@ -1898,6 +2019,7 @@ function render(){
   drawGround();
   drawWallsBack();
   drawStains();
+  drawPad();
   drawMoveMarker();
   drawTrails();
   // depth-sorted world: structures by footprint base, entities by feet
@@ -1905,6 +2027,7 @@ function render(){
   for(const s of structs) order.push({y:s.y+s.h, k:'s', o:s});
   for(const e of enemies) order.push({y:e.y, k:'e', o:e});
   for(const p of pickups) order.push({y:p.y, k:'p', o:p});
+  for(const c of chests) order.push({y:c.y+16, k:'c', o:c});
   order.push({y:py, k:'u'});
   order.sort((a,b)=>a.y-b.y);
   drawTargetMark();
@@ -1912,6 +2035,7 @@ function render(){
     if(it.k==='s') drawStruct(it.o);
     else if(it.k==='e') drawEnemy(it.o);
     else if(it.k==='p') drawPickup(it.o);
+    else if(it.k==='c') drawChest(it.o);
     else drawUnicorn();
   }
   drawSeeds();
@@ -1968,7 +2092,7 @@ window.__game={
     weapon:weap?weap.cur:null,lv:weap?weap.lv:0,xp:weap?+weap.xp.toFixed(1):0,
     x:+px.toFixed(0),y:+py.toFixed(0),cam:[+camX.toFixed(0),+camY.toFixed(0)],target:target?target.type:null,
     enemies:enemies.length,proj:proj.length,pickups:pickups.map(p=>p.kind),slam:slamState,gate:+gateT.toFixed(1),
-    budget:+budget.toFixed(1),wave:waveN,paint:paint.length,cashT:+cashT.toFixed(2),secured}; },
+    budget:+budget.toFixed(1),wave:waveN,paint:paint.length,extractT:+extractT.toFixed(2),chests:chests.length,secured}; },
   waveNow:()=>{ spawnT=0; },
   step:d=>{ try{update(d);}catch(e){console.error(e);} },
   startRun, toMenu,
@@ -1990,8 +2114,9 @@ window.__game={
   stop:()=>{ goTarget=null; },
   stickSet:(dx,dy)=>{ if(dx===null){ stick.on=false; stick.dx=0; stick.dy=0; } else { stick.on=true; stick.dx=dx; stick.dy=dy; } },
   tp:(x,y)=>{ px=x; py=y; },
-  holdCash:v=>{ if(v===false) cancelCashHold(); else startCashHold(); },
-  ents:()=>({enemies,proj,seeds,bombs,pickups,structs}),
+  padPos:()=>({x:PADX,y:PADY}),
+  clearBombNow:clearBomb,
+  ents:()=>({enemies,proj,seeds,bombs,pickups,structs,chests}),
   cfg:CFG, weapCfg:WEAP, fruitCfg:FRUIT,
   bench:(n=120)=>{ const t0=performance.now(); for(let i=0;i<n;i++){ update(1/60);
     ctx.setTransform(scale*dpr,0,0,scale*dpr,offX*dpr,offY*dpr); render(); } return +((performance.now()-t0)/n).toFixed(2); }
