@@ -153,7 +153,7 @@
 
   </div>
 
-  <div class="brand">CRASHARCADE · UNICORN HORDE v0.13.1</div>
+  <div class="brand">CRASHARCADE · UNICORN HORDE v0.13.2</div>
 </div>
 
 <audio id="music" src="music.mp3" loop preload="auto"></audio>
@@ -913,10 +913,11 @@ function updateChests(dt){
       buttInfo={x:c.x,y:c.y,p:1-Math.max(0,c.butt)/0.45};
       if(c.t<=0){
         c.opened=1; c.t2=0;
-        pickups.push({kind:Math.random()<0.5?'levelup':'clearbomb',wtype:null,
-          x:clamp(c.x+R(-25,25),WALL+50,WW-WALL-50),y:clamp(c.y+R(30,55),WALL+50,WH-WALL-50),t:9999,max:9999,ph:0});
-        popTxt(c.x,c.y,'CHEST OPENED!','#ffc233');
-        sfx('lvl'); beams('255,194,51',0.5);
+        popTxt(c.x,c.y,'CHEST!','#ffc233');
+        if(Math.random()<0.5){                 // loot applies automatically — no drop to chase down
+          if(weap.lv<9){ weap.xp=0; weap.lv++; levelUpFx(weap.cur, weap.lv===3||weap.lv===6||weap.lv===9); }
+          else callout('MAX LEVEL',null,'#ffe14d');
+        }else clearBomb();
       }
     }
   }
@@ -1201,13 +1202,10 @@ function update(rdt){
   const dt=rdt*(slowT>0?slowF:1);
   slowT-=rdt;
   runT+=dt;
-  // no free ride: extract before the song ends or lose everything
-  if(!warn30 && runT>=CFG.maxRun-30){ warn30=true;
-    callout('30 SECONDS','GET TO THE PLATFORM AND EXTRACT','#ff5a7a'); sfx('warn'); }
+  // no free ride: extract before the song ends or lose everything (audio cues here; big banner drawn in overlay)
+  if(!warn30 && runT>=CFG.maxRun-30){ warn30=true; sfx('warn'); }
   { const remC=Math.ceil(CFG.maxRun-runT);
-    if(remC<=10 && remC>=1 && remC!==lastCount){ lastCount=remC;
-      callout(String(remC), remC<=3?'EXTRACT NOW!':null, remC<=3?'#ff3d6e':'#ff5a7a');
-      sfx(remC<=3?'warn':'tick'); } }
+    if(remC<=10 && remC>=1 && remC!==lastCount){ lastCount=remC; sfx(remC<=3?'warn':'tick'); } }
   if(runT>=CFG.maxRun){
     callout('TIME UP','THE POT IS GONE','#ff3d6e');
     startCrash();
@@ -1424,23 +1422,24 @@ let padDisc,padRing,padLight;
   padGrp.position.set(PADX,0,PADY);
   scene.add(padGrp);
 }
-// floating $ / CASHOUT sign over the platform (green when unlocked, dim while locked)
-const cashSign=(()=>{
-  const c=document.createElement('canvas'); c.width=160; c.height=200;
+// $ / EXTRACT painted flat ONTO the platform (in-scene, not a floating sign)
+let padDecal;
+{
+  const c=document.createElement('canvas'); c.width=256; c.height=256;
   const g2=c.getContext('2d');
-  g2.textAlign='center';
-  g2.lineJoin='round';
-  g2.font='900 108px Arial';
-  g2.lineWidth=12; g2.strokeStyle='#062c1a'; g2.strokeText('$',80,108);
-  g2.fillStyle='#39ffa0'; g2.fillText('$',80,108);
-  g2.font='900 25px Arial';
-  g2.lineWidth=7; g2.strokeText('CASHOUT',80,168);
-  g2.fillText('CASHOUT',80,168);
+  g2.textAlign='center'; g2.lineJoin='round';
+  g2.font='900 150px Arial';
+  g2.lineWidth=17; g2.strokeStyle='#05301f'; g2.strokeText('$',128,96);
+  g2.fillStyle='#39ffa0'; g2.fillText('$',128,96);
+  g2.font='900 52px Arial'; g2.lineWidth=11;
+  g2.strokeStyle='#062318'; g2.strokeText('EXTRACT',128,188);
+  g2.fillStyle='#eafff6'; g2.fillText('EXTRACT',128,188);
   const t=new THREE.CanvasTexture(c); t.colorSpace=THREE.SRGBColorSpace;
-  const sp=new THREE.Sprite(new THREE.SpriteMaterial({map:t,transparent:true,depthWrite:false}));
-  sp.scale.set(84,105,1); sp.position.set(PADX,150,PADY);
-  scene.add(sp); return sp;
-})();
+  padDecal=new THREE.Mesh(new THREE.CircleGeometry(CFG.extractR-8,44),
+    new THREE.MeshBasicMaterial({map:t,transparent:true,depthWrite:false}));
+  padDecal.rotation.x=-Math.PI/2; padDecal.position.y=6.4; padDecal.renderOrder=2;
+  padGrp.add(padDecal);
+}
 let extArc=null, extArcF=-1;
 function rebuildExtArc(f){
   if(extArc){ scene.remove(extArc); extArc.geometry.dispose(); extArc=null; }
@@ -1704,7 +1703,8 @@ for(let i=0;i<4;i++){
 
 /* ---- unicorn ---- */
 const uni=new THREE.Group(); scene.add(uni);
-const mWhite=toon(0xf6f7ff), mHoof=basic(0x5fe0ff), mSkin=toon(0xffd9b8), mSuit=toon(0xeafcff);
+// strong white self-illumination so the warm key + magenta rim don't tint the coat brown/pink; hooves = neon gold
+const mWhite=toon(0xffffff, 0xf4f6ff, 0.62), mHoof=basic(0xffd23a), mSkin=toon(0xffd9b8), mSuit=toon(0xeafcff);
 let uniLegs=[], riderArm, riderGrp, headGrp, weapMeshes={}, bodyMesh, cashGlow;
 const NEON3=[0x39ffa0,0xff3d9a,0x4dc3ff];   // mane & tail palette: neon green, pink, blue
 let maneMats=[], tailMats=[], tailNodes=[], tailPrev=[], tailSegs=[], wings=[], wingT=0;
@@ -2010,12 +2010,11 @@ function syncScene(dt){
   // extraction progress ring around the platform
   { const ef=extractT/CFG.extractTime;
     if(Math.abs(ef-extArcF)>0.01){ rebuildExtArc(ef); extArcF=ef; } }
-  // $ sign: bobs, dims while locked, pulses while extracting
-  cashSign.position.y=150+Math.sin(time*2)*8;
+  // platform $ / EXTRACT decal: dim while locked, bright green + gentle pulse while extracting
   const unlocked=state!=='play'||runT>=CFG.cashUnlock;
-  cashSign.material.color.set(unlocked?0xffffff:0x555566);
-  const pulse=extractT>0?1+0.14*Math.sin(time*10):1;
-  cashSign.scale.set(84*pulse,105*pulse,1);
+  padDecal.material.color.set(unlocked?0xffffff:0x515f79);
+  padDecal.material.opacity=unlocked?0.97:0.5;
+  padDecal.scale.setScalar(extractT>0?1+0.05*Math.sin(time*10):1);
   // rainbow gate open → the platform itself changes state: ring cycles rainbow, brighter, hungrier
   if(gateT>0&&state==='play'){
     padRing.material.color.setHSL((time*0.6)%1,0.95,0.62);
@@ -2119,10 +2118,10 @@ function syncScene(dt){
   if(pf>0){
     portal.visible=true;
     portal.position.set(px,95,py);
-    portal.scale.setScalar(Math.max(0.05,pf));
+    portal.scale.setScalar(Math.max(0.05,pf)*2.5);   // grows with the extraction bar; 2.5x bigger at max
     portal.quaternion.copy(camera.quaternion);
     portal.rotation.z=time*0.8;
-    portalLight.intensity=pf*70;
+    portalLight.intensity=pf*110;
     if(state==='cashing'&&seqT>0.45&&seqT<0.95){
       const fj=(seqT-0.45)/0.5;
       uni.position.y=fj*95; uni.scale.setScalar(1-fj*0.85);
@@ -2170,6 +2169,34 @@ function overlayDraw(){
       octx.fillStyle='#ffd0e8'; octx.fillText(c.sub,ps.x,y+13); }
   });
   octx.globalAlpha=1;
+  // FINALE — prominent center-screen countdown (text only; no full-screen flash per juice rule)
+  if(state==='play'){
+    const rem=CFG.maxRun-runT, cx2=cw/2, cy2=ch*0.38;
+    const fitFont=(txt,px,wght)=>{ let s=px; octx.font=(wght||900)+' '+s+'px Orbitron';
+      const w=octx.measureText(txt).width, cap=cw*0.92;
+      if(w>cap){ s=Math.floor(s*cap/w); octx.font=(wght||900)+' '+s+'px Orbitron'; } return s; };
+    const shout=(txt,y,px,col,wght)=>{ fitFont(txt,px,wght);
+      octx.fillStyle='rgba(8,4,20,.78)'; octx.fillText(txt,cx2+2,y+2);
+      octx.fillStyle=col; octx.fillText(txt,cx2,y); };
+    const t30=runT-(CFG.maxRun-30);
+    if(t30>=0 && t30<3.4 && rem>10.6){                       // "30 SECONDS LEFT" banner
+      octx.globalAlpha=Math.max(0,Math.min(1, t30<0.3?t30/0.3:1-Math.max(0,t30-2.4)/1));
+      shout('30 SECONDS LEFT',cy2,34,'#ff5a7a');
+      shout('GET TO THE PLATFORM AND EXTRACT',cy2+30,15,'#ffd0e8',800);
+      octx.globalAlpha=1;
+    }
+    if(rem<=10.6 && rem>0){                                  // 10 → 1 count
+      const n=Math.ceil(rem), sub=n-rem, pop=1+Math.max(0,0.45-sub)*1.0, danger=n<=3;
+      octx.globalAlpha=0.94;
+      octx.save(); octx.translate(cx2,cy2); octx.scale(pop,pop);
+      octx.font='900 96px Orbitron';
+      octx.fillStyle='rgba(8,4,20,.8)'; octx.fillText(String(n),3,3);
+      octx.fillStyle=danger?'#ff3d6e':'#ff9a4d'; octx.fillText(String(n),0,0);
+      octx.restore();
+      shout(danger?'EXTRACT NOW!':'GET TO THE PLATFORM',cy2+64,19,danger?'#ff3d6e':'#ff5a7a');
+      octx.globalAlpha=1;
+    }
+  }
   // extraction percentage over the platform
   if(state==='play'&&extractT>0){
     const s=toScreen(PADX,PADY,210);
