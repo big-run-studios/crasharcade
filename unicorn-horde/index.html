@@ -153,7 +153,7 @@
 
   </div>
 
-  <div class="brand">CRASHARCADE · UNICORN HORDE v0.11.2</div>
+  <div class="brand">CRASHARCADE · UNICORN HORDE v0.12.0</div>
 </div>
 
 <audio id="music" src="music.mp3" loop preload="auto"></audio>
@@ -169,7 +169,7 @@ import * as THREE from './lib/three.module.js';
 const WW=3000, WH=2300, WALL=40, WALLH=60;
 const RAINBOW=['#ff4d6e','#ff9a2e','#ffe14d','#3ddc74','#4dc3ff','#b06cff'];
 const CFG={
-  maxHp:50, invuln:0.85, playerR:15, moveSpd:182,
+  maxHp:50, invuln:0.85, playerR:15, moveSpd:182, walkBoost:1.25,   // sidewalks are fast lanes
   dmgHold:0.45, dmgDrain:0.5,   // damage telegraph: red segment holds, then drains (fraction of maxHp/s)
   aimRange:{bow:360,gat:330,bomb:300},
   pickupR:34, lemonStand:230,
@@ -208,31 +208,48 @@ const FRUIT={
   slice: {r:12,hp:9,   spd:143,dmg:9, cd:0.9, score:40, xp:3,  col:0xff5a7a, dark:0x2a9a52, juice:'#ff4d5e'},
 };
 const PADX=1500, PADY=1150;   // extraction platform at world centre (walkable — replaces the fountain)
+/* layout hugs the sidewalks: spokes x∈[1464,1536] & y∈[1114,1186], ring 140-212, perimeter walk 60-132.
+   Stalls sit beside a walk with their long side facing it; bin pairs flank the walks too. */
 const BASE_STRUCTS=[
-  {x:880,y:540,w:66,h:62,  hh:74,kind:'bins'},
-  {x:2054,y:540,w:66,h:62, hh:74,kind:'bins'},
-  {x:880,y:1680,w:66,h:62, hh:74,kind:'bins'},
-  {x:2054,y:1680,w:66,h:62,hh:74,kind:'bins'},
-  {x:500,y:400,w:150,h:58, hh:52,kind:'stall'},
-  {x:740,y:400,w:150,h:58, hh:52,kind:'stall'},
-  {x:2110,y:400,w:150,h:58,hh:52,kind:'stall'},
-  {x:2350,y:400,w:150,h:58,hh:52,kind:'stall'},
-  {x:500,y:1845,w:150,h:58, hh:52,kind:'stall'},
-  {x:740,y:1845,w:150,h:58, hh:52,kind:'stall'},
-  {x:2110,y:1845,w:150,h:58,hh:52,kind:'stall'},
-  {x:2350,y:1845,w:150,h:58,hh:52,kind:'stall'},
-  {x:1420,y:310,w:160,h:58, hh:52,kind:'stall'},
-  {x:1420,y:1935,w:160,h:58,hh:52,kind:'stall'},
-  {x:300,y:1090,w:150,h:58, hh:52,kind:'stall'},
-  {x:2550,y:1090,w:150,h:58,hh:52,kind:'stall'},
-  {x:1140,y:740,w:62,h:48, hh:34,kind:'tree'},
-  {x:1810,y:740,w:66,h:52, hh:34,kind:'tree'},
-  {x:1140,y:1470,w:66,h:52,hh:34,kind:'tree'},
-  {x:1810,y:1470,w:62,h:48,hh:34,kind:'tree'},
-  {x:620,y:1250,w:62,h:48, hh:34,kind:'tree'},
-  {x:2320,y:1250,w:66,h:52,hh:34,kind:'tree'},
-  {x:1020,y:230,w:66,h:52, hh:34,kind:'tree'},
-  {x:1950,y:2030,w:62,h:48,hh:34,kind:'tree'},
+  // stalls along the N/S spoke (vertical walk → vertical stalls)
+  {x:1546,y:420, w:58,h:150,hh:52,kind:'stall'},
+  {x:1396,y:640, w:58,h:150,hh:52,kind:'stall'},
+  {x:1546,y:1760,w:58,h:150,hh:52,kind:'stall'},
+  {x:1396,y:1520,w:58,h:150,hh:52,kind:'stall'},
+  // stalls along the E/W spoke (horizontal walk → horizontal stalls)
+  {x:560,y:1046, w:150,h:58,hh:52,kind:'stall'},
+  {x:900,y:1196, w:150,h:58,hh:52,kind:'stall'},
+  {x:2340,y:1046,w:150,h:58,hh:52,kind:'stall'},
+  {x:2000,y:1196,w:150,h:58,hh:52,kind:'stall'},
+  // stalls just inside the perimeter walk
+  {x:700,y:142,  w:150,h:58,hh:52,kind:'stall'},
+  {x:2150,y:142, w:150,h:58,hh:52,kind:'stall'},
+  {x:700,y:2100, w:150,h:58,hh:52,kind:'stall'},
+  {x:2150,y:2100,w:150,h:58,hh:52,kind:'stall'},
+  {x:142,y:600,  w:58,h:150,hh:52,kind:'stall'},
+  {x:142,y:1500, w:58,h:150,hh:52,kind:'stall'},
+  {x:2800,y:600, w:58,h:150,hh:52,kind:'stall'},
+  {x:2800,y:1500,w:58,h:150,hh:52,kind:'stall'},
+  // bin pairs flanking the ring diagonals + perimeter mid-sides
+  {x:1665,y:921, w:66,h:62,hh:50,kind:'bins'},
+  {x:1269,y:921, w:66,h:62,hh:50,kind:'bins'},
+  {x:1665,y:1317,w:66,h:62,hh:50,kind:'bins'},
+  {x:1269,y:1317,w:66,h:62,hh:50,kind:'bins'},
+  {x:146,y:990, w:66,h:62,hh:50,kind:'bins'},
+  {x:2788,y:990,w:66,h:62,hh:50,kind:'bins'},
+  // trees fill the grass quads
+  {x:480,y:330,  w:62,h:48,hh:34,kind:'tree'},
+  {x:1080,y:330, w:62,h:48,hh:34,kind:'tree'},
+  {x:1930,y:330, w:62,h:48,hh:34,kind:'tree'},
+  {x:2520,y:330, w:62,h:48,hh:34,kind:'tree'},
+  {x:480,y:1900, w:62,h:48,hh:34,kind:'tree'},
+  {x:1080,y:1900,w:62,h:48,hh:34,kind:'tree'},
+  {x:1930,y:1900,w:62,h:48,hh:34,kind:'tree'},
+  {x:2520,y:1900,w:62,h:48,hh:34,kind:'tree'},
+  {x:700,y:760,  w:62,h:48,hh:34,kind:'tree'},
+  {x:2260,y:760, w:62,h:48,hh:34,kind:'tree'},
+  {x:700,y:1500, w:62,h:48,hh:34,kind:'tree'},
+  {x:2260,y:1500,w:62,h:48,hh:34,kind:'tree'},
 ];
 let structs=[], structsDirty=true;
 
@@ -323,7 +340,7 @@ function callout(txt,sub,col){ callouts.push({txt,sub,col:col||'#fff',t:0,life:1
 /* ================================================================= world / collision */
 function buildStructs(){
   structs=BASE_STRUCTS.map(s=>({...s}));
-  for(let i=0;i<6;i++){
+  for(let i=0;i<8;i++){
     const p=openSpot(260,30,120);
     if(p) structs.push({x:p.x-30,y:p.y-24,w:60,h:48,hh:34,kind:'tree'});
   }
@@ -658,9 +675,10 @@ function fireWeapon(){
       tx=clamp(tx,WALL+20,WW-WALL-20); ty=clamp(ty,WALL+20,WH-WALL-20); }
     const shots=st===3?3:1;
     const pa=aimAng+Math.PI/2;
+    const rMul=1+0.09*(lv-1);                            // blast diameter grows every level
     for(let k=0;k<shots;k++){
       const off=(k-(shots-1)/2)*80;
-      bombs.push({sx:mx,sy:my,tx:tx+Math.cos(pa)*off,ty:ty+Math.sin(pa)*off,t:0,T,st,dmgMul,
+      bombs.push({sx:mx,sy:my,tx:tx+Math.cos(pa)*off,ty:ty+Math.sin(pa)*off,t:0,T,st,dmgMul,rMul,
         dx:Math.cos(aimAng),dy:Math.sin(aimAng)}); }
     sfx('lob');
   }
@@ -705,14 +723,14 @@ function updateBombs(dt){
   pend=pend.filter(q=>!q.dead);
 }
 function bombLand(b){
-  const m=b.dmgMul||1;
-  if(b.st===0) explode(b.tx,b.ty,56,7*m,170,'bomb');
+  const m=b.dmgMul||1, r=b.rMul||1;
+  if(b.st===0) explode(b.tx,b.ty,62*r,7*m,170,'bomb');
   else if(b.st===1){
-    explode(b.tx,b.ty,44,5*m,150,'bomb');
-    for(let i=0;i<3;i++) pend.push({x:b.tx+R(-48,48),y:b.ty+R(-48,48),t:0.14+i*0.07,r:38,dmg:4*m,kb:130});
+    explode(b.tx,b.ty,50*r,5*m,150,'bomb');
+    for(let i=0;i<3;i++) pend.push({x:b.tx+R(-48,48)*r,y:b.ty+R(-48,48)*r,t:0.14+i*0.07,r:42*r,dmg:4*m,kb:130});
   }else{
-    explode(b.tx,b.ty,50,6*m,200,'bomb');
-    for(let i=1;i<=4;i++) pend.push({x:b.tx+b.dx*i*42,y:b.ty+b.dy*i*42,t:i*0.08,r:46,dmg:6*m,kb:200});
+    explode(b.tx,b.ty,56*r,6*m,200,'bomb');
+    for(let i=1;i<=4;i++) pend.push({x:b.tx+b.dx*i*46*r,y:b.ty+b.dy*i*46*r,t:i*0.08,r:50*r,dmg:6*m,kb:200});
   }
 }
 function explode(x,y,r,dmg,kb,w){
@@ -828,6 +846,14 @@ function updateGates(dt){
   }
 }
 function onPad(){ return Math.hypot(px-PADX,py-PADY)<CFG.extractR; }
+function onSidewalk(x,y){
+  // must match the baked ground art: pad ring, N/S/E/W spokes, perimeter loop
+  const dx=x-PADX, dy=y-PADY, d=Math.hypot(dx,dy);
+  if(d>=140&&d<=212) return true;                        // ring around the platform
+  if(d>140&&(Math.abs(dx)<=36||Math.abs(dy)<=36)) return true;   // spokes
+  if(x<=132||x>=WW-132||y<=132||y>=WH-132) return true;  // perimeter loop
+  return false;
+}
 function updateExtract(dt){
   if(runT>=CFG.cashUnlock && onPad()){
     extractT+=dt;
@@ -1127,9 +1153,10 @@ function movePlayer(dt){
   moving=Math.hypot(mx,my);
   if(moving>0.01){
     const ix=px, iy=py;
-    px+=mx*CFG.moveSpd*dt; py+=my*CFG.moveSpd*dt;
+    const spd=CFG.moveSpd*(onSidewalk(px,py)?CFG.walkBoost:1);   // sidewalks are 1.25x fast lanes
+    px+=mx*spd*dt; py+=my*spd*dt;
     resolveCircle({get x(){return px;},set x(v){px=v;},get y(){return py;},set y(v){py=v;},r:CFG.playerR});
-    const movedD=Math.hypot(px-ix,py-iy), wantD=moving*CFG.moveSpd*dt;
+    const movedD=Math.hypot(px-ix,py-iy), wantD=moving*spd*dt;
     if(tx!==null && wantD>1e-4){
       if(movedD<wantD*0.5){
         if(pBlockT<=0 && !wayPt && moveTgt){   // first blocked frame → corner detour immediately
@@ -1243,15 +1270,21 @@ function col3(c){ return colCache[c]||(colCache[c]=new THREE.Color(c)); }
 (function buildGround(){
   const cvt=document.createElement('canvas'); cvt.width=1500; cvt.height=1150;
   const g=cvt.getContext('2d'), sc=0.5;
+  // grass park ground
   const grd=g.createRadialGradient(750,575,80,750,575,900);
-  grd.addColorStop(0,'#241442'); grd.addColorStop(0.6,'#180d30'); grd.addColorStop(1,'#0d0720');
+  grd.addColorStop(0,'#2c7a42'); grd.addColorStop(0.6,'#1f5e33'); grd.addColorStop(1,'#143f23');
   g.fillStyle=grd; g.fillRect(0,0,1500,1150);
-  g.strokeStyle='rgba(176,108,255,.10)'; g.lineWidth=1;
-  const step=64*sc;
-  for(let c=-1500;c<2400;c+=step){ g.beginPath(); g.moveTo(0,c); g.lineTo(1500,0.5*1500+c); g.stroke(); }
-  for(let c=0;c<2400;c+=step){ g.beginPath(); g.moveTo(0,c); g.lineTo(1500,-0.5*1500+c); g.stroke(); }
+  g.globalAlpha=0.06; g.fillStyle='#0c2f1a';                       // subtle mowing bands
+  for(let i=0;i<12;i++){ if(i%2) g.fillRect(0,i*96,1500,96); }
+  g.globalAlpha=1;
+  for(let i=0;i<900;i++){                                          // grass blades
+    const x=R(0,1500), y=R(0,1150);
+    g.strokeStyle=Math.random()<0.5?'rgba(80,200,120,.22)':'rgba(16,60,34,.3)';
+    g.lineWidth=1.2;
+    g.beginPath(); g.moveTo(x,y); g.lineTo(x+R(-2,2),y-R(2,5)); g.stroke();
+  }
   // sidewalks — ring around the platform, N/S/E/W spokes, and a perimeter loop (canvas = world × 0.5)
-  g.strokeStyle='#3d3560'; g.lineCap='butt';
+  g.strokeStyle='#6f688e'; g.lineCap='butt';   // pale concrete on grass
   g.lineWidth=36; g.strokeRect(48,48,1500-96,1150-96);          // perimeter loop
   g.beginPath(); g.arc(750,575,88,0,6.283); g.stroke();          // center ring
   g.beginPath();                                                  // four spokes
@@ -1260,7 +1293,7 @@ function col3(c){ return colCache[c]||(colCache[c]=new THREE.Color(c)); }
   g.moveTo(662,575); g.lineTo(48,575);
   g.moveTo(838,575); g.lineTo(1452,575);
   g.stroke();
-  g.strokeStyle='rgba(122,110,168,.8)'; g.lineWidth=2;            // curb lines
+  g.strokeStyle='rgba(230,225,250,.55)'; g.lineWidth=2;            // curb lines
   g.strokeRect(30,30,1500-60,1150-60);
   g.strokeRect(66,66,1500-132,1150-132);
   g.beginPath(); g.arc(750,575,106,0,6.283); g.stroke();
@@ -1587,9 +1620,30 @@ function makePickup(p){
   grp.add(groundBlob(20));
   return grp;
 }
+const splatTexes=(()=>{   // irregular splat silhouettes (white; tinted per stain)
+  const arr=[];
+  for(let v=0;v<3;v++){
+    const c=document.createElement('canvas'); c.width=128; c.height=128;
+    const gg=c.getContext('2d'); gg.fillStyle='#fff'; gg.translate(64,64);
+    gg.beginPath();
+    for(let i=0;i<=10;i++){ const a=i/10*6.283, rr2=24+((i*7+v*5)%5)*4+(i%2?9:0);
+      const x=Math.cos(a)*rr2, y=Math.sin(a)*rr2;
+      i?gg.lineTo(x,y):gg.moveTo(x,y); }
+    gg.closePath(); gg.fill();
+    for(let i=0;i<7;i++){ const a=i/7*6.283+v*0.9, d=30+((i*11+v)%4)*6;
+      gg.beginPath(); gg.arc(Math.cos(a)*d,Math.sin(a)*d,4+((i+v)%3)*2.4,0,6.283); gg.fill();
+      gg.beginPath(); gg.moveTo(Math.cos(a)*18,Math.sin(a)*18);
+      gg.lineTo(Math.cos(a+0.14)*d,Math.sin(a+0.14)*d);
+      gg.lineTo(Math.cos(a-0.14)*d,Math.sin(a-0.14)*d);
+      gg.closePath(); gg.fill(); }
+    arr.push(new THREE.CanvasTexture(c));
+  }
+  return arr;
+})();
 function makeStain(){
-  const m=new THREE.Mesh(new THREE.CircleGeometry(1,18),
-    new THREE.MeshBasicMaterial({transparent:true,opacity:0.26,depthWrite:false}));
+  const m=new THREE.Mesh(new THREE.PlaneGeometry(2,2),
+    new THREE.MeshBasicMaterial({map:splatTexes[Math.floor(Math.random()*3)],
+      transparent:true,opacity:0.3,depthWrite:false}));
   m.rotation.x=-Math.PI/2; m.renderOrder=1;
   return m;
 }
@@ -1669,11 +1723,11 @@ let maneMats=[], tailMats=[], tailNodes=[], tailPrev=[], tailSegs=[], wings=[], 
     const m=new THREE.Mesh(new THREE.BoxGeometry(3,10-i*0.8,2.6),mat);
     m.position.set(6-i*3.4,14-i*1.6,-4.5); m.rotation.z=-0.4; headGrp.add(m);
   }
-  // ribbon tail — a verlet chain of flat segments that trails, swings and settles
-  for(let i=0;i<8;i++){ tailNodes.push(new THREE.Vector3(px-24,38,py)); tailPrev.push(new THREE.Vector3(px-24,38,py)); }
-  for(let i=0;i<7;i++){
+  // ribbon tail — short verlet chain of flat segments; calm, not whippy
+  for(let i=0;i<6;i++){ tailNodes.push(new THREE.Vector3(px-24,38,py)); tailPrev.push(new THREE.Vector3(px-24,38,py)); }
+  for(let i=0;i<5;i++){
     const mat=basic(NEON3[i%3]); tailMats.push(mat);
-    const seg=new THREE.Mesh(new THREE.BoxGeometry(9,1.6,5.4-i*0.35),mat);
+    const seg=new THREE.Mesh(new THREE.BoxGeometry(7.4,1.6,5.4-i*0.4),mat);
     scene.add(seg); tailSegs.push(seg);
   }
   // wings — grow out when a clear move fires (slam / clear bomb)
@@ -1836,13 +1890,14 @@ function syncScene(dt){
   riderArm.scale.setScalar(1+st*0.18);
   cashGlow.intensity=(extractT>0||state==='cashing')?55:0;
   if(state==='dying') uni.visible=Math.sin(time*20)>0;
-  // headbutting a chest: the NECK AND HEAD do the butting — the body stays planted
+  // headbutting a chest: the NECK AND HEAD strike — fast hit on the thud, slow recovery
   if(buttInfo && state==='play' && !slamState){
-    const bp=Math.sin(buttInfo.p*Math.PI);
+    const p=buttInfo.p;
+    const s2=p<0.25?p/0.25:1-(p-0.25)/0.75;
     const ba=Math.atan2(buttInfo.y-py,buttInfo.x-px);
     uni.userData.a=ba; uni.rotation.y=-ba;   // square up to the chest
-    headGrp.rotation.z-=bp*0.62;
-    headGrp.position.x=14+bp*5;
+    headGrp.rotation.z+=s2*0.6;              // strike direction flipped — swings INTO the chest
+    headGrp.position.x=14+s2*6;
   }else headGrp.position.x+=(14-headGrp.position.x)*0.3;
   while(paintQueue.length) addPaint(paintQueue.shift());
 
@@ -1852,21 +1907,21 @@ function syncScene(dt){
     tailNodes[0].copy(anchor);
     const yaw=uni.userData.a||0;
     const bx=-Math.cos(yaw), bz=-Math.sin(yaw);          // the horse's backward direction
-    const g2=1300*dt*dt, wind=2400*dt*dt;
-    for(let i=1;i<8;i++){
+    const g2=1300*dt*dt, wind=1500*dt*dt;
+    for(let i=1;i<6;i++){
       const n=tailNodes[i], p=tailPrev[i];
-      _tv2.set((n.x-p.x)*0.9,(n.y-p.y)*0.9,(n.z-p.z)*0.9);
+      _tv2.set((n.x-p.x)*0.8,(n.y-p.y)*0.8,(n.z-p.z)*0.8);   // heavier damping = settled, not wild
       p.copy(n);
       n.add(_tv2);
       n.y-=g2*(0.4+i*0.14);                              // droop grows toward the tip
       n.x+=bx*wind; n.z+=bz*wind;                        // flare backward so it reads from above
-      n.y+=Math.sin(time*3.2+i*0.8)*0.25;                // lazy ripple
+      n.y+=Math.sin(time*3.2+i*0.8)*0.12;                // faint ripple
       const par=tailNodes[i-1];
       const d=n.distanceTo(par)||1;
-      n.sub(par).multiplyScalar(8/d).add(par);
+      n.sub(par).multiplyScalar(7/d).add(par);
       if(n.y<4) n.y=4;
     }
-    for(let i=0;i<7;i++){
+    for(let i=0;i<5;i++){
       const a=tailNodes[i], b=tailNodes[i+1], seg=tailSegs[i];
       seg.position.copy(a).add(b).multiplyScalar(0.5);
       _tv2.copy(b).sub(a).normalize();
@@ -1927,7 +1982,7 @@ function syncScene(dt){
     m.userData.ball.position.set(0,0,0);
     m.position.set(x, 12+Math.sin(fB*Math.PI)*95, y);
     m.userData.ring.position.set(b.tx-x, -(12+Math.sin(fB*Math.PI)*95)+1.4, b.ty-y);
-    m.userData.ring.scale.setScalar(14*(0.4+fB*0.6));
+    m.userData.ring.scale.setScalar(14*(0.4+fB*0.6)*(b.rMul||1)*1.4);   // ring previews the true blast size
   });
   // extraction progress ring around the platform
   { const ef=extractT/CFG.extractTime;
@@ -1955,9 +2010,9 @@ function syncScene(dt){
   syncSet(stains,()=>'stain',makeStain,(s,m)=>{
     m.position.set(s.x,0.6+ (s.rot%0.01),s.y);
     m.rotation.z=s.rot;
-    m.scale.set(s.r*1.5,s.r*1.05,1);
+    m.scale.set(s.r*1.8,s.r*1.5,1);
     m.material.color.set(s.col);
-    m.material.opacity=0.26*(s.t>s.life-4?(s.life-s.t)/4:1);
+    m.material.opacity=0.32*(s.t>s.life-4?(s.life-s.t)/4:1);
   });
   // explosions
   syncSet(expl,e=>e.slam?'shockE':'expl',e=>makeExpl(),(e,m)=>{
@@ -2261,6 +2316,7 @@ window.__game={
   padPos:()=>({x:PADX,y:PADY}),
   clearBombNow:clearBomb,
   tail:()=>tailNodes.map(n=>[Math.round(n.x),Math.round(n.y),Math.round(n.z)]),
+  onWalk:()=>onSidewalk(px,py),
   ents:()=>({enemies,proj,seeds,bombs,pickups,structs,chests}),
   cfg:CFG, weapCfg:WEAP, fruitCfg:FRUIT,
   bench:(n=90)=>{ const t0=performance.now(); for(let i=0;i<n;i++){ update(1/60); syncScene(); renderer.render(scene,camera); } return +((performance.now()-t0)/n).toFixed(2); }
