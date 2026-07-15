@@ -153,7 +153,7 @@
 
   </div>
 
-  <div class="brand">CRASHARCADE · DEMON ASSAULT v0.2.3</div>
+  <div class="brand">CRASHARCADE · DEMON ASSAULT v0.3.0</div>
 </div>
 
 <audio id="music" src="demon-music.mp3" loop preload="auto"></audio>
@@ -686,7 +686,9 @@ function acquireTarget(){
 function fireWeapon(){
   const w=weap.cur, lv=weap.lv, st=weapState(lv);
   const dmgMul=1+0.07*(lv-1);
-  const mx=px+Math.cos(aimAng)*24, my=py+Math.sin(aimAng)*24;
+  const gunF=28, gunS=5;   // fire from the gun barrel: forward + offset to the gun side
+  const mx=px+Math.cos(aimAng)*gunF - Math.sin(aimAng)*gunS;
+  const my=py+Math.sin(aimAng)*gunF + Math.cos(aimAng)*gunS;
   if(w==='bow'){
     const n=(st===0?1:st===1?3:5)*(st===3?3:1);
     const spread=st===0?0:st===1?0.15:st===2?0.115:0.078;
@@ -769,7 +771,7 @@ function bombLand(b){
   }
 }
 function explode(x,y,r,dmg,kb,w){
-  expl.push({x,y,r:0,mx:r,t:0,life:0.35});
+  expl.push({x,y,r:0,mx:r,t:0,life:0.22});   // short + snappy = concussive
   for(let i=0;i<12;i++){ const a=R(0,6.28),v=R(50,240);
     parts.push({x,y,vx:Math.cos(a)*v,vy:Math.sin(a)*v,r:R(2,5),c:rand(RAINBOW),t:R(.25,.55)}); }
   let killed=0;
@@ -777,10 +779,10 @@ function explode(x,y,r,dmg,kb,w){
     const d=FRUIT[e.type], dd=Math.hypot(e.x-x,e.y-y)||1;
     if(dd<r+d.r){ if(damageEnemy(e,dmg,(e.x-x)/dd*kb,(e.y-y)/dd*kb,w)) killed++; } }
   if(killed>=4){ const bns=Math.round(40*killed*mult); score+=bns; popTxt(x,y,'MULTI ×'+killed+' +'+bns.toLocaleString(),'#ffe14d'); }
-  sfx('boom'); shake=Math.max(shake,7);
+  sfx('boom'); shake=Math.max(shake,9);
 }
 function updateExpl(dt){
-  for(const e of expl){ e.t+=dt; e.r=e.mx*Math.min(1,e.t/0.14); }
+  for(const e of expl){ e.t+=dt; e.r=e.mx*Math.min(1,e.t/0.06); }   // snap out fast
   expl=expl.filter(e=>e.t<e.life);
 }
 
@@ -935,10 +937,10 @@ function updateChests(dt){
     if(dd<min){ px=c.x+dx/dd*min; py=c.y+dy/dd*min; }   // the chest is still solid
     if(dd<CFG.chestRange){                              // ...but proximity is all it takes to work it open
       c.t-=dt; c.butt-=dt;
-      if(c.butt<=0){ c.butt=0.45; c.shake=1; sfx('thud');
-        for(let i=0;i<5;i++){ const a=R(0,6.28),v=R(30,110);
-          parts.push({x:c.x,y:c.y,vx:Math.cos(a)*v,vy:Math.sin(a)*v,r:R(1.6,3),c:Math.random()<.5?'#ffc233':'#c98940',t:R(.2,.4)}); } }
-      buttInfo={x:c.x,y:c.y,p:1-Math.max(0,c.butt)/0.45};
+      if(c.butt<=0){ c.butt=0.45; c.shake=0.3; sfx('tick');   // scan pulse, not a thud
+        for(let i=0;i<5;i++){ const a=R(0,6.28),v=R(20,70);
+          parts.push({x:c.x,y:c.y,vx:Math.cos(a)*v,vy:Math.sin(a)*v,r:R(1.4,2.6),c:Math.random()<.5?'#39d8ff':'#8fe8ff',t:R(.2,.4)}); } }
+      buttInfo={x:c.x,y:c.y};
       if(c.t<=0){
         c.opened=1; c.t2=0;
         popTxt(c.x,c.y,'CHEST!','#ffc233');
@@ -1294,11 +1296,9 @@ function update(rdt){
   updateChests(dt);
 
   target=acquireTarget();
-  if(target){
-    const ta=Math.atan2(target.y-py,target.x-px);
+  { const ta = target ? Math.atan2(target.y-py,target.x-px) : (moving>0.05?faceAng:aimAng);
     let da=ta-aimAng; while(da>Math.PI)da-=6.283; while(da<-Math.PI)da+=6.283;
-    aimAng+=da*Math.min(1,dt*16);   // Bob tracks the target; the horse keeps its own heading
-  }
+    aimAng+=da*Math.min(1,dt*(target?16:8)); }   // face the target; with none, turn toward where you walk
 
   director(dt);
   schedulePickups(dt);
@@ -1487,23 +1487,29 @@ function rebuildStructMeshes(){
       };
       mk(-17); mk(17);
     }else if(s.kind==='stall'){
-      const body=new THREE.Mesh(new THREE.BoxGeometry(s.w,s.hh*0.72,s.h),toon(0x2a221c));
-      body.position.set(cx,s.hh*0.36,cz); structGroup.add(body);
-      const canopy=new THREE.Mesh(new THREE.BoxGeometry(s.w+14,10,s.h+14),
-        new THREE.MeshToonMaterial({map:stallCanopyTex,gradientMap:gradTex}));
-      canopy.position.set(cx,s.hh*0.72+8,cz); structGroup.add(canopy);
-      const trim=new THREE.Mesh(new THREE.BoxGeometry(s.w+2,2.5,s.h+2),basic(0xff6a2a));
-      trim.position.set(cx,2,cz); structGroup.add(trim);
-    }else{ // dead charred tree — twisted trunk + bare jagged branches, faint ember smoulder
-      const trunk=new THREE.Mesh(new THREE.CylinderGeometry(6,10,40,7),toon(0x241a14));
-      trunk.position.set(cx,20,cz); structGroup.add(trunk);
-      for(const br of [[-1,52,0.7],[1,60,-0.6],[0.6,70,0.5]]){
-        const b=new THREE.Mesh(new THREE.CylinderGeometry(1.6,3.2,26,5),toon(0x1c130e));
-        b.position.set(cx+br[0]*8,br[1],cz); b.rotation.z=br[2]; structGroup.add(b);
+      // PILE OF SKULLS on a dark mound (was a market stall) — same footprint = same cover
+      const base=new THREE.Mesh(new THREE.BoxGeometry(s.w,s.hh*0.5,s.h),toon(0x1c1712));
+      base.position.set(cx,s.hh*0.25,cz); structGroup.add(base);
+      const nx=Math.max(2,Math.min(4,Math.round(s.w/34))), nz=Math.max(2,Math.min(4,Math.round(s.h/34)));
+      let placed=0;
+      for(let ix=0;ix<nx && placed<8;ix++) for(let iz=0;iz<nz && placed<8;iz++){
+        const jx=cx+(ix+0.5-nx/2)*(s.w/nx)+R(-3,3);
+        const jz=cz+(iz+0.5-nz/2)*(s.h/nz)+R(-3,3);
+        const sc=R(6.5,9), sy=s.hh*0.5+sc*0.8+((ix+iz)%2)*4;
+        const sk=new THREE.Mesh(sphereGeo,skullMat); sk.scale.set(sc,sc*1.12,sc*0.95);
+        sk.position.set(jx,sy,jz); sk.rotation.y=R(-0.5,0.5); structGroup.add(sk); placed++;
       }
-      const cap=new THREE.Mesh(sphereGeo,basic(0x160b06)); cap.scale.set(14,10,14); cap.position.set(cx,72,cz); structGroup.add(cap);
-      const glow=new THREE.Mesh(sphereGeo,basic(0xff6a2a,{transparent:true,opacity:0.08}));
-      glow.scale.set(22,18,22); glow.position.set(cx,40,cz); structGroup.add(glow);
+    }else{ // LANTERN — iron post + caged flame; pools firelight on the ground (additive decal, mobile-safe)
+      const post=new THREE.Mesh(new THREE.CylinderGeometry(3.2,4.6,42,7),toon(0x241c18));
+      post.position.set(cx,21,cz); structGroup.add(post);
+      const cage=new THREE.Mesh(new THREE.CylinderGeometry(9,8,17,6),toon(0x2a2018));
+      cage.position.set(cx,52,cz); structGroup.add(cage);
+      const flame=new THREE.Mesh(sphereGeo,basic(0xff8a2a,{transparent:true,opacity:0.9})); flame.scale.set(6,10,6); flame.position.set(cx,53,cz); structGroup.add(flame);
+      const core=new THREE.Mesh(sphereGeo,basic(0xffe07a)); core.scale.set(3,6,3); core.position.set(cx,53,cz); structGroup.add(core);
+      const cap=new THREE.Mesh(new THREE.ConeGeometry(11,9,6),toon(0x1a1512)); cap.position.set(cx,65,cz); structGroup.add(cap);
+      const pool=new THREE.Mesh(new THREE.PlaneGeometry(150,150),
+        new THREE.MeshBasicMaterial({map:glowTex,color:0xff8a2a,transparent:true,opacity:0.55,depthWrite:false,blending:THREE.AdditiveBlending}));
+      pool.rotation.x=-Math.PI/2; pool.position.set(cx,1.3,cz); pool.renderOrder=1; structGroup.add(pool);
     }
   }
   scene.add(structGroup);
@@ -1570,6 +1576,19 @@ const shadowTex=(()=>{ const c=document.createElement('canvas'); c.width=64; c.h
   gr.addColorStop(0,'rgba(0,0,0,.42)'); gr.addColorStop(1,'rgba(0,0,0,0)');
   g.fillStyle=gr; g.fillRect(0,0,64,64);
   return new THREE.CanvasTexture(c); })();
+const glowTex=(()=>{ const c=document.createElement('canvas'); c.width=64; c.height=64;   // firelight pool (additive)
+  const g=c.getContext('2d'); const gr=g.createRadialGradient(32,32,2,32,32,32);
+  gr.addColorStop(0,'rgba(255,255,255,1)'); gr.addColorStop(0.4,'rgba(255,200,120,.55)'); gr.addColorStop(1,'rgba(255,150,60,0)');
+  g.fillStyle=gr; g.fillRect(0,0,64,64); return new THREE.CanvasTexture(c); })();
+const skullTex=(()=>{ const c=document.createElement('canvas'); c.width=64; c.height=64;   // bone skull for the piles
+  const g=c.getContext('2d'); g.fillStyle='#cabfa2'; g.fillRect(0,0,64,64);
+  g.fillStyle='#120c08';
+  g.beginPath(); g.ellipse(24,28,7,9,0,0,6.28); g.fill(); g.beginPath(); g.ellipse(40,28,7,9,0,0,6.28); g.fill();
+  g.beginPath(); g.moveTo(32,36); g.lineTo(28,45); g.lineTo(36,45); g.closePath(); g.fill();
+  g.strokeStyle='#7a6f55'; g.lineWidth=2; g.beginPath(); g.moveTo(22,51); g.lineTo(42,51); g.stroke();
+  for(let i=0;i<5;i++){ g.beginPath(); g.moveTo(23+i*4.4,49); g.lineTo(23+i*4.4,54); g.stroke(); }
+  const t=new THREE.CanvasTexture(c); t.colorSpace=THREE.SRGBColorSpace; return t; })();
+const skullMat=new THREE.MeshToonMaterial({map:skullTex,gradientMap:gradTex});
 function groundBlob(scaleR){
   const m=new THREE.Mesh(new THREE.PlaneGeometry(2,2),
     new THREE.MeshBasicMaterial({map:shadowTex,transparent:true,depthWrite:false}));
@@ -2003,6 +2022,16 @@ const portalLight=new THREE.PointLight(0x39ffa0, 0, 400); portal.add(portalLight
 const shock=new THREE.Mesh(new THREE.TorusGeometry(1,0.05,12,56),
   new THREE.MeshBasicMaterial({color:0xff5a2a,transparent:true,side:THREE.DoubleSide,depthWrite:false,blending:THREE.AdditiveBlending}));
 shock.rotation.x=Math.PI/2; shock.position.y=0; shock.visible=false; shock.renderOrder=2; scene.add(shock);
+// chest scan: a cyan radar fan that sweeps over the chest while it's being read (replaces the headbutt)
+const scanGrp=new THREE.Group(); scanGrp.visible=false; scene.add(scanGrp);
+{
+  const fan=new THREE.Mesh(new THREE.CircleGeometry(72,22,0,0.55),
+    new THREE.MeshBasicMaterial({color:0x39d8ff,transparent:true,opacity:0.22,side:THREE.DoubleSide,depthWrite:false,blending:THREE.AdditiveBlending}));
+  fan.rotation.x=-Math.PI/2; fan.position.y=1.4; scanGrp.add(fan);
+  const rim=new THREE.Mesh(new THREE.RingGeometry(68,72,44),
+    new THREE.MeshBasicMaterial({color:0x39d8ff,transparent:true,opacity:0.5,side:THREE.DoubleSide,depthWrite:false}));
+  rim.rotation.x=-Math.PI/2; rim.position.y=1.4; scanGrp.add(rim);
+}
 
 /* ================================================================= scene sync */
 const _v=new THREE.Vector3(), _tv=new THREE.Vector3(), _tv2=new THREE.Vector3(), _X1=new THREE.Vector3(1,0,0), _upY=new THREE.Vector3(0,1,0);
@@ -2035,17 +2064,22 @@ function syncScene(dt){
   const blink=state==='play'&&invulnT>0&&!slamState&&Math.floor(invulnT*18)%2===0;
   uni.visible=!blink && !(state==='cashing'&&seqT>0.9);
   uni.position.set(px, airY, py);
-  let ta=faceAng; let da=ta-uni.userData.a||0;
-  uni.userData.a=uni.userData.a===undefined?ta:uni.userData.a;
-  { let d2=ta-uni.userData.a; while(d2>Math.PI)d2-=6.283; while(d2<-Math.PI)d2+=6.283;
-    uni.userData.a+=d2*0.5; }   // snappy turn-in: the horse commits to the new heading fast
+  // legs stay within 90° of the aim; past that he back-pedals (never legs-opposite-torso)
+  let gaitDir=1, legT=aimAng;
+  if(moving>0.05){
+    let dl=faceAng-aimAng; while(dl>Math.PI)dl-=6.283; while(dl<-Math.PI)dl+=6.283;
+    if(Math.abs(dl)<=Math.PI/2){ legT=faceAng; } else { legT=faceAng+Math.PI; gaitDir=-1; }   // moving away from aim → walk backward
+  }
+  if(uni.userData.a===undefined) uni.userData.a=legT;
+  { let d2=legT-uni.userData.a; while(d2>Math.PI)d2-=6.283; while(d2<-Math.PI)d2+=6.283;
+    uni.userData.a+=d2*0.45; }   // turn the legs in
   uni.rotation.y=-uni.userData.a;
-  riderGrp.rotation.y=-aimAng-uni.rotation.y;   // Bob twists in the saddle to face the shot
+  riderGrp.rotation.y=-aimAng-uni.rotation.y;   // torso always faces the aim
   const squash=slamState==='crouch'?0.8:1;
   uni.scale.set(1,squash,1);
   // strongman march: long grounded strides, torso rocks over the planted leg, body settles on each footfall
   if(moving>0.05){
-    const ph=(walkPh*0.22)%1, TAU=Math.PI*2;
+    const ph=((walkPh*0.22*gaitDir)%1+1)%1, TAU=Math.PI*2;   // gaitDir<0 = back-pedal (cycle reversed)
     for(let i=0;i<4;i++){ const p=(ph-LEG_PLANT[i]+1)%1;
       uniLegs[i].rotation.z=gaitLeg(p,LEG_REACH[i],LEG_PUSH[i],LEG_TUCK[i]); }
     const foot=Math.abs(Math.cos(ph*TAU));                  // 1 at each footfall (ph 0 & .5), 0 mid-stance
@@ -2077,17 +2111,11 @@ function syncScene(dt){
   // headbutting a chest — horn arcs (viewed from the LEFT) from ~1 o'clock (windup) counter-clockwise
   // down to ~8 o'clock (strike into the chest): slow recovery, fast slam into the thud
   if(buttInfo && state==='play' && !slamState){
-    const p=buttInfo.p;
-    // t: 0 = wound up (1 o'clock, nose up & slightly back), 1 = struck (8 o'clock, nose down & forward)
-    let t = p<0.7 ? 1-p/0.7 : (p-0.7)/0.3;   // recover struck→wound (slow), then slam wound→struck (fast) into the thud
-    t = t*t*(3-2*t);                          // smoothstep
-    const Z_WIND=0.62, Z_STRIKE=-1.5;         // head-group pitch at the two ends of the arc
-    const ba=Math.atan2(buttInfo.y-py,buttInfo.x-px);
-    uni.userData.a=ba; uni.rotation.y=-ba;   // square up to the chest
-    headGrp.rotation.z = Z_WIND + (Z_STRIKE-Z_WIND)*t;
-    headGrp.position.y = headBaseY - t*10;   // dips down as it strikes
-    headGrp.position.x = headBaseX + t*8;    // ...and lunges toward the chest
-  }else headGrp.position.x+=(headBaseX-headGrp.position.x)*0.3;
+    scanGrp.visible=true; scanGrp.position.set(buttInfo.x,0,buttInfo.y);
+    scanGrp.rotation.y=time*3.4;                          // cyan radar fan sweeps over the chest
+    scanGrp.scale.setScalar(0.92+0.08*Math.sin(time*9));  // subtle pulse
+  }else scanGrp.visible=false;
+  headGrp.position.x+=(headBaseX-headGrp.position.x)*0.3;   // head eases back to rest
   while(paintQueue.length) addPaint(paintQueue.shift());
 
   // tail: gentle bounce/sway on the modeled tail (replaces the old verlet ribbon)
@@ -2133,7 +2161,7 @@ function syncScene(dt){
 
   // projectiles
   syncSet(proj,p=>p.kind==='arrow'?'arrow':'glit',p=>p.kind==='arrow'?makeArrow():makeGlit(),(p,m)=>{
-    m.position.set(p.x,14,p.y);
+    m.position.set(p.x,28,p.y);   // exits at gun height
     if(p.kind==='arrow'){ m.rotation.y=-Math.atan2(p.vy,p.vx);
       m.material.color.setHSL(0.52+((p.hue||0)%30)/1200, 0.9, p.trail?0.72:0.9); }   // electric-cyan bolts
     else { m.scale.setScalar(p.r); m.material.color.setHSL(0.52,0.85,0.82); }   // cyan-white tracers
@@ -2144,8 +2172,8 @@ function syncScene(dt){
   syncSet(bombs,()=>'bomb',makeBomb,(b,m)=>{
     const fB=b.t/b.T, x=b.sx+(b.tx-b.sx)*fB, y=b.sy+(b.ty-b.sy)*fB;
     m.userData.ball.position.set(0,0,0);
-    m.position.set(x, 12+Math.sin(fB*Math.PI)*95, y);
-    m.userData.ring.position.set(b.tx-x, -(12+Math.sin(fB*Math.PI)*95)+1.4, b.ty-y);
+    m.position.set(x, 12+Math.sin(fB*Math.PI)*40, y);
+    m.userData.ring.position.set(b.tx-x, -(12+Math.sin(fB*Math.PI)*40)+1.4, b.ty-y);
     m.userData.ring.scale.setScalar(14*(0.4+fB*0.6)*(b.rMul||1)*1.4);   // ring previews the true blast size
   });
   // clear-bomb homing missiles (arc through the air, oriented along travel)
@@ -2203,7 +2231,7 @@ function syncScene(dt){
     m.scale.setScalar(Math.max(0.6,e.r));
     const a=1-e.t/e.life;
     m.material.opacity=a;
-    m.material.color.set(e.slam?0xffffff:0xff9ad2);
+    m.material.color.set(e.slam?0xffffff:0xff7a3a);
   });
   sweepMeshes();
 
