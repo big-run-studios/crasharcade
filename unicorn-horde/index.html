@@ -153,7 +153,7 @@
 
   </div>
 
-  <div class="brand">CRASHARCADE · UNICORN HORDE v0.13.3</div>
+  <div class="brand">CRASHARCADE · UNICORN HORDE v0.13.4</div>
 </div>
 
 <audio id="music" src="music.mp3" loop preload="auto"></audio>
@@ -801,8 +801,9 @@ function collectPickup(p){
   }
   if(p.kind==='clearbomb'){ clearBomb(); return; }
   if(p.wtype===weap.cur){
-    if(weap.lv<9){ weap.xp+=MAST[weap.lv-1]*0.6; checkLevel(); }
-    callout('MASTERY +',null,'#5fe0ff');
+    // a dupe of your weapon tops you off to the NEXT level (gives exactly what you still need)
+    if(weap.lv<9){ weap.xp=MAST[weap.lv-1]; checkLevel(); }
+    else callout('MAX MASTERY',null,'#5fe0ff');
   }else{
     weap.cur=p.wtype; weaponsUsed.add(p.wtype);
     callout(WEAP[p.wtype].name,'EQUIPPED · LV '+weap.lv,'#5fe0ff');
