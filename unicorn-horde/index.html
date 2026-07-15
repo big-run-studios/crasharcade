@@ -153,7 +153,7 @@
 
   </div>
 
-  <div class="brand">CRASHARCADE · UNICORN HORDE v0.13.4</div>
+  <div class="brand">CRASHARCADE · UNICORN HORDE v0.13.5</div>
 </div>
 
 <audio id="music" src="music.mp3" loop preload="auto"></audio>
@@ -178,6 +178,7 @@ const CFG={
   extractR:95, extractTime:3,   // cash out = STAND on the center platform for 3s — exposed, committed
   chestOpen:3, chestN:5, chestRange:85, clearBombR:480,   // stand NEAR a chest and Bob's ride goes to work
   gateFirst:30, gateEvery:26, gateDur:6, gateBonus:0.10,
+  healthBonus:0.30,   // extract with full HP for up to +30% of the pot (scales with remaining health)
   multBar:[15,25,35,50], multMax:5,
   maxEnemies:120,
   hpScaleStart:25, hpScaleRate:0.018,
@@ -270,7 +271,7 @@ let dispHp=CFG.maxHp, dmgHoldT=0;   // lagging display hp — the red just-lost 
 let shake=0;
 let beamFx=[], callouts=[];
 let slowT=0, slowF=1, paused=false, dbg=false, fps=60;
-let seqT=0, shattered=false, secured=0, gateWin=false, warn30=false, lastCount=99;
+let seqT=0, shattered=false, secured=0, gateWin=false, warn30=false, lastCount=99, healthBonusPct=0;
 
 let px=WW/2, py=WH/2+180, face=1, moving=0, walkPh=0, faceAng=0;
 let weap=null, fireCd=0, gatHits=0, aimAng=-Math.PI/2, target=null;
@@ -877,7 +878,9 @@ function updateExtract(dt){
 }
 function completeCash(){
   gateWin=gateT>0;
-  secured=Math.round(score*(1+(gateWin?CFG.gateBonus:0)));
+  const healthB=Math.max(0,hp/CFG.maxHp)*CFG.healthBonus;   // reward extracting with health to spare
+  healthBonusPct=Math.round(healthB*100);
+  secured=Math.round(score*(1+(gateWin?CFG.gateBonus:0)+healthB));
   state='cashing'; seqT=0; extractT=0;
   gateBanner.classList.remove('show');
   sfx('cash'); beams('57,255,160',0.9); syncMusic();
@@ -1033,6 +1036,7 @@ function showCashed(){
   hudEl.classList.remove('on');
   document.getElementById('cashPts').textContent=secured.toLocaleString();
   document.getElementById('cashChips').innerHTML=statLine()
+    +(healthBonusPct>0?'<br>❤️ HEALTH BONUS +'+healthBonusPct+'%':'')
     +(gateWin?'<br>🌈 GATE BONUS +'+Math.round(CFG.gateBonus*100)+'%':'');
   const b=document.getElementById('cashBest');
   if(secured>=best&&secured>0){ b.textContent='★ NEW BEST ★'; b.className='best newbest'; }
@@ -1896,10 +1900,11 @@ function rebuildHpArc(f,fd,tier){
 const moveMark=makeRingMark(0x78ebff); moveMark.visible=false; scene.add(moveMark);
 const tgtMark=makeRingMark(0x9fe8ff); tgtMark.visible=false; scene.add(tgtMark);
 const portal=new THREE.Group(); portal.visible=false; scene.add(portal);
-// a real 3D vortex: concentric horizontal rings stacked into a short funnel the unicorn ascends through
-[[0xff3d9a,46,0],[0x5fe0ff,37,11],[0xffe14d,28,22]].forEach(([c,r,yo])=>{
-  const t=new THREE.Mesh(new THREE.TorusGeometry(r,3,10,36),basic(c));
-  t.rotation.x=Math.PI/2; t.position.y=yo;
+// a real 3D doorway: concentric VERTICAL rings (opening faces ±z), receding north into a short tunnel.
+// centered a ring-radius above the origin so the base sits on the ground and it grows upward.
+[[0xff3d9a,24,0],[0x5fe0ff,18,-8],[0xffe14d,13,-15]].forEach(([c,r,zo])=>{
+  const t=new THREE.Mesh(new THREE.TorusGeometry(r,2.4,10,36),basic(c));
+  t.position.set(0, 0, zo);   // centered on the group origin (which is fixed at doorway height)
   portal.add(t);
 });
 const portalLight=new THREE.PointLight(0xff6ad5, 0, 400); portal.add(portalLight);
@@ -2187,13 +2192,14 @@ function syncScene(dt){
   else if(state==='cashing') pf=0.5+Math.min(1,seqT/0.5)*0.5;
   if(pf>0){
     portal.visible=true;
-    portal.position.set(px,92,py);
-    portal.scale.setScalar(Math.max(0.05,pf)*2.5);   // grows with the extraction bar; 2.5x bigger at max
-    portal.rotation.set(0, time*0.9, 0);             // real 3D object (horizontal vortex), NOT a camera-facing billboard
+    portal.position.set(PADX, 52, PADY-104);         // fixed doorway hovering at the NORTH edge of the platform
+    portal.scale.setScalar(Math.max(0.05,pf)*2.5);   // radius grows with the extraction bar; 2.5x bigger at max
+    portal.rotation.set(0, 0, time*0.5);             // opening faces SOUTH; gentle swirl on the tunnel axis
     portalLight.intensity=pf*110;
     if(state==='cashing'&&seqT>0.45&&seqT<0.95){
-      const fj=(seqT-0.45)/0.5;
-      uni.position.y=fj*95; uni.scale.setScalar(1-fj*0.85);
+      const fj=(seqT-0.45)/0.5;                        // glide NORTH + up into the doorway, shrinking as it enters
+      uni.position.set(PADX, 8+fj*46, PADY-fj*104);
+      uni.scale.setScalar(1-fj*0.82);
     }
   } else portal.visible=false;
 
