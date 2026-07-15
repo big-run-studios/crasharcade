@@ -153,7 +153,7 @@
 
   </div>
 
-  <div class="brand">CRASHARCADE · UNICORN HORDE v0.13.2</div>
+  <div class="brand">CRASHARCADE · UNICORN HORDE v0.13.3</div>
 </div>
 
 <audio id="music" src="music.mp3" loop preload="auto"></audio>
@@ -186,6 +186,7 @@ const CFG={
   wpFirst:12, wpEvery:14, wpLife:14, wpMax:2,
   slamStart:40, slamMinGap:26, slamLife:14, slamDmg:60,
   trampleDmg:3, trampleReach:9, trampleCd:0.3, trampleKb:55,   // hooves crush the weakest fruit underfoot while galloping (scales with hpMul)
+  missileDmg:70, missileGap:0.038, missileFlight:0.52,          // clear-bomb barrage: homing missiles, huge dmg, faster than the gatling
   spawnSafe:400,              // nothing may materialize closer than this to the player — no bad-luck deaths
   budgetBase:3, budgetRate:0.15, budgetLate:0.09,
   waveIntMax:5.2, waveIntMin:2.6, waveIntRate:0.03,
@@ -276,6 +277,7 @@ let weap=null, fireCd=0, gatHits=0, aimAng=-Math.PI/2, target=null;
 let budget=0, spawnT=1, melonSeen=false, melonCd=0;
 let wpNext=0, slamLast=-99, gateNext=0, gateT=0;
 let enemies=[], proj=[], seeds=[], bombs=[], pend=[], trails=[], expl=[], parts=[], pops=[], pickups=[];
+let missiles=[], barrage=null;   // clear-bomb homing-missile barrage
 let stains=[], paintQueue=[], paintCount=0;
 let trailTick=0;
 let slamState=null, slamT=0;
@@ -925,17 +927,61 @@ function updateChests(dt){
 }
 function clearBomb(){
   wingT=2.4;   // the clear move: wings out, mane & tail go gold
-  shake=18; beams('255,255,255',0.8); sfx('slam'); slowmo(0.3,0.4);
-  expl.push({x:px,y:py,r:0,mx:CFG.clearBombR,t:0,life:0.5,slam:true});
-  for(let i=0;i<22;i++){ const a=R(0,6.28),v=R(100,380);
-    parts.push({x:px,y:py,vx:Math.cos(a)*v,vy:Math.sin(a)*v,r:R(2,5),c:rand(RAINBOW),t:R(.3,.7)}); }
-  for(const e of enemies){ if(e.dead) continue;
-    const dd=Math.hypot(e.x-px,e.y-py)||1;
-    if(dd<CFG.clearBombR+e.r){
-      if(e.elite||e.type==='melon') damageEnemy(e,CFG.slamDmg,(e.x-px)/dd*320,(e.y-py)/dd*320,null);
-      else killEnemy(e,null);
-    } }
-  invulnT=Math.max(invulnT,1);
+  // paint a target on everything on screen, then Bob rains homing missiles on them
+  let tagged=0;
+  for(const e of enemies){ if(e.dead||e.spawnT>0) continue;
+    const s=toScreen(e.x,e.y,0);
+    if(s.ok && s.x>-60 && s.x<cw+60 && s.y>-60 && s.y<ch+60){ e.tagged=1; tagged++; } }
+  barrage=tagged?{t:0, fireCd:0.14}:null;   // brief beat so the reticles register, then rapid fire
+  beams('255,138,224',0.7); sfx('slamUp'); shake=Math.max(shake,10); slowmo(0.25,0.5);
+  invulnT=Math.max(invulnT,2);
+}
+function fireMissile(target){
+  if(missiles.length>70) return;
+  missiles.push({sx:px, sy:py, x:px, y:py, px3:px, py3:py, ph3:0,
+    target, tx:target.x, ty:target.y, t:0, T:CFG.missileFlight+R(0,0.16), h:0, hue:R(300,330)});
+  sfx('gat');
+}
+function updateMissiles(dt){
+  for(const m of missiles){
+    m.px3=m.x; m.py3=m.y; m.ph3=m.h;                 // remember last pos for orientation
+    m.t+=dt;
+    if(m.target && !m.target.dead){ m.tx=m.target.x; m.ty=m.target.y; }   // home onto the live target
+    const f=Math.min(1,m.t/m.T), fg=f*f;             // ground eases in → looks launched straight up, then swoops
+    m.x=m.sx+(m.tx-m.sx)*fg;
+    m.y=m.sy+(m.ty-m.sy)*fg;
+    m.h=Math.sin(f*Math.PI)*145;                     // arc up then down onto the target
+    if(f>=1){ m.dead=true; missileHit(m); }
+  }
+  missiles=missiles.filter(m=>!m.dead);
+}
+function missileHit(m){
+  const t=m.target;
+  if(t && !t.dead){
+    damageEnemy(t, CFG.missileDmg*hpMul(), 0, 0, null);
+    if(!t.dead) t.tagged=1;   // survived (tanky) — re-queue another missile
+  }
+  expl.push({x:m.tx,y:m.ty,r:0,mx:66,t:0,life:0.28});
+  for(let i=0;i<8;i++){ const a=R(0,6.28),v=R(60,200);
+    parts.push({x:m.tx,y:m.ty,vx:Math.cos(a)*v,vy:Math.sin(a)*v,r:R(2,4.5),c:Math.random()<.5?'#ff8ae0':'#fff',t:R(.18,.42)}); }
+  shake=Math.max(shake,4); sfx('pop');
+}
+function updateBarrage(dt){
+  if(!barrage) return;
+  barrage.t+=dt; barrage.fireCd-=dt;
+  if(barrage.fireCd<=0){
+    const pending=enemies.filter(e=>!e.dead && e.tagged===1);
+    if(pending.length){
+      const tgt=pending[Math.floor(Math.random()*pending.length)];
+      tgt.tagged=2; fireMissile(tgt);            // mark inbound so we don't double-fire before impact
+      barrage.fireCd=CFG.missileGap;             // rapid — faster than the gatling
+    }
+  }
+  const anyTagged=enemies.some(e=>!e.dead && e.tagged);
+  if((!anyTagged && missiles.length===0) || barrage.t>3.6){
+    for(const e of enemies) e.tagged=0;
+    barrage=null;
+  }
 }
 function updCashing(rdt){
   for(const p of parts){ p.x+=p.vx*rdt; p.y+=p.vy*rdt; p.t-=rdt; }
@@ -1008,6 +1054,7 @@ function reset(){
   budget=8; spawnT=0.8; waveN=0; baseAng=R(0,6.283); melonSeen=false; melonCd=0;
   wpNext=CFG.wpFirst; slamLast=0; gateNext=CFG.gateFirst; gateT=0;
   enemies=[]; proj=[]; seeds=[]; bombs=[]; pend=[]; trails=[]; expl=[]; parts=[]; pops=[]; pickups=[];
+  missiles=[]; barrage=null;
   stains=[]; paintQueue=[]; clearPaint();
   slamState=null; slamT=0; extractT=0; extTick=0; buttInfo=null;
   kills=0; eliteKills=0; maxMult=1;
@@ -1237,6 +1284,8 @@ function update(rdt){
 
   updateProj(dt);
   updateBombs(dt);
+  updateBarrage(dt);
+  updateMissiles(dt);
   updateExpl(dt);
   updateSlam(dt);
   updateExtract(dt);
@@ -1428,12 +1477,12 @@ let padDecal;
   const c=document.createElement('canvas'); c.width=256; c.height=256;
   const g2=c.getContext('2d');
   g2.textAlign='center'; g2.lineJoin='round';
-  g2.font='900 150px Arial';
-  g2.lineWidth=17; g2.strokeStyle='#05301f'; g2.strokeText('$',128,96);
-  g2.fillStyle='#39ffa0'; g2.fillText('$',128,96);
-  g2.font='900 52px Arial'; g2.lineWidth=11;
-  g2.strokeStyle='#062318'; g2.strokeText('EXTRACT',128,188);
-  g2.fillStyle='#eafff6'; g2.fillText('EXTRACT',128,188);
+  g2.font='900 112px Arial';
+  g2.lineWidth=14; g2.strokeStyle='#05301f'; g2.strokeText('$',128,108);
+  g2.fillStyle='#39ffa0'; g2.fillText('$',128,108);
+  g2.font='900 46px Arial'; g2.lineWidth=10;
+  g2.strokeStyle='#062318'; g2.strokeText('EXTRACT',128,182);
+  g2.fillStyle='#eafff6'; g2.fillText('EXTRACT',128,182);
   const t=new THREE.CanvasTexture(c); t.colorSpace=THREE.SRGBColorSpace;
   padDecal=new THREE.Mesh(new THREE.CircleGeometry(CFG.extractR-8,44),
     new THREE.MeshBasicMaterial({map:t,transparent:true,depthWrite:false}));
@@ -1671,6 +1720,14 @@ function makeExpl(){
   m.rotation.x=-Math.PI/2; m.position.y=2; m.renderOrder=2;
   return m;
 }
+function makeMissile(){
+  const g=new THREE.Group();
+  const body=new THREE.Mesh(new THREE.ConeGeometry(2.6,12,7), basic(0xff8ae0));   // cone axis = +Y (points where it flies)
+  g.add(body);
+  const fin=new THREE.Mesh(new THREE.ConeGeometry(1.5,5,7), basic(0xffe1f4));
+  fin.position.y=-6; fin.rotation.x=Math.PI; g.add(fin);
+  return g;
+}
 function makeRingMark(color){
   const m=new THREE.Mesh(new THREE.RingGeometry(0.82,1,28),
     basic(color,{transparent:true,opacity:0.6,side:THREE.DoubleSide,depthWrite:false}));
@@ -1838,17 +1895,19 @@ function rebuildHpArc(f,fd,tier){
 const moveMark=makeRingMark(0x78ebff); moveMark.visible=false; scene.add(moveMark);
 const tgtMark=makeRingMark(0x9fe8ff); tgtMark.visible=false; scene.add(tgtMark);
 const portal=new THREE.Group(); portal.visible=false; scene.add(portal);
-[[0xff3d9a,46],[0x5fe0ff,38],[0xffe14d,30]].forEach(([c,r])=>{
-  const t=new THREE.Mesh(new THREE.TorusGeometry(r,3,8,32),basic(c));
+// a real 3D vortex: concentric horizontal rings stacked into a short funnel the unicorn ascends through
+[[0xff3d9a,46,0],[0x5fe0ff,37,11],[0xffe14d,28,22]].forEach(([c,r,yo])=>{
+  const t=new THREE.Mesh(new THREE.TorusGeometry(r,3,10,36),basic(c));
+  t.rotation.x=Math.PI/2; t.position.y=yo;
   portal.add(t);
 });
-const portalLight=new THREE.PointLight(0xffffff, 0, 400); portal.add(portalLight);
+const portalLight=new THREE.PointLight(0xff6ad5, 0, 400); portal.add(portalLight);
 const shock=new THREE.Mesh(new THREE.RingGeometry(0.9,1,48),
   new THREE.MeshBasicMaterial({color:0xffffff,transparent:true,side:THREE.DoubleSide,depthWrite:false}));
 shock.rotation.x=-Math.PI/2; shock.position.y=2.5; shock.visible=false; shock.renderOrder=2; scene.add(shock);
 
 /* ================================================================= scene sync */
-const _v=new THREE.Vector3(), _tv=new THREE.Vector3(), _tv2=new THREE.Vector3(), _X1=new THREE.Vector3(1,0,0);
+const _v=new THREE.Vector3(), _tv=new THREE.Vector3(), _tv2=new THREE.Vector3(), _X1=new THREE.Vector3(1,0,0), _upY=new THREE.Vector3(0,1,0);
 function toScreen(x,z,h){
   _v.set(x,h||0,z).project(camera);
   return {x:(_v.x*0.5+0.5)*cw, y:(-_v.y*0.5+0.5)*ch, ok:_v.z<1};
@@ -1912,15 +1971,19 @@ function syncScene(dt){
   riderArm.scale.setScalar(1+st*0.18);
   cashGlow.intensity=(extractT>0||state==='cashing')?55:0;
   if(state==='dying') uni.visible=Math.sin(time*20)>0;
-  // headbutting a chest: the NECK AND HEAD strike — fast hit on the thud, slow recovery
+  // headbutting a chest — horn arcs (viewed from the LEFT) from ~1 o'clock (windup) counter-clockwise
+  // down to ~8 o'clock (strike into the chest): slow recovery, fast slam into the thud
   if(buttInfo && state==='play' && !slamState){
     const p=buttInfo.p;
-    const s2=p<0.25?p/0.25:1-(p-0.25)/0.75;
+    // t: 0 = wound up (1 o'clock, nose up & slightly back), 1 = struck (8 o'clock, nose down & forward)
+    let t = p<0.7 ? 1-p/0.7 : (p-0.7)/0.3;   // recover struck→wound (slow), then slam wound→struck (fast) into the thud
+    t = t*t*(3-2*t);                          // smoothstep
+    const Z_WIND=0.62, Z_STRIKE=-1.5;         // head-group pitch at the two ends of the arc
     const ba=Math.atan2(buttInfo.y-py,buttInfo.x-px);
     uni.userData.a=ba; uni.rotation.y=-ba;   // square up to the chest
-    headGrp.rotation.z-=s2*0.85;             // snout + horn drive DOWN-FORWARD into the chest on the ground
-    headGrp.position.y=42-s2*9;              // whole head-group dips down as it strikes
-    headGrp.position.x=14+s2*8;              // ...and lunges toward the chest
+    headGrp.rotation.z = Z_WIND + (Z_STRIKE-Z_WIND)*t;
+    headGrp.position.y = 42 - t*10;          // dips down as it strikes
+    headGrp.position.x = 14 + t*8;           // ...and lunges toward the chest
   }else headGrp.position.x+=(14-headGrp.position.x)*0.3;
   while(paintQueue.length) addPaint(paintQueue.shift());
 
@@ -2006,6 +2069,12 @@ function syncScene(dt){
     m.position.set(x, 12+Math.sin(fB*Math.PI)*95, y);
     m.userData.ring.position.set(b.tx-x, -(12+Math.sin(fB*Math.PI)*95)+1.4, b.ty-y);
     m.userData.ring.scale.setScalar(14*(0.4+fB*0.6)*(b.rMul||1)*1.4);   // ring previews the true blast size
+  });
+  // clear-bomb homing missiles (arc through the air, oriented along travel)
+  syncSet(missiles,()=>'missile',makeMissile,(m,mesh)=>{
+    mesh.position.set(m.x, 12+m.h, m.y);
+    const vx=m.x-m.px3, vh=m.h-m.ph3, vy=m.y-m.py3, L=Math.hypot(vx,vh,vy);
+    if(L>0.01){ _tv.set(vx/L,vh/L,vy/L); mesh.quaternion.setFromUnitVectors(_upY,_tv); }
   });
   // extraction progress ring around the platform
   { const ef=extractT/CFG.extractTime;
@@ -2117,10 +2186,9 @@ function syncScene(dt){
   else if(state==='cashing') pf=0.5+Math.min(1,seqT/0.5)*0.5;
   if(pf>0){
     portal.visible=true;
-    portal.position.set(px,95,py);
+    portal.position.set(px,92,py);
     portal.scale.setScalar(Math.max(0.05,pf)*2.5);   // grows with the extraction bar; 2.5x bigger at max
-    portal.quaternion.copy(camera.quaternion);
-    portal.rotation.z=time*0.8;
+    portal.rotation.set(0, time*0.9, 0);             // real 3D object (horizontal vortex), NOT a camera-facing billboard
     portalLight.intensity=pf*110;
     if(state==='cashing'&&seqT>0.45&&seqT<0.95){
       const fj=(seqT-0.45)/0.5;
@@ -2154,6 +2222,19 @@ function overlayDraw(){
     octx.fillStyle=p.col; octx.fillText(p.txt,s.x,s.y);
   }
   octx.globalAlpha=1;
+  // clear-bomb lock-on reticles: a little target box on everything the barrage is hitting
+  if(barrage){
+    for(const e of enemies){ if(e.dead||!e.tagged) continue;
+      const s=toScreen(e.x,e.y,FRUIT[e.type].r*1.6); if(!s.ok) continue;
+      const r=13+Math.sin(time*16+e.ph)*2;
+      octx.strokeStyle=e.tagged===2?'#ffb14d':'#ff2e6a'; octx.lineWidth=2.4;
+      octx.strokeRect(s.x-r,s.y-r,r*2,r*2);
+      octx.beginPath();
+      octx.moveTo(s.x-r-5,s.y); octx.lineTo(s.x-r+3,s.y);  octx.moveTo(s.x+r-3,s.y); octx.lineTo(s.x+r+5,s.y);
+      octx.moveTo(s.x,s.y-r-5); octx.lineTo(s.x,s.y-r+3);  octx.moveTo(s.x,s.y+r-3); octx.lineTo(s.x,s.y+r+5);
+      octx.stroke();
+    }
+  }
   // callouts under the player
   const ps=toScreen(px,py,0);
   callouts.forEach((c,i)=>{
