@@ -153,7 +153,7 @@
 
   </div>
 
-  <div class="brand">CRASHARCADE · UNICORN HORDE v0.12.1</div>
+  <div class="brand">CRASHARCADE · UNICORN HORDE v0.13.0</div>
 </div>
 
 <audio id="music" src="music.mp3" loop preload="auto"></audio>
@@ -591,9 +591,9 @@ function killEnemy(e,w){
   }
   if(e.elite||e.type==='melon') eliteKills++;
   popTxt(e.x,e.y,'+'+pts.toLocaleString(), e.elite?'#ffe14d':(e.type==='melon'?'#7dffb0':'#fff'));
-  for(let i=0;i<(d.big?16:8);i++){ const a=R(0,6.28),v=R(40,d.big?220:150);
-    parts.push({x:e.x,y:e.y,vx:Math.cos(a)*v,vy:Math.sin(a)*v,r:R(2,d.big?6:4),c:Math.random()<.6?d.juice:'#fff',t:R(.25,.5)}); }
-  stains.push({x:e.x,y:e.y,col:d.juice,r:d.r*(d.big?1.6:1.25),rot:R(0,6.28),t:0,life:14});
+  for(let i=0;i<(d.big?24:13);i++){ const a=R(0,6.28),v=R(50,d.big?250:175);
+    parts.push({x:e.x,y:e.y,vx:Math.cos(a)*v,vy:Math.sin(a)*v,r:R(3,d.big?9:5.5),c:Math.random()<.75?d.juice:'#fff',t:R(.3,.62)}); }
+  stains.push({x:e.x,y:e.y,col:d.juice,r:d.r*(d.big?2:1.55),rot:R(0,6.28),t:0,life:14});
   if(stains.length>60) stains.shift();
   const pd=Math.hypot(e.x-px,e.y-py);
   if(pd<d.r+75){
@@ -1248,13 +1248,16 @@ const renderer=new THREE.WebGLRenderer({canvas:glCanvas,antialias:true});
 // iPads/phones — frame rate (and therefore input latency) is fill-bound on those
 renderer.setPixelRatio(Math.min(devicePixelRatio||1,1.5));
 const scene=new THREE.Scene();
-scene.background=new THREE.Color(0x0a0618);
-scene.fog=new THREE.Fog(0x0a0618, 1000, 2400);
+scene.background=new THREE.Color(0x0b0820);
+scene.fog=new THREE.Fog(0x160b30, 900, 2200);
 const camera=new THREE.PerspectiveCamera(55, innerWidth/innerHeight, 10, 4200);
 
-scene.add(new THREE.HemisphereLight(0xcfe0ff, 0x38206a, 1.35));
-const sun=new THREE.DirectionalLight(0xffeeff, 1.5);
-sun.position.set(500,900,300); scene.add(sun);
+// evening / dusk: dim cool skylight, a low warm sunset key, and a magenta rim so neon reads
+scene.add(new THREE.HemisphereLight(0x5766c4, 0x241246, 0.75));
+const sun=new THREE.DirectionalLight(0xffb26b, 1.05);
+sun.position.set(-760,470,340); scene.add(sun);
+const rim=new THREE.DirectionalLight(0xff5fae, 0.4);
+rim.position.set(680,220,-520); scene.add(rim);
 
 const gradTex=(()=>{ const d=new Uint8Array([90,90,90,255, 175,175,175,255, 255,255,255,255]);
   const t=new THREE.DataTexture(d,3,1); t.needsUpdate=true; t.minFilter=t.magFilter=THREE.NearestFilter; return t; })();
@@ -1270,16 +1273,16 @@ function col3(c){ return colCache[c]||(colCache[c]=new THREE.Color(c)); }
 (function buildGround(){
   const cvt=document.createElement('canvas'); cvt.width=1500; cvt.height=1150;
   const g=cvt.getContext('2d'), sc=0.5;
-  // grass park ground
+  // grass park ground — dusk palette: deep, cool evening greens so neon + juice pop off it
   const grd=g.createRadialGradient(750,575,80,750,575,900);
-  grd.addColorStop(0,'#2c7a42'); grd.addColorStop(0.6,'#1f5e33'); grd.addColorStop(1,'#143f23');
+  grd.addColorStop(0,'#1a4d30'); grd.addColorStop(0.6,'#123b26'); grd.addColorStop(1,'#0a2418');
   g.fillStyle=grd; g.fillRect(0,0,1500,1150);
-  g.globalAlpha=0.06; g.fillStyle='#0c2f1a';                       // subtle mowing bands
+  g.globalAlpha=0.07; g.fillStyle='#071d12';                       // subtle mowing bands
   for(let i=0;i<12;i++){ if(i%2) g.fillRect(0,i*96,1500,96); }
   g.globalAlpha=1;
-  for(let i=0;i<900;i++){                                          // grass blades
+  for(let i=0;i<900;i++){                                          // grass blades (dim dusk highlights)
     const x=R(0,1500), y=R(0,1150);
-    g.strokeStyle=Math.random()<0.5?'rgba(80,200,120,.22)':'rgba(16,60,34,.3)';
+    g.strokeStyle=Math.random()<0.5?'rgba(74,150,104,.16)':'rgba(6,26,16,.34)';
     g.lineWidth=1.2;
     g.beginPath(); g.moveTo(x,y); g.lineTo(x+R(-2,2),y-R(2,5)); g.stroke();
   }
@@ -1310,12 +1313,17 @@ function col3(c){ return colCache[c]||(colCache[c]=new THREE.Color(c)); }
   for(let x=110;x<650;x+=44){ g.moveTo(x,558); g.lineTo(x,592); }
   for(let x=850;x<1420;x+=44){ g.moveTo(x,558); g.lineTo(x,592); }
   g.stroke();
-  for(let i=0;i<260;i++){ const x=R(20,1480), y=R(20,1130), s=R(9,17);
+  // confetti litter — only on the concrete (mirrors onSidewalk); grass stays clean, not buggy-speckled
+  const onWalkC=(x,y)=>{ const dx=x-750,dy=y-575,d=Math.hypot(dx,dy);
+    return (d>=70&&d<=106)||(d>70&&(Math.abs(dx)<=18||Math.abs(dy)<=18))||x<=66||x>=1434||y<=66||y>=1084; };
+  for(let i=0,placed=0; i<3000 && placed<300; i++){ const x=R(20,1480), y=R(20,1130);
+    if(!onWalkC(x,y)) continue;
+    const s=R(9,17); placed++;
     g.globalAlpha=R(0.05,0.12); g.fillStyle=rand(RAINBOW);
     g.beginPath(); g.moveTo(x,y-s*0.5); g.lineTo(x+s,y); g.lineTo(x,y+s*0.5); g.lineTo(x-s,y); g.closePath(); g.fill(); }
   g.globalAlpha=1;
   const tex=new THREE.CanvasTexture(cvt); tex.colorSpace=THREE.SRGBColorSpace; tex.anisotropy=4;
-  const mesh=new THREE.Mesh(new THREE.PlaneGeometry(WW,WH), new THREE.MeshBasicMaterial({map:tex}));
+  const mesh=new THREE.Mesh(new THREE.PlaneGeometry(WW,WH), new THREE.MeshBasicMaterial({map:tex,color:0xc9cde6}));
   mesh.rotation.x=-Math.PI/2; mesh.position.set(WW/2,0,WH/2);
   scene.add(mesh);
   // dark apron outside the walls so the horizon isn't a hard edge
@@ -1897,8 +1905,9 @@ function syncScene(dt){
     const s2=p<0.25?p/0.25:1-(p-0.25)/0.75;
     const ba=Math.atan2(buttInfo.y-py,buttInfo.x-px);
     uni.userData.a=ba; uni.rotation.y=-ba;   // square up to the chest
-    headGrp.rotation.z+=s2*0.6;              // strike direction flipped — swings INTO the chest
-    headGrp.position.x=14+s2*6;
+    headGrp.rotation.z-=s2*0.85;             // snout + horn drive DOWN-FORWARD into the chest on the ground
+    headGrp.position.y=42-s2*9;              // whole head-group dips down as it strikes
+    headGrp.position.x=14+s2*8;              // ...and lunges toward the chest
   }else headGrp.position.x+=(14-headGrp.position.x)*0.3;
   while(paintQueue.length) addPaint(paintQueue.shift());
 
@@ -1964,8 +1973,8 @@ function syncScene(dt){
     m.userData.elite.visible=!!e.elite;
     m.userData.tel.visible=(e.type==='melon'&&e.telT>0)&&(Math.sin(time*18)>-0.3);
     const bm=m.userData.body.material;
-    if(e.hitF>0){ bm.emissive=col3('#ffffff'); bm.emissiveIntensity=0.9; }
-    else { bm.emissiveIntensity=0.0; }
+    if(e.hitF>0){ bm.emissive.set(0xffffff); bm.emissiveIntensity=0.95; }
+    else { bm.emissive.set(d.col); bm.emissiveIntensity=0.22; }   // soft candy self-glow so fruit pops at dusk
   });
 
   // projectiles
@@ -2027,7 +2036,7 @@ function syncScene(dt){
     m.rotation.z=s.rot;
     m.scale.set(s.r*1.8,s.r*1.5,1);
     m.material.color.set(s.col);
-    m.material.opacity=0.32*(s.t>s.life-4?(s.life-s.t)/4:1);
+    m.material.opacity=0.62*(s.t>s.life-4?(s.life-s.t)/4:1);
   });
   // explosions
   syncSet(expl,e=>e.slam?'shockE':'expl',e=>makeExpl(),(e,m)=>{
