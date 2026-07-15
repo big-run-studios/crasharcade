@@ -168,7 +168,7 @@
     <button id="cashBtn"><div id="cashFill"></div><span id="cashTxt">HOLD TO CASH OUT</span></button>
   </div>
 
-  <div class="brand">CRASHARCADE · UNICORN HORDE 3D v0.8.1</div>
+  <div class="brand">CRASHARCADE · UNICORN HORDE 3D v0.8.2</div>
 </div>
 
 <audio id="music" src="music.mp3" loop preload="auto"></audio>
@@ -185,6 +185,7 @@ const WW=3000, WH=2300, WALL=40, WALLH=60;
 const RAINBOW=['#ff4d6e','#ff9a2e','#ffe14d','#3ddc74','#4dc3ff','#b06cff'];
 const CFG={
   maxHp:50, invuln:0.85, playerR:15, moveSpd:182,
+  dmgHold:0.45, dmgDrain:0.5,   // damage telegraph: red segment holds, then drains (fraction of maxHp/s)
   aimRange:{bow:360,gat:330,bomb:300},
   pickupR:34, lemonStand:230,
   maxRun:120, surviveBonus:0.25,
@@ -259,6 +260,7 @@ let state='menu';
 let time=0, runT=0, score=0, best=+(store.get('uni_best')||0);
 let mult=1, multProg=0;
 let hp=CFG.maxHp, invulnT=0, hurtFx=0;
+let dispHp=CFG.maxHp, dmgHoldT=0;   // lagging display hp — the red just-lost segment
 let shake=0;
 let beamFx=[], callouts=[];
 let slowT=0, slowF=1, paused=false, dbg=false, fps=60;
@@ -597,6 +599,7 @@ function hurtPlayer(dmg){
   if(state!=='play') return;
   if(invulnT>0) return;
   hp=Math.max(0,hp-dmg);
+  dmgHoldT=CFG.dmgHold;   // red segment freezes at the old level, then drains
   invulnT=CFG.invuln; hurtFx=0.32;
   if(mult>1){ callout('MULTIPLIER LOST',null,'#ff3d6e'); }
   mult=1; multProg=0;
@@ -908,7 +911,7 @@ function showOver(){
   overEl.classList.remove('hide');
 }
 function reset(){
-  runT=0; mult=1; multProg=0; score=0; hp=CFG.maxHp; invulnT=1.0; hurtFx=0;
+  runT=0; mult=1; multProg=0; score=0; hp=CFG.maxHp; dispHp=CFG.maxHp; dmgHoldT=0; invulnT=1.0; hurtFx=0;
   shake=0; slowT=0; seqT=0; shattered=false; secured=0; gateWin=false; surviveWin=false; finaleWarned=false;
   weap=newWeap(); fireCd=0.4; gatHits=0; aimAng=-Math.PI/2; target=null;
   px=WW/2; py=WH/2+180; face=1; moving=0; walkPh=0; faceAng=0;
@@ -1135,6 +1138,8 @@ function update(rdt){
     return;
   }
   invulnT-=dt; hurtFx-=dt;
+  if(dispHp>hp){ dmgHoldT-=dt; if(dmgHoldT<=0) dispHp=Math.max(hp,dispHp-CFG.maxHp*CFG.dmgDrain*dt); }
+  else dispHp=hp;
   if(shake>0) shake=Math.max(0,shake-rdt*26);
 
   movePlayer(dt);
@@ -1350,8 +1355,8 @@ function makeFruit(type){
   if(type==='orange'){
     for(const sx of [-1,1]){ const arm=new THREE.Mesh(sphereGeo,toon(d.col));
       arm.scale.setScalar(d.r*0.4); arm.position.set(sx*d.r*1.15,d.r*1.05,0); grp.add(arm); }
-    const band=new THREE.Mesh(new THREE.BoxGeometry(d.r*1.7,d.r*0.28,d.r*1.7),basic(0xff3d9a));
-    band.position.y=d.r*1.7; grp.add(band);
+    const band=new THREE.Mesh(new THREE.TorusGeometry(d.r*0.82,d.r*0.13,8,22),basic(0xff3d9a));
+    band.rotation.x=Math.PI/2; band.position.y=d.r*1.62; grp.add(band);   // sweatband, not a slab
   }
   const elite=new THREE.Mesh(new THREE.TorusGeometry(d.r*1.35,1.8,8,24),basic(0xff3d9a));
   elite.rotation.x=Math.PI/2; elite.position.y=4; grp.add(elite); grp.userData.elite=elite;
@@ -1560,23 +1565,30 @@ function addPaint(colHex){
 }
 
 /* ---- health ring / markers / portal / shock ---- */
-let hpArc=null, hpArcF=-1, hpRim=null, hpTier='';
-const hpTrack=new THREE.Mesh(new THREE.RingGeometry(34,40,48),
+let hpArc=null, hpArcF=-1, hpRim=null, hpDmg=null, hpDmgF=-1, hpTier='';
+const hpTrack=new THREE.Mesh(new THREE.RingGeometry(28,46,48),   // 2x thick
   new THREE.MeshBasicMaterial({color:0xffffff,transparent:true,opacity:0.07,side:THREE.DoubleSide,depthWrite:false}));
 hpTrack.rotation.x=-Math.PI/2; hpTrack.position.y=1.2; hpTrack.renderOrder=2; scene.add(hpTrack);
-function rebuildHpArc(f,tier){
+function rebuildHpArc(f,fd,tier){
   if(hpArc){ scene.remove(hpArc); hpArc.geometry.dispose(); }
   if(hpRim){ scene.remove(hpRim); hpRim.geometry.dispose(); }
-  hpArc=hpRim=null;
-  if(f<=0.005) return;
-  const thetaStart=-Math.PI*5/6, thetaLen=6.283*f;   // arc END pinned at 8 o'clock on screen
-  hpArc=new THREE.Mesh(new THREE.RingGeometry(33,41,48,1,thetaStart,thetaLen),
-    new THREE.MeshBasicMaterial({color:0x000000,transparent:true,opacity:0.55,side:THREE.DoubleSide,depthWrite:false}));
-  hpArc.rotation.x=-Math.PI/2; hpArc.position.y=1.3; hpArc.renderOrder=2; scene.add(hpArc);
-  const tierCol=tier==='hi'?0x78ebff:tier==='mid'?0xffc233:0xff3d6e;
-  hpRim=new THREE.Mesh(new THREE.RingGeometry(41,44,48,1,thetaStart,thetaLen),
-    new THREE.MeshBasicMaterial({color:tierCol,transparent:true,opacity:0.75,side:THREE.DoubleSide,depthWrite:false}));
-  hpRim.rotation.x=-Math.PI/2; hpRim.position.y=1.3; hpRim.renderOrder=2; scene.add(hpRim);
+  if(hpDmg){ scene.remove(hpDmg); hpDmg.geometry.dispose(); }
+  hpArc=hpRim=hpDmg=null;
+  const A_END=-Math.PI*5/6;   // arc END pinned at 8 o'clock on screen
+  if(f>0.005){
+    hpArc=new THREE.Mesh(new THREE.RingGeometry(27,43,48,1,A_END,6.283*f),
+      new THREE.MeshBasicMaterial({color:0x000000,transparent:true,opacity:0.55,side:THREE.DoubleSide,depthWrite:false}));
+    hpArc.rotation.x=-Math.PI/2; hpArc.position.y=1.3; hpArc.renderOrder=2; scene.add(hpArc);
+    const tierCol=tier==='hi'?0x78ebff:tier==='mid'?0xffc233:0xff3d6e;
+    hpRim=new THREE.Mesh(new THREE.RingGeometry(43,49,48,1,A_END,6.283*f),
+      new THREE.MeshBasicMaterial({color:tierCol,transparent:true,opacity:0.75,side:THREE.DoubleSide,depthWrite:false}));
+    hpRim.rotation.x=-Math.PI/2; hpRim.position.y=1.3; hpRim.renderOrder=2; scene.add(hpRim);
+  }
+  if(fd>f+0.004){   // red just-lost segment: sits at the drain edge and empties toward it
+    hpDmg=new THREE.Mesh(new THREE.RingGeometry(27,43,48,1,A_END+6.283*f,6.283*(fd-f)),
+      new THREE.MeshBasicMaterial({color:0xff2244,transparent:true,opacity:0.9,side:THREE.DoubleSide,depthWrite:false}));
+    hpDmg.rotation.x=-Math.PI/2; hpDmg.position.y=1.35; hpDmg.renderOrder=2; scene.add(hpDmg);
+  }
 }
 const moveMark=makeRingMark(0x78ebff); moveMark.visible=false; scene.add(moveMark);
 const tgtMark=makeRingMark(0x9fe8ff); tgtMark.visible=false; scene.add(tgtMark);
@@ -1629,10 +1641,21 @@ function syncScene(){
   uni.rotation.y=-uni.userData.a;
   riderGrp.rotation.y=-aimAng-uni.rotation.y;   // Bob twists in the saddle to face the shot
   const squash=slamState==='crouch'?0.8:1;
-  const bob=moving>0.05?Math.abs(Math.sin(walkPh*2))*3:Math.sin(time*3.4)*1.5;
   uni.scale.set(1,squash,1);
-  uni.position.y=airY+bob*0.5;
-  uniLegs.forEach((leg,i)=>{ leg.rotation.z=moving>0.05?Math.sin(walkPh*2+(i%2?Math.PI:0))*0.55:0; });
+  // gallop: rear pair drives, front pair reaches ~a half-cycle later, body bounds and pitches
+  if(moving>0.05){
+    const c=walkPh*2;
+    uniLegs[0].rotation.z=Math.sin(c)*0.85;            // back legs (drive)
+    uniLegs[1].rotation.z=Math.sin(c-0.22)*0.85;
+    uniLegs[2].rotation.z=Math.sin(c-1.9)*0.95;        // front legs (reach)
+    uniLegs[3].rotation.z=Math.sin(c-2.12)*0.95;
+    uni.position.y=airY+Math.max(0,Math.sin(c+0.5))*6; // suspension: airborne beat of the stride
+    uni.rotation.z=Math.sin(c+0.9)*0.07;               // nose dips into each bound
+  }else{
+    uniLegs.forEach(leg=>{ leg.rotation.z*=0.8; });
+    uni.position.y=airY+Math.sin(time*3.4)*1;
+    uni.rotation.z*=0.8;
+  }
   riderArm.rotation.z=0;
   for(const k of WKEYS) weapMeshes[k].visible=(weap&&weap.cur===k);
   const st=weap?weapState(weap.lv):0;
@@ -1643,11 +1666,12 @@ function syncScene(){
 
   // health ring position + rebuild on change
   hpTrack.position.set(px,1.2,py);
-  const f=Math.max(0,hp/CFG.maxHp);
+  const f=Math.max(0,hp/CFG.maxHp), fd=Math.max(0,dispHp/CFG.maxHp);
   const tier=hp>CFG.maxHp*0.6?'hi':hp>CFG.maxHp*0.3?'mid':'lo';
-  if(Math.abs(f-hpArcF)>0.005||tier!==hpTier){ rebuildHpArc(f,tier); hpArcF=f; hpTier=tier; }
+  if(Math.abs(f-hpArcF)>0.005||Math.abs(fd-hpDmgF)>0.005||tier!==hpTier){ rebuildHpArc(f,fd,tier); hpArcF=f; hpDmgF=fd; hpTier=tier; }
   if(hpArc){ hpArc.position.set(px,1.3,py); hpRim.position.set(px,1.3,py);
     hpRim.material.opacity=hurtFx>0?1:(tier==='lo'?0.55+0.35*Math.sin(time*8):0.75); }
+  if(hpDmg) hpDmg.position.set(px,1.35,py);
 
   // enemies
   syncSet(enemies,e=>'e_'+e.type,e=>makeFruit(e.type),(e,m)=>{
