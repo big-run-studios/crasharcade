@@ -28,7 +28,7 @@
     background-image:linear-gradient(rgba(95,224,255,.06) 1px,transparent 1px),linear-gradient(90deg,rgba(95,224,255,.06) 1px,transparent 1px);
     background-size:38px 38px;mask-image:radial-gradient(120% 80% at 50% 0,#000,transparent 75%);}
 
-  .wrap{max-width:1100px;margin:0 auto;padding:0 18px 40px;position:relative;}
+  .wrap{max-width:1100px;margin:0 auto;padding:0 18px 104px;position:relative;}
 
   /* ---- top bar ---- */
   header{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:18px 2px 6px;}
@@ -44,6 +44,27 @@
   .chip.cash{color:var(--green);border-color:rgba(57,255,160,.4);}
   .chip.crowns{color:var(--gold);border-color:rgba(255,194,51,.4);}
   .chip .plus{color:#fff;background:#27a8ff;border-radius:50%;width:18px;height:18px;display:inline-flex;align-items:center;justify-content:center;font-size:13px;margin-left:2px;}
+  /* faked profile avatar (top-right, beside cash module) */
+  .avatar{position:relative;width:36px;height:36px;border-radius:50%;flex:none;display:grid;place-items:center;
+    font-size:20px;line-height:1;cursor:pointer;margin-left:2px;
+    background:radial-gradient(130% 130% at 30% 25%,#2a2360,#120e30);
+    box-shadow:0 0 0 2px rgba(255,61,154,.65),0 0 0 4px rgba(41,182,246,.5),0 2px 8px rgba(0,0,0,.55);}
+  .avatar::after{content:'';position:absolute;right:-1px;bottom:-1px;width:9px;height:9px;border-radius:50%;
+    background:var(--green);border:2px solid #0b1024;box-shadow:0 0 6px rgba(57,255,160,.8);}
+
+  /* faked bottom navigation bar */
+  .botnav{position:fixed;left:0;right:0;bottom:0;z-index:60;background:rgba(9,12,32,.94);
+    backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);
+    border-top:1.5px solid rgba(95,224,255,.16);box-shadow:0 -6px 24px rgba(0,0,0,.5);
+    padding:8px 8px calc(8px + env(safe-area-inset-bottom,0px));}
+  .botnav-inner{max-width:1100px;margin:0 auto;display:flex;justify-content:space-around;gap:4px;}
+  .bn-item{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;
+    text-decoration:none;color:var(--dim);font-family:var(--display);font-weight:700;font-size:10px;letter-spacing:1.2px;
+    padding:6px 0;border-radius:14px;transition:color .12s ease,background .12s ease;-webkit-tap-highlight-color:transparent;}
+  .bn-item .ni{font-size:21px;line-height:1;}
+  .bn-item:hover{color:#cfe9ff;}
+  .bn-item.active{color:var(--cyan);background:rgba(95,224,255,.08);}
+  .bn-item.active .ni{filter:drop-shadow(0 0 8px rgba(95,224,255,.85));}
 
   /* ---- hero strip ---- */
   .hero{margin:18px 0 8px;padding:18px 20px;border-radius:20px;position:relative;overflow:hidden;
@@ -180,6 +201,7 @@
       <div class="bal">
         <span class="chip crowns">👑 0</span>
         <span class="chip cash">$0.00 <span class="plus">+</span></span>
+        <span class="avatar" title="Profile" onclick="showToast('Profile — coming soon 👀')">🧑‍🚀</span>
       </div>
     </header>
 
@@ -264,8 +286,17 @@
 
     </div>
 
-    <footer>Big Run Studios — CrashArcade · Internal Prototype · v0.4.0</footer>
+    <footer>Big Run Studios — CrashArcade · Internal Prototype · v0.5.0</footer>
   </div>
+
+  <nav class="botnav" aria-label="Primary">
+    <div class="botnav-inner">
+      <a href="#" class="bn-item" onclick="event.preventDefault();showToast('Store — coming soon 👀')"><span class="ni">🛒</span>Store</a>
+      <a href="#" class="bn-item" onclick="event.preventDefault();showToast('Events — coming soon 👀')"><span class="ni">📅</span>Events</a>
+      <a href="#" class="bn-item active" onclick="event.preventDefault()"><span class="ni">🎮</span>Play</a>
+      <a href="#" class="bn-item" onclick="event.preventDefault();showToast('Leagues — coming soon 👀')"><span class="ni">🏆</span>Leagues</a>
+    </div>
+  </nav>
 
   <div id="toast"></div>
 
