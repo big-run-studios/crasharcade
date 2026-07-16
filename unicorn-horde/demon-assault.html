@@ -153,7 +153,7 @@
 
   </div>
 
-  <div class="brand">CRASHARCADE · DEMON ASSAULT v0.4.1</div>
+  <div class="brand">CRASHARCADE · DEMON ASSAULT v0.5.0</div>
 </div>
 
 <audio id="music" src="demon-music.mp3" loop preload="auto"></audio>
@@ -171,7 +171,7 @@ const RAINBOW=['#ff3d1a','#ff6a2a','#ffa53a','#ffd23a','#8a1a10','#c0392b'];   /
 const TEAL=['#2fd6d6','#39ffd0','#7af0e0','#4de3ff'];   // CHARACTER weapon attacks (bolts/bullets/rockets/explosions)
 const GOLD=['#ffe08a','#ffd24a','#fff0c0'];             // ANGELIC clear-move effects (wings out: slam + clear-bomb)
 const CFG={
-  maxHp:50, invuln:0.5, playerR:15, moveSpd:182, walkBoost:1.25,   // invuln = post-hit iframe: one hit grants 0.5s of immunity from all enemies
+  maxHp:50, invuln:0.5, playerR:30, moveSpd:182, walkBoost:1.25,   // playerR doubled with the 2x model (v0.5.0); invuln = post-hit iframe: one hit grants 0.5s of immunity from all enemies
   dmgHold:0.45, dmgDrain:0.5,   // damage telegraph: red segment holds, then drains (fraction of maxHp/s)
   aimRange:{bow:360,gat:330,bomb:300},
   pickupR:34, lemonStand:230,
@@ -211,12 +211,12 @@ const WEAP={
 const WKEYS=Object.keys(WEAP);
 const weapState=lv=>lv>=9?3:lv>=6?2:lv>=3?1:0;
 const FRUIT={
-  grape: {r:9, hp:2.4, spd:105,dmg:5, cd:0.9, score:15, xp:1,  col:0xb0332a, dark:0x4a120c, juice:'#7a120a'},   // IMP
-  straw: {r:11,hp:3.4, spd:180,dmg:7, cd:0.9, score:25, xp:2,  col:0xff5a2a, dark:0x7a1e08, juice:'#8a1606'},   // HELLHOUND
-  lemon: {r:13,hp:7,   spd:117,dmg:0, cd:0,   score:40, xp:3,  col:0x9fd13a, dark:0x4a6212, juice:'#6a8f14'},   // BILESPAWN (spitter)
-  orange:{r:19,hp:30,  spd:69, dmg:14,cd:1.1, score:80, xp:6,  col:0xc0662a, dark:0x5a2c0e, juice:'#7a3410', kbRes:0.85},   // BRUTE
-  melon: {r:31,hp:110, spd:39, dmg:20,cd:1.2, score:300,xp:14, col:0x8b1a1a, dark:0x3a0808, juice:'#5a0c0c', kbRes:0.9, big:1},   // BARON
-  slice: {r:12,hp:9,   spd:143,dmg:9, cd:0.9, score:40, xp:3,  col:0x8a8f98, dark:0x3a3e45, juice:'#6a1010'},   // GARGOYLE (ambush)
+  grape: {r:18,hp:2.4, spd:105,dmg:5, cd:0.9, score:15, xp:1,  col:0xb0332a, dark:0x4a120c, juice:'#7a120a'},   // IMP        (r doubled for readability, v0.5.0)
+  straw: {r:22,hp:3.4, spd:180,dmg:7, cd:0.9, score:25, xp:2,  col:0xff5a2a, dark:0x7a1e08, juice:'#8a1606'},   // HELLHOUND
+  lemon: {r:26,hp:7,   spd:117,dmg:0, cd:0,   score:40, xp:3,  col:0x9fd13a, dark:0x4a6212, juice:'#6a8f14'},   // BILESPAWN (spitter)
+  orange:{r:38,hp:30,  spd:69, dmg:14,cd:1.1, score:80, xp:6,  col:0xc0662a, dark:0x5a2c0e, juice:'#7a3410', kbRes:0.85},   // BRUTE
+  melon: {r:62,hp:110, spd:39, dmg:20,cd:1.2, score:300,xp:14, col:0x8b1a1a, dark:0x3a0808, juice:'#5a0c0c', kbRes:0.9, big:1},   // BARON
+  slice: {r:24,hp:9,   spd:143,dmg:9, cd:0.9, score:40, xp:3,  col:0x8a8f98, dark:0x3a3e45, juice:'#6a1010'},   // GARGOYLE (ambush)
 };
 const PADX=1500, PADY=1150;   // extraction platform at world centre (walkable — replaces the fountain)
 /* layout hugs the sidewalks: spokes x∈[1464,1536] & y∈[1114,1186], ring 140-212, perimeter walk 60-132.
@@ -688,7 +688,7 @@ function acquireTarget(){
 function fireWeapon(){
   const w=weap.cur, lv=weap.lv, st=weapState(lv);
   const dmgMul=1+0.07*(lv-1);
-  const gunF=28, gunS=5;   // fire from the gun barrel: forward + offset to the gun side
+  const gunF=56, gunS=10;   // fire from the gun barrel: forward + offset to the gun side (2x model)
   const mx=px+Math.cos(aimAng)*gunF - Math.sin(aimAng)*gunS;
   const my=py+Math.sin(aimAng)*gunF + Math.cos(aimAng)*gunS;
   if(w==='bow'){
@@ -2015,7 +2015,7 @@ function addPaint(colHex){
 let hpArc=null, hpArcF=-1, hpRim=null, hpDmg=null, hpDmgF=-1, hpTier='';
 const hpTrack=new THREE.Mesh(new THREE.RingGeometry(28,46,48),   // 2x thick
   new THREE.MeshBasicMaterial({color:0xffffff,transparent:true,opacity:0.07,side:THREE.DoubleSide,depthWrite:false}));
-hpTrack.rotation.x=-Math.PI/2; hpTrack.position.y=1.2; hpTrack.renderOrder=2; scene.add(hpTrack);
+hpTrack.rotation.x=-Math.PI/2; hpTrack.position.y=1.2; hpTrack.renderOrder=2; hpTrack.scale.setScalar(2); scene.add(hpTrack);   // 2x model
 function rebuildHpArc(f,fd,tier){
   if(hpArc){ scene.remove(hpArc); hpArc.geometry.dispose(); }
   if(hpRim){ scene.remove(hpRim); hpRim.geometry.dispose(); }
@@ -2025,16 +2025,16 @@ function rebuildHpArc(f,fd,tier){
   if(f>0.005){
     hpArc=new THREE.Mesh(new THREE.RingGeometry(27,43,48,1,A_END,6.283*f),
       new THREE.MeshBasicMaterial({color:0x000000,transparent:true,opacity:0.55,side:THREE.DoubleSide,depthWrite:false}));
-    hpArc.rotation.x=-Math.PI/2; hpArc.position.y=1.3; hpArc.renderOrder=2; scene.add(hpArc);
+    hpArc.rotation.x=-Math.PI/2; hpArc.position.y=1.3; hpArc.renderOrder=2; hpArc.scale.setScalar(2); scene.add(hpArc);
     const tierCol=tier==='hi'?0x78ebff:tier==='mid'?0xffc233:0xff3d6e;
     hpRim=new THREE.Mesh(new THREE.RingGeometry(43,49,48,1,A_END,6.283*f),
       new THREE.MeshBasicMaterial({color:tierCol,transparent:true,opacity:0.75,side:THREE.DoubleSide,depthWrite:false}));
-    hpRim.rotation.x=-Math.PI/2; hpRim.position.y=1.3; hpRim.renderOrder=2; scene.add(hpRim);
+    hpRim.rotation.x=-Math.PI/2; hpRim.position.y=1.3; hpRim.renderOrder=2; hpRim.scale.setScalar(2); scene.add(hpRim);
   }
   if(fd>f+0.004){   // red just-lost segment: sits at the drain edge and empties toward it
     hpDmg=new THREE.Mesh(new THREE.RingGeometry(27,43,48,1,A_END+6.283*f,6.283*(fd-f)),
       new THREE.MeshBasicMaterial({color:0xff2244,transparent:true,opacity:0.9,side:THREE.DoubleSide,depthWrite:false}));
-    hpDmg.rotation.x=-Math.PI/2; hpDmg.position.y=1.35; hpDmg.renderOrder=2; scene.add(hpDmg);
+    hpDmg.rotation.x=-Math.PI/2; hpDmg.position.y=1.35; hpDmg.renderOrder=2; hpDmg.scale.setScalar(2); scene.add(hpDmg);
   }
 }
 const moveMark=makeRingMark(0xffb060); moveMark.visible=false; scene.add(moveMark);
@@ -2106,7 +2106,7 @@ function syncScene(dt){
   uni.rotation.y=-uni.userData.a;
   riderGrp.rotation.y=-aimAng-uni.rotation.y;   // torso always faces the aim
   const squash=slamState==='crouch'?0.8:1;
-  uni.scale.set(1,squash,1);
+  uni.scale.set(2,2*squash,2);   // 2x model for readability (v0.5.0)
   // strongman march: long grounded strides, torso rocks over the planted leg, body settles on each footfall
   if(moving>0.05){
     const ph=((walkPh*0.22*gaitDir)%1+1)%1, TAU=Math.PI*2;   // gaitDir<0 = back-pedal (cycle reversed)
@@ -2201,7 +2201,7 @@ function syncScene(dt){
 
   // projectiles
   syncSet(proj,p=>p.kind==='arrow'?'arrow':'glit',p=>p.kind==='arrow'?makeArrow():makeGlit(),(p,m)=>{
-    m.position.set(p.x,28,p.y);   // exits at gun height
+    m.position.set(p.x,52,p.y);   // exits at gun height (2x model)
     if(p.kind==='arrow'){ m.rotation.y=-Math.atan2(p.vy,p.vx);
       m.material.color.setHSL(0.52+((p.hue||0)%30)/1200, 0.9, p.trail?0.72:0.9); }   // electric-cyan bolts
     else { m.scale.setScalar(p.r); m.material.color.setHSL(0.52,0.85,0.82); }   // cyan-white tracers
