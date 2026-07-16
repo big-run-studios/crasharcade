@@ -153,7 +153,7 @@
 
   </div>
 
-  <div class="brand">CRASHARCADE · DEMON ASSAULT v0.5.0</div>
+  <div class="brand">CRASHARCADE · DEMON ASSAULT v0.5.1</div>
 </div>
 
 <audio id="music" src="demon-music.mp3" loop preload="auto"></audio>
@@ -171,7 +171,7 @@ const RAINBOW=['#ff3d1a','#ff6a2a','#ffa53a','#ffd23a','#8a1a10','#c0392b'];   /
 const TEAL=['#2fd6d6','#39ffd0','#7af0e0','#4de3ff'];   // CHARACTER weapon attacks (bolts/bullets/rockets/explosions)
 const GOLD=['#ffe08a','#ffd24a','#fff0c0'];             // ANGELIC clear-move effects (wings out: slam + clear-bomb)
 const CFG={
-  maxHp:50, invuln:0.5, playerR:30, moveSpd:182, walkBoost:1.25,   // playerR doubled with the 2x model (v0.5.0); invuln = post-hit iframe: one hit grants 0.5s of immunity from all enemies
+  maxHp:50, invuln:0.5, playerR:15, moveSpd:182, walkBoost:1.25,   // invuln = post-hit iframe: one hit grants 0.5s of immunity from all enemies
   dmgHold:0.45, dmgDrain:0.5,   // damage telegraph: red segment holds, then drains (fraction of maxHp/s)
   aimRange:{bow:360,gat:330,bomb:300},
   pickupR:34, lemonStand:230,
@@ -688,7 +688,7 @@ function acquireTarget(){
 function fireWeapon(){
   const w=weap.cur, lv=weap.lv, st=weapState(lv);
   const dmgMul=1+0.07*(lv-1);
-  const gunF=56, gunS=10;   // fire from the gun barrel: forward + offset to the gun side (2x model)
+  const gunF=28, gunS=5;   // fire from the gun barrel: forward + offset to the gun side
   const mx=px+Math.cos(aimAng)*gunF - Math.sin(aimAng)*gunS;
   const my=py+Math.sin(aimAng)*gunF + Math.cos(aimAng)*gunS;
   if(w==='bow'){
@@ -1658,19 +1658,23 @@ function makeFruit(type){
   const grp=new THREE.Group();
   const torso=new THREE.Group(); grp.add(torso);   // body + upper parts, lifted so the legs show
   const mDark=toon(d.dark), mBone=toon(0xbfa878);   // charcoal body bits; bronze/bone horns, talons, feet
-  const lift = type==='lemon'?0 : type==='straw'?d.r*0.45 : type==='melon'?d.r*0.85 : type==='orange'?d.r*0.75 : d.r*0.6;
-  torso.position.y=lift;
+  // proportions per type: [bodyScaleX, bodyScaleY, bodyScaleZ, torsoY, legRw] (×d.r) — leaner torsos on real legs
+  const PROP={
+    grape:[0.60,0.80,0.52, 0.80, 0.17],   // imp — lean gremlin
+    straw:[0.68,0.58,1.35, 0.05, 0.16],   // hellhound — long low quadruped
+    lemon:[1.05,1.12,1.00, 0.00, 0.00],   // bilespawn — round floater (no legs)
+    orange:[0.86,0.98,0.66, 1.05, 0.28],  // brute — broad but upright, thick legs
+    slice:[0.64,0.82,0.56, 0.45, 0.18],   // gargoyle — crouched winged biped
+    melon:[0.92,1.06,0.70, 1.25, 0.34]    // baron — massive upright
+  };
+  const pr=PROP[type]||[1,1.05,1,0.6,0.18], legRw=pr[4];
+  const torsoY=d.r*pr[3]; torso.position.y=torsoY;
+  const hipY=torsoY + d.r*1.05 - d.r*pr[1];   // body bottom — legs run from here down to the ground
   let body;
   if(type==='melon') body=new THREE.Mesh(sphereGeo,new THREE.MeshToonMaterial({map:stripeTex,gradientMap:gradTex}));
   else body=new THREE.Mesh(sphereGeo,toon(new THREE.Color(d.col).multiplyScalar(0.42).getHex()));   // dark charcoal; molten glow from emissive
   body.material=body.material.clone();     // per-instance flash tinting
-  if(type==='lemon') body.scale.set(d.r*1.05,d.r*1.12,d.r*1.0);        // bilespawn: bulbous floater
-  else if(type==='slice') body.scale.set(d.r*0.82,d.r*1.0,d.r*0.72);   // gargoyle: lean torso
-  else if(type==='orange') body.scale.set(d.r*1.1,d.r*1.05,d.r*0.9);   // brute: broad wall
-  else if(type==='straw') body.scale.set(d.r*0.8,d.r*0.7,d.r*1.4);     // hellhound: long low quadruped
-  else if(type==='melon') body.scale.set(d.r*1.05,d.r*1.1,d.r*0.95);   // baron: massive
-  else if(type==='grape') body.scale.set(d.r*0.82,d.r*0.95,d.r*0.78);  // imp: small hunched
-  else body.scale.set(d.r,d.r*1.05,d.r);
+  body.scale.set(d.r*pr[0],d.r*pr[1],d.r*pr[2]);
   body.position.y=d.r*1.05;
   torso.add(body); grp.userData.body=body;
   // face (glowing eyes + fangs), placed per silhouette
@@ -1697,21 +1701,21 @@ function makeFruit(type){
   const pauldron=(sx)=>{ const p=new THREE.Mesh(sphereGeo,mDark); p.scale.set(d.r*0.52,d.r*0.4,d.r*0.6); p.position.set(sx*d.r*0.9,d.r*1.42,0); torso.add(p);
     spike(sx*d.r*1.02,d.r*1.68,0,0.13,0.55,-sx*0.5); };
   const talon=(sx)=>{ const t=coneM(mBone,d.r*0.15,d.r*0.6); t.position.set(sx*d.r*0.72,d.r*0.55,d.r*0.6); t.rotation.x=1.95; t.rotation.z=sx*0.3; torso.add(t); };
-  // legged rig: hip pivot at y=lift, leg drops to the ground; rotation.z strides it
-  const leg=(hx,hz,plant,rw,reach,foot)=>{ const piv=new THREE.Group(); piv.position.set(hx,lift,hz); grp.add(piv);
-    const shin=cylM(mDark,d.r*rw,lift); shin.position.y=-lift/2; piv.add(shin);
-    if(foot){ const f=coneM(mBone,d.r*rw*1.5,lift*0.4); f.rotation.x=1.7; f.position.set(0,-lift+d.r*0.06,d.r*rw*1.1); piv.add(f); }
+  // legged rig: hip pivot at the body bottom, leg drops to the ground; rotation.z strides it
+  const leg=(hx,hz,plant,rw,reach,foot)=>{ const piv=new THREE.Group(); piv.position.set(hx,hipY,hz); grp.add(piv);
+    const shin=cylM(mDark,d.r*rw,hipY); shin.position.y=-hipY/2; piv.add(shin);
+    if(foot){ const f=coneM(mBone,d.r*rw*1.6,hipY*0.42); f.rotation.x=1.7; f.position.set(0,-hipY+d.r*0.05,d.r*rw*1.3); piv.add(f); }
     legsArr.push({pivot:piv,plant,reach:reach||0.5,push:0.5,tuck:0.22}); };
   if(type==='grape'){                 // IMP — hunched biped, big horns, reaching talons
     horn(-1,0.75,0.15); horn(1,0.75,0.15); talon(-1); talon(1);
-    leg(-d.r*0.32,0,0,0.14,0.55,true); leg(d.r*0.32,0,0.5,0.14,0.55,true);
+    leg(-d.r*0.30,0,0,legRw,0.55,true); leg(d.r*0.30,0,0.5,legRw,0.55,true);
   }else if(type==='straw'){           // HELLHOUND — quadruped, dorsal ridge, tail, lava drool
     horn(-1,0.6,0.35); horn(1,0.6,0.35);
     for(let i=0;i<3;i++) spike(0,d.r*(1.15-i*0.05),d.r*(0.35-i*0.4),0.13,0.5,-0.6);
     const tail=coneM(mDark,d.r*0.15,d.r*1.1); tail.position.set(0,d.r*0.9,-d.r*1.25); tail.rotation.x=-1.2; torso.add(tail);
     const drool=coneM(basic(0xff6a2a),d.r*0.13,d.r*0.5); drool.position.set(0,d.r*0.5,d.r*1.35); drool.rotation.x=Math.PI; torso.add(drool);
-    leg(-d.r*0.42,d.r*0.75,0,0.12,0.42,false); leg(d.r*0.42,d.r*0.75,0.5,0.12,0.42,false);   // front pair
-    leg(-d.r*0.42,-d.r*0.6,0.5,0.12,0.42,false); leg(d.r*0.42,-d.r*0.6,0,0.12,0.42,false);   // back pair (trot)
+    leg(-d.r*0.42,d.r*0.85,0,legRw,0.42,true); leg(d.r*0.42,d.r*0.85,0.5,legRw,0.42,true);   // front pair
+    leg(-d.r*0.42,-d.r*0.75,0.5,legRw,0.42,true); leg(d.r*0.42,-d.r*0.75,0,legRw,0.42,true);   // back pair (trot)
   }else if(type==='lemon'){           // BILESPAWN — floating orb, bumps, bat wings, bile drip (no legs)
     wing(-1,0.6); wing(1,0.6);
     for(let i=0;i<4;i++){ const a=i/4*6.283+0.5; const b=new THREE.Mesh(sphereGeo,mDark); b.scale.setScalar(d.r*0.15);
@@ -1720,16 +1724,16 @@ function makeFruit(type){
     grp.userData.float=true;
   }else if(type==='orange'){          // BRUTE / HELL KNIGHT — armored wall, spiked pauldrons
     horn(-1,0.8,0.2); horn(1,0.8,0.2); pauldron(-1); pauldron(1); arm(-1,0.22,1.0); arm(1,0.22,1.0);
-    leg(-d.r*0.42,0,0,0.2,0.5,true); leg(d.r*0.42,0,0.5,0.2,0.5,true);
+    leg(-d.r*0.40,0,0,legRw,0.5,true); leg(d.r*0.40,0,0.5,legRw,0.5,true);
   }else if(type==='slice'){           // GARGOYLE — winged biped, horns, talons
     horn(-1,0.5,0.2); horn(1,0.5,0.2); wing(-1,1.15); wing(1,1.15); talon(-1); talon(1);
-    leg(-d.r*0.32,0,0,0.15,0.55,true); leg(d.r*0.32,0,0.5,0.15,0.55,true);
+    leg(-d.r*0.30,0,0,legRw,0.55,true); leg(d.r*0.30,0,0.5,legRw,0.55,true);
   }else if(type==='melon'){           // BARON — massive biped, huge horns, spiked shoulders + back
     horn(-1,1.2,0.35); horn(1,1.2,0.35); pauldron(-1); pauldron(1);
     for(const zz of [-0.5,-0.15,0.2]) spike(-d.r*0.05,d.r*1.5,zz*d.r,0.17,0.85,-0.6);
     arm(-1,0.27,1.1); arm(1,0.27,1.1);
     const core=new THREE.Mesh(sphereGeo,basic(0xff5a1a,{transparent:true,opacity:0.28})); core.scale.setScalar(d.r*1.25); core.position.y=d.r*1.05; torso.add(core);
-    leg(-d.r*0.44,0,0,0.24,0.5,true); leg(d.r*0.44,0,0.5,0.24,0.5,true);
+    leg(-d.r*0.44,0,0,legRw,0.5,true); leg(d.r*0.44,0,0.5,legRw,0.5,true);
   }
   grp.userData.legs=legsArr.length?legsArr:null;
   grp.userData.wings=wingsArr.length?wingsArr:null;
@@ -2015,7 +2019,7 @@ function addPaint(colHex){
 let hpArc=null, hpArcF=-1, hpRim=null, hpDmg=null, hpDmgF=-1, hpTier='';
 const hpTrack=new THREE.Mesh(new THREE.RingGeometry(28,46,48),   // 2x thick
   new THREE.MeshBasicMaterial({color:0xffffff,transparent:true,opacity:0.07,side:THREE.DoubleSide,depthWrite:false}));
-hpTrack.rotation.x=-Math.PI/2; hpTrack.position.y=1.2; hpTrack.renderOrder=2; hpTrack.scale.setScalar(2); scene.add(hpTrack);   // 2x model
+hpTrack.rotation.x=-Math.PI/2; hpTrack.position.y=1.2; hpTrack.renderOrder=2; scene.add(hpTrack);
 function rebuildHpArc(f,fd,tier){
   if(hpArc){ scene.remove(hpArc); hpArc.geometry.dispose(); }
   if(hpRim){ scene.remove(hpRim); hpRim.geometry.dispose(); }
@@ -2025,16 +2029,16 @@ function rebuildHpArc(f,fd,tier){
   if(f>0.005){
     hpArc=new THREE.Mesh(new THREE.RingGeometry(27,43,48,1,A_END,6.283*f),
       new THREE.MeshBasicMaterial({color:0x000000,transparent:true,opacity:0.55,side:THREE.DoubleSide,depthWrite:false}));
-    hpArc.rotation.x=-Math.PI/2; hpArc.position.y=1.3; hpArc.renderOrder=2; hpArc.scale.setScalar(2); scene.add(hpArc);
+    hpArc.rotation.x=-Math.PI/2; hpArc.position.y=1.3; hpArc.renderOrder=2; scene.add(hpArc);
     const tierCol=tier==='hi'?0x78ebff:tier==='mid'?0xffc233:0xff3d6e;
     hpRim=new THREE.Mesh(new THREE.RingGeometry(43,49,48,1,A_END,6.283*f),
       new THREE.MeshBasicMaterial({color:tierCol,transparent:true,opacity:0.75,side:THREE.DoubleSide,depthWrite:false}));
-    hpRim.rotation.x=-Math.PI/2; hpRim.position.y=1.3; hpRim.renderOrder=2; hpRim.scale.setScalar(2); scene.add(hpRim);
+    hpRim.rotation.x=-Math.PI/2; hpRim.position.y=1.3; hpRim.renderOrder=2; scene.add(hpRim);
   }
   if(fd>f+0.004){   // red just-lost segment: sits at the drain edge and empties toward it
     hpDmg=new THREE.Mesh(new THREE.RingGeometry(27,43,48,1,A_END+6.283*f,6.283*(fd-f)),
       new THREE.MeshBasicMaterial({color:0xff2244,transparent:true,opacity:0.9,side:THREE.DoubleSide,depthWrite:false}));
-    hpDmg.rotation.x=-Math.PI/2; hpDmg.position.y=1.35; hpDmg.renderOrder=2; hpDmg.scale.setScalar(2); scene.add(hpDmg);
+    hpDmg.rotation.x=-Math.PI/2; hpDmg.position.y=1.35; hpDmg.renderOrder=2; scene.add(hpDmg);
   }
 }
 const moveMark=makeRingMark(0xffb060); moveMark.visible=false; scene.add(moveMark);
@@ -2106,7 +2110,7 @@ function syncScene(dt){
   uni.rotation.y=-uni.userData.a;
   riderGrp.rotation.y=-aimAng-uni.rotation.y;   // torso always faces the aim
   const squash=slamState==='crouch'?0.8:1;
-  uni.scale.set(2,2*squash,2);   // 2x model for readability (v0.5.0)
+  uni.scale.set(1,squash,1);
   // strongman march: long grounded strides, torso rocks over the planted leg, body settles on each footfall
   if(moving>0.05){
     const ph=((walkPh*0.22*gaitDir)%1+1)%1, TAU=Math.PI*2;   // gaitDir<0 = back-pedal (cycle reversed)
@@ -2201,7 +2205,7 @@ function syncScene(dt){
 
   // projectiles
   syncSet(proj,p=>p.kind==='arrow'?'arrow':'glit',p=>p.kind==='arrow'?makeArrow():makeGlit(),(p,m)=>{
-    m.position.set(p.x,52,p.y);   // exits at gun height (2x model)
+    m.position.set(p.x,28,p.y);   // exits at gun height
     if(p.kind==='arrow'){ m.rotation.y=-Math.atan2(p.vy,p.vx);
       m.material.color.setHSL(0.52+((p.hue||0)%30)/1200, 0.9, p.trail?0.72:0.9); }   // electric-cyan bolts
     else { m.scale.setScalar(p.r); m.material.color.setHSL(0.52,0.85,0.82); }   // cyan-white tracers
