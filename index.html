@@ -32,6 +32,8 @@
 
   /* ---- top bar ---- */
   header{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:18px 2px 6px;}
+  .brand{display:flex;align-items:center;gap:12px;flex:none;}
+  .brandmark{height:calc(clamp(18px,5.2vw,28px) + 15px);width:auto;display:block;filter:drop-shadow(0 2px 8px rgba(0,0,0,.45));}
   .logo{font-family:var(--display);font-weight:900;font-size:clamp(18px,5.2vw,28px);letter-spacing:1px;line-height:1;flex:none;}
   .logo span{color:var(--gold);text-shadow:0 0 14px rgba(255,194,51,.6);}
   .logo b{color:#fff;text-shadow:0 0 14px rgba(95,224,255,.5);}
@@ -171,7 +173,10 @@
 <body>
   <div class="wrap">
     <header>
-      <div class="logo"><b>CRASH</b><span>ARCADE</span><small>BIG RUN</small></div>
+      <div class="brand">
+        <img class="brandmark" src="brand-logo.png" alt="Big Run Studios">
+        <div class="logo"><b>CRASH</b><span>ARCADE</span><small>BIG RUN</small></div>
+      </div>
       <div class="bal">
         <span class="chip crowns">👑 0</span>
         <span class="chip cash">$0.00 <span class="plus">+</span></span>
@@ -259,7 +264,7 @@
 
     </div>
 
-    <footer>Big Run Studios — CrashArcade · Internal Prototype · v0.3.4</footer>
+    <footer>Big Run Studios — CrashArcade · Internal Prototype · v0.4.0</footer>
   </div>
 
   <div id="toast"></div>
