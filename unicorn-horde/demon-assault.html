@@ -154,7 +154,7 @@
 
   </div>
 
-  <div class="brand">CRASHARCADE · DEMON ASSAULT v0.10.1</div>
+  <div class="brand">CRASHARCADE · DEMON ASSAULT v0.11.0</div>
 </div>
 
 <audio id="music" src="demon-music.mp3" loop preload="auto"></audio>
@@ -1805,6 +1805,37 @@ function makeBaronGLB(d){
   grp.userData.legs=null; grp.userData.wings=null; grp.userData.tel=null;
   return grp;
 }
+/* ---- GARGOYLE: rigged GLB, no clip → hand-animated (thigh + arm swing, wing flap), like the imp ---- */
+const _gaLoader=new GLTFLoader();
+let gaSrc=null,GA_MAT=null,GA_RIG=null,GA_H=1,GA_MINY=0,GA_CX=0,GA_CZ=0,GA_YAW=0;
+_gaLoader.load('assets/gargoyle.glb', gl=>{
+  gl.scene.updateWorldMatrix(true,true);
+  let skin=null; gl.scene.traverse(o=>{ if(!skin&&o.isSkinnedMesh) skin=o; });
+  if(!skin){ console.error('gargoyle: no skinned mesh'); return; }
+  gaSrc=gl.scene;
+  GA_MAT=Array.isArray(skin.material)?skin.material[0]:skin.material;
+  if(GA_MAT.emissive) GA_MAT.emissive.setScalar(1); GA_MAT.emissiveIntensity=1.3;
+  const bb=new THREE.Box3(),_v=new THREE.Vector3(); skin.skeleton.bones.forEach(b=>bb.expandByPoint(b.getWorldPosition(_v)));
+  const sz=bb.getSize(new THREE.Vector3()); GA_H=sz.y||1; GA_MINY=bb.min.y; GA_CX=(bb.min.x+bb.max.x)/2; GA_CZ=(bb.min.z+bb.max.z)/2;
+  const bones=skin.skeleton.bones;   // j1 pelvis, j57/j62 thighs, j17/j34 arms, j51/j54 wings
+  const defs=[[1,'y',0.2],[57,'x',0.45],[62,'x',-0.45],[17,'x',-0.3],[34,'x',0.3],[51,'z',0.5],[54,'z',-0.5]];
+  GA_RIG=defs.map(([ji,ax,amp])=>{ const b=bones[ji], pq=new THREE.Quaternion(); (b.parent||skin).getWorldQuaternion(pq);
+    const A=ax==='y'?new THREE.Vector3(0,1,0):ax==='z'?new THREE.Vector3(0,0,1):new THREE.Vector3(1,0,0);
+    return {jointIdx:ji, axis:A.applyQuaternion(pq.invert()).normalize(), rest:b.quaternion.clone(), amp}; });
+}, undefined, e=>console.error('gargoyle GLB load', e));
+function makeGargoyleGLB(d){
+  const grp=new THREE.Group();
+  const model=cloneSkinned(gaSrc), s=d.r*5.0/GA_H;   // wings inflate GA_H → needs a big mul; tune this number
+  model.scale.setScalar(s); model.position.set(-GA_CX*s,-GA_MINY*s,-GA_CZ*s); model.rotation.y=GA_YAW;
+  let skin=null; model.traverse(o=>{ if(o.isSkinnedMesh){ skin=o; o.material=GA_MAT.clone(); o.layers.enable(CHAR_LAYER); o.frustumCulled=false; } });
+  grp.add(model); grp.userData.body=skin; grp.userData.glb=true;
+  grp.userData.walk=GA_RIG.map(r=>({bone:skin.skeleton.bones[r.jointIdx], axis:r.axis, rest:r.rest, amp:r.amp}));
+  grp.add(groundBlob(d.r*1.8));
+  const elite=new THREE.Mesh(new THREE.TorusGeometry(d.r*1.35,1.8,8,24),basic(0xff5a2a));
+  elite.rotation.x=Math.PI/2; elite.position.y=4; grp.add(elite); grp.userData.elite=elite;
+  grp.userData.legs=null; grp.userData.wings=null; grp.userData.tel=null;
+  return grp;
+}
 function makeFruit(type){
   const d=FRUIT[type];
   if(type==='grape' && impSrc) return makeImpGLB(d);        // imp = GLB model when loaded
@@ -1812,6 +1843,7 @@ function makeFruit(type){
   if(type==='orange' && hkSrc) return makeHellknightGLB(d); // brute/hell knight = animated GLB
   if(type==='lemon' && bsSrc) return makeBilespawnGLB(d);   // bilespawn = static floater GLB
   if(type==='melon' && brSrc) return makeBaronGLB(d);       // baron = animated GLB
+  if(type==='slice' && gaSrc) return makeGargoyleGLB(d);    // gargoyle = hand-animated GLB
   const grp=new THREE.Group();
   const torso=new THREE.Group(); grp.add(torso);   // body + upper parts, lifted so the legs show
   const mDark=toon(d.dark), mBone=toon(0xbfa878);   // charcoal body bits; bronze/bone horns, talons, feet
