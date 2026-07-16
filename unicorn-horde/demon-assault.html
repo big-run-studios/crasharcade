@@ -154,7 +154,7 @@
 
   </div>
 
-  <div class="brand">CRASHARCADE · DEMON ASSAULT v0.11.0</div>
+  <div class="brand">CRASHARCADE · DEMON ASSAULT v0.12.0</div>
 </div>
 
 <audio id="music" src="demon-music.mp3" loop preload="auto"></audio>
@@ -1100,6 +1100,7 @@ function reset(){
   gateBanner.classList.remove('show');
 }
 function startRun(){
+  if(sandbox){ sandbox=false; if(sandFloor)sandFloor.visible=false; if(_savedFog)scene.fog=_savedFog; hpTrack.visible=true; enemies.length=0; }
   reset(); state='play'; paused=false;
   menuEl.classList.add('hide'); overEl.classList.add('hide'); cashedEl.classList.add('hide');
   hudEl.classList.add('on');
@@ -2103,6 +2104,7 @@ const uni=new THREE.Group(); scene.add(uni);
 // character-only white lights keep the steel armor bright; ember visor + blood cape read against the hell scene
 const mArmor=toon(0x3a4550), mArmorD=toon(0x232a33), mSkin=toon(0xc9a07a), mBoot=toon(0x1c2228), mVisor=basic(0x4de3ff), mCyan=basic(0x39d8ff);
 let uniLegs=[], riderArm, riderGrp, headGrp, weapMeshes={}, bodyMesh, cashGlow;
+let heroReady=false, heroModel=null, heroMixer=null, heroAct={}, heroCurAct=null, heroCur=null, HERO_YAW=0, primBody=[];
 const NEON3=[0x39ffa0,0xff3d9a,0x4dc3ff];   // (dead legacy palette; kept so the animate forEach stays valid)
 let maneMats=[], tailMats=[], tailNodes=[], tailPrev=[], tailSegs=[], wings=[], wingT=0;
 let tailMesh=null, headBaseX=0, headBaseY=20, uniS=1;   // head rest pose, local to the torso
@@ -2187,12 +2189,40 @@ function gaitLeg(p,reach,push,tuck){      // p = leg-local phase 0..1 (0 = footf
   riderArm.add(bowG,gatG,bombG);
   torsoGrp.add(riderArm);
   uni.add(torsoGrp);
+  primBody.push(uniLegs[0],uniLegs[1],pelvis,belt,torsoGrp);   // the primitive body — hidden when the hero GLB loads
   // cash-charge glow
   cashGlow=new THREE.PointLight(0x39ffa0, 0, 220); cashGlow.position.y=40; uni.add(cashGlow);
   scene.environment=uniEnv;
   uni.traverse(o=>{ if(o.isMesh) o.layers.enable(CHAR_LAYER); });   // character-only lights brighten the whole rig
 })();
 const paintGroup=new THREE.Group(); uni.add(paintGroup);
+/* ---- HERO: Andrew's rigged + animated GLB replaces the primitive slayer (twin-stick: faces aim, walk/back-pedal/idle/death clips) ---- */
+function heroPlay(name){
+  if(heroCur===name||!heroAct[name]) return;
+  const nx=heroAct[name];
+  if(heroCurAct) heroCurAct.fadeOut(0.18);
+  nx.reset();
+  if(name==='Shot_and_Fall_Forward'){ nx.setLoop(THREE.LoopOnce,1); nx.clampWhenFinished=true; } else nx.setLoop(THREE.LoopRepeat,Infinity);
+  nx.fadeIn(0.18).play();
+  heroCur=name; heroCurAct=nx;
+}
+new GLTFLoader().load('assets/hero.glb', gl=>{
+  gl.scene.updateWorldMatrix(true,true);
+  let skin=null; gl.scene.traverse(o=>{ if(!skin&&o.isSkinnedMesh) skin=o; });
+  if(!skin){ console.error('hero: no skinned mesh'); return; }
+  const bb=new THREE.Box3(), _v=new THREE.Vector3(); skin.skeleton.bones.forEach(b=>bb.expandByPoint(b.getWorldPosition(_v)));
+  const sz=bb.getSize(new THREE.Vector3()), s=64/(sz.y||1.7);
+  gl.scene.scale.setScalar(s);
+  gl.scene.position.set(-((bb.min.x+bb.max.x)/2)*s, -bb.min.y*s, -((bb.min.z+bb.max.z)/2)*s);
+  gl.scene.traverse(o=>{ if(o.isMesh){ o.frustumCulled=false; o.layers.enable(CHAR_LAYER);
+    if(o.material&&o.material.emissive){ o.material.emissive.setScalar(1); o.material.emissiveIntensity=1.0; } } });
+  for(const c of gl.animations) if(/walk|run/i.test(c.name)) stripRootMotion(c);   // in-place
+  heroMixer=new THREE.AnimationMixer(gl.scene);
+  for(const c of gl.animations) heroAct[c.name]=heroMixer.clipAction(c);
+  uni.add(gl.scene); heroModel=gl.scene;
+  primBody.forEach(p=>{ p.visible=false; });   // hide the primitive slayer
+  heroReady=true;
+}, undefined, e=>console.error('hero GLB load', e));
 function clearPaint(){ while(paintGroup.children.length) paintGroup.remove(paintGroup.children[0]); paintCount=0; }
 function addPaint(colHex){
   if(paintCount>=70) return;
@@ -2300,6 +2330,17 @@ function syncScene(dt){
   const blink=state==='play'&&invulnT>0&&!slamState&&Math.floor(invulnT*18)%2===0;
   uni.visible=!blink && !(state==='cashing'&&seqT>0.9);
   uni.position.set(px, airY, py);
+  if(heroReady){
+    // GLB hero (twin-stick): the whole body faces the aim; clip = walk / back-pedal / idle / death
+    uni.rotation.y = Math.PI/2 - aimAng + HERO_YAW; uni.rotation.z=0; uni.scale.set(1,1,1); uni.position.y=airY;
+    let clip='Walking', ts=1;
+    if(state==='dying') clip='Shot_and_Fall_Forward';
+    else if(moving>0.05){ let dl=faceAng-aimAng; while(dl>Math.PI)dl-=6.283; while(dl<-Math.PI)dl+=6.283;
+      clip = Math.abs(dl)>Math.PI/2 ? 'Walk_Backward_with_Gun_inplace' : 'Walking'; }
+    else ts=0;   // idle: freeze the walk pose (no idle clip in the set)
+    heroPlay(clip); if(heroCurAct) heroCurAct.timeScale=ts;
+    if(heroMixer) heroMixer.update(dt);
+  } else {
   // legs stay within 90° of the aim; past that he back-pedals (never legs-opposite-torso)
   let gaitDir=1, legT=aimAng;
   if(moving>0.05){
@@ -2338,12 +2379,13 @@ function syncScene(dt){
   }else if(slamState==='crouch'){              // wind-up gather
     uniLegs.forEach(l=>l.rotation.z=0.25);
   }
+  }
   riderArm.rotation.z=0;
   for(const k of WKEYS) weapMeshes[k].visible=(weap&&weap.cur===k);
   const st=weap?weapState(weap.lv):0;
   riderArm.scale.setScalar(1+st*0.18);
   cashGlow.intensity=(extractT>0||state==='cashing')?55:0;
-  if(state==='dying') uni.visible=Math.sin(time*20)>0;
+  if(state==='dying' && !heroReady) uni.visible=Math.sin(time*20)>0;   // hero plays the fall-forward death clip instead
   // headbutting a chest — horn arcs (viewed from the LEFT) from ~1 o'clock (windup) counter-clockwise
   // down to ~8 o'clock (strike into the chest): slow recovery, fast slam into the thud
   if(buttInfo && state==='play' && !slamState){
