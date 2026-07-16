@@ -153,7 +153,7 @@
 
   </div>
 
-  <div class="brand">CRASHARCADE · DEMON ASSAULT v0.4.0</div>
+  <div class="brand">CRASHARCADE · DEMON ASSAULT v0.4.1</div>
 </div>
 
 <audio id="music" src="demon-music.mp3" loop preload="auto"></audio>
@@ -1460,6 +1460,7 @@ function col3(c){ return colCache[c]||(colCache[c]=new THREE.Color(c)); }
 
 /* ---- structures (rebuilt each run — 3 random crates vary) ---- */
 let structGroup=new THREE.Group(); scene.add(structGroup);
+let eyeStructs=[];   // fiery watching-eyes: {pg, glow, x, z} — animated to track the player
 const stallCanopyTex=(()=>{ const c=document.createElement('canvas'); c.width=128; c.height=32;
   const g=c.getContext('2d');
   for(let i=0;i<8;i++){ g.fillStyle=i%2?'#2a201c':'#3a2c26'; g.fillRect(i*16,0,16,32); }
@@ -1467,6 +1468,7 @@ const stallCanopyTex=(()=>{ const c=document.createElement('canvas'); c.width=12
 function rebuildStructMeshes(){
   scene.remove(structGroup);
   structGroup=new THREE.Group();
+  eyeStructs=[];
   for(const s of structs){
     const cx=s.x+s.w/2, cz=s.y+s.h/2;
     if(s.kind==='fountain'){
@@ -1501,17 +1503,22 @@ function rebuildStructMeshes(){
         const sk=new THREE.Mesh(sphereGeo,skullMat); sk.scale.set(sc,sc*1.12,sc*0.95);
         sk.position.set(jx,sy,jz); sk.rotation.y=R(-0.5,0.5); structGroup.add(sk); placed++;
       }
-    }else{ // LANTERN — iron post + caged flame; pools firelight on the ground (additive decal, mobile-safe)
-      const post=new THREE.Mesh(new THREE.CylinderGeometry(3.2,4.6,42,7),toon(0x241c18));
-      post.position.set(cx,21,cz); structGroup.add(post);
-      const cage=new THREE.Mesh(new THREE.CylinderGeometry(9,8,17,6),toon(0x2a2018));
-      cage.position.set(cx,52,cz); structGroup.add(cage);
-      const flame=new THREE.Mesh(sphereGeo,basic(0xff8a2a,{transparent:true,opacity:0.9})); flame.scale.set(6,10,6); flame.position.set(cx,53,cz); structGroup.add(flame);
-      const core=new THREE.Mesh(sphereGeo,basic(0xffe07a)); core.scale.set(3,6,3); core.position.set(cx,53,cz); structGroup.add(core);
-      const cap=new THREE.Mesh(new THREE.ConeGeometry(11,9,6),toon(0x1a1512)); cap.position.set(cx,65,cz); structGroup.add(cap);
-      const pool=new THREE.Mesh(new THREE.PlaneGeometry(150,150),
-        new THREE.MeshBasicMaterial({map:glowTex,color:0xff8a2a,transparent:true,opacity:0.55,depthWrite:false,blending:THREE.AdditiveBlending}));
+    }else{ // FIERY EYE — a watching demon eye on a gnarled stalk; glows and follows the player
+      const eyeH=82, eyeR=17;
+      const stalk=new THREE.Mesh(new THREE.CylinderGeometry(3,7,eyeH,7),toon(0x160f0c));
+      stalk.position.set(cx,eyeH/2,cz); structGroup.add(stalk);
+      const socket=new THREE.Mesh(sphereGeo,toon(0x0e0806)); socket.scale.set(eyeR*1.25,eyeR*1.1,eyeR*0.9);
+      socket.position.set(cx,eyeH,cz-eyeR*0.3); structGroup.add(socket);   // dark socket behind the eye
+      const glow=new THREE.Mesh(sphereGeo,basic(0xff6a1a,{transparent:true,opacity:0.5,depthWrite:false,blending:THREE.AdditiveBlending}));
+      glow.scale.setScalar(eyeR*1.7); glow.position.set(cx,eyeH,cz); structGroup.add(glow);
+      const eyeball=new THREE.Mesh(sphereGeo,basic(0xffb24a)); eyeball.scale.setScalar(eyeR); eyeball.position.set(cx,eyeH,cz); structGroup.add(eyeball);
+      const pg=new THREE.Group(); pg.position.set(cx,eyeH,cz); structGroup.add(pg);   // rotates to look at the player
+      const iris=new THREE.Mesh(sphereGeo,basic(0xff3d0a)); iris.scale.set(eyeR*0.5,eyeR*0.62,eyeR*0.35); iris.position.set(0,-eyeR*0.18,eyeR*0.82); pg.add(iris);
+      const pupil=new THREE.Mesh(sphereGeo,basic(0x140600)); pupil.scale.set(eyeR*0.14,eyeR*0.42,eyeR*0.2); pupil.position.set(0,-eyeR*0.18,eyeR*1.0); pg.add(pupil);   // vertical slit
+      const pool=new THREE.Mesh(new THREE.PlaneGeometry(240,240),
+        new THREE.MeshBasicMaterial({map:glowTex,color:0xff6a1a,transparent:true,opacity:0.55,depthWrite:false,blending:THREE.AdditiveBlending}));
       pool.rotation.x=-Math.PI/2; pool.position.set(cx,1.3,cz); pool.renderOrder=1; structGroup.add(pool);
+      eyeStructs.push({pg, glow, x:cx, z:cz});
     }
   }
   scene.add(structGroup);
@@ -2346,8 +2353,11 @@ function syncScene(dt){
     shock.material.opacity=(1-slamT/0.6)*0.9;
   } else shock.visible=false;
 
-  // idle spin for crystals
-  structGroup.children.forEach(c=>{ if(c.userData.spin) c.rotation.y+=0.004; });
+  // fiery eyes track the player + flicker
+  for(const eye of eyeStructs){
+    eye.pg.rotation.y=Math.atan2(px-eye.x, py-eye.z);
+    eye.glow.material.opacity=0.42+0.16*Math.sin(time*7+eye.x*0.05);
+  }
 }
 
 /* ================================================================= overlay (2D HUD canvas) */
