@@ -155,7 +155,7 @@
 
   </div>
 
-  <div class="brand">CRASHARCADE · DEMON ASSAULT v0.17.0</div>
+  <div class="brand">CRASHARCADE · DEMON ASSAULT v0.20.0</div>
 </div>
 
 <audio id="music" src="demon-music.mp3" loop preload="auto"></audio>
@@ -359,6 +359,7 @@ function buildStructs(){
     const p=openSpot(260,30,120,true);   // keep random trees OFF the sidewalks
     if(p) structs.push({x:p.x-30,y:p.y-24,w:60,h:48,hh:34,kind:'tree'});
   }
+  structs.push({x:PADX-90, y:PADY-104-28, w:180, h:56, hh:210, kind:'gate'});   // solid extraction gate — enemies can't walk through it
   structsDirty=true;
 }
 // true if the point — or its tree footprint — sits on a baked sidewalk band
@@ -1196,6 +1197,7 @@ let envSandbox=false;
 function startEnvSandbox(){
   if(sandbox){ sandbox=false; if(sandFloor)sandFloor.visible=false; if(_savedFog)scene.fog=_savedFog; hpTrack.visible=true; }
   reset(); state='play'; paused=false; envSandbox=true; invulnT=0;   // reset() clears envSandbox → set it after; invulnT MUST be 0 (a nonzero frozen value makes the invuln-blink hide the hero — see uni.visible), immortality comes from the update early-return
+  stick.on=false; stick.dx=0; stick.dy=0; goTarget=null;   // clean input state so a stuck stick can't block the drag-to-roam
   menuEl.classList.add('hide'); overEl.classList.add('hide'); cashedEl.classList.add('hide');
   hudEl.classList.add('on');
   syncMusic();
@@ -1575,6 +1577,7 @@ function rebuildStructMeshes(){
   eyeStructs=[];
   for(const s of structs){
     const cx=s.x+s.w/2, cz=s.y+s.h/2;
+    if(s.kind==='gate') continue;   // collision-only footprint for the extraction gate — the gateGrp GLB is the visual
     if(s.kind==='fountain'){
       const base=new THREE.Mesh(new THREE.CylinderGeometry(s.w*0.62,s.w*0.68,s.hh,20),toon(0x38206a));
       base.position.set(cx,s.hh/2,cz); structGroup.add(base);
@@ -1719,15 +1722,19 @@ function makeChest(){
     band.position.y=22; grp.add(band);
     const lock=new THREE.Mesh(sphereGeo,basic(0xff7a2a)); lock.scale.setScalar(4); lock.position.set(0,20,16); grp.add(lock);
   }
-  // heavenly loot shaft: a gold god-ray + ground pool so chests read from clear across the dark arena,
-  // plus a warm emissive lift so the reliquary itself catches the "light" (cheaper than a real spotlight)
+  // cursed soul-light: an otherworldly cyan shaft + ground pool so chests read from clear across the
+  // dark arena. Cyan is this game's "supernatural" accent (death dissolve, weapon/scan teal), so it reads
+  // as haunted reward, not a holy loot beam — and it contrasts hard against the warm hell scene.
+  // A cool, dim emissive lift keeps the reliquary from being a black blob without warm-tinting it.
   grp.traverse(o=>{ if(o.isMesh && o.material && o.material.emissive && o.material.emissive.getHex()===0){
-    o.material.emissive.set(0x4a3212); o.material.emissiveIntensity=0.5; } });
-  const beam=new THREE.Mesh(new THREE.CylinderGeometry(9,30,360,18,1,true),
-    MBM({map:beamTex,color:0xffcf6a,transparent:true,opacity:0,depthWrite:false,side:THREE.DoubleSide,blending:THREE.AdditiveBlending}));
+    o.material.emissive.set(0x1e3038); o.material.emissiveIntensity=0.42; } });
+  const beamMat=MBM({map:beamTex,color:0xffffff,transparent:true,opacity:0,depthWrite:false,side:THREE.DoubleSide,blending:THREE.AdditiveBlending});
+  beamMat.toneMapped=true;   // grade the soul-light WITH the scene (ACES rolls the glow off) so it sits in the world instead of clipping over it
+  const beam=new THREE.Mesh(new THREE.CylinderGeometry(9,30,360,18,1,true), beamMat);
   beam.position.y=180; beam.renderOrder=2; grp.add(beam); grp.userData.beam=beam;
-  const pool=new THREE.Mesh(new THREE.PlaneGeometry(150,150),
-    MBM({map:glowTex,color:0xffcf6a,transparent:true,opacity:0,depthWrite:false,blending:THREE.AdditiveBlending}));
+  const poolMat=MBM({map:soulTex,color:0xffffff,transparent:true,opacity:0,depthWrite:false,blending:THREE.AdditiveBlending});
+  poolMat.toneMapped=true;
+  const pool=new THREE.Mesh(new THREE.PlaneGeometry(150,150), poolMat);
   pool.rotation.x=-Math.PI/2; pool.position.y=1.5; pool.renderOrder=1; grp.add(pool); grp.userData.pool=pool;
   grp.add(groundBlob(30));
   return grp;
@@ -1745,10 +1752,17 @@ const glowTex=(()=>{ const c=document.createElement('canvas'); c.width=64; c.hei
   const g=c.getContext('2d'); const gr=g.createRadialGradient(32,32,2,32,32,32);
   gr.addColorStop(0,'rgba(255,255,255,1)'); gr.addColorStop(0.4,'rgba(255,200,120,.55)'); gr.addColorStop(1,'rgba(255,150,60,0)');
   g.fillStyle=gr; g.fillRect(0,0,64,64); return new THREE.CanvasTexture(c); })();
-const beamTex=(()=>{ const c=document.createElement('canvas'); c.width=8; c.height=128;   // loot god-ray: brightest at the chest, fading up into the dark sky
+const beamTex=(()=>{ const c=document.createElement('canvas'); c.width=8; c.height=128;   // cursed soul-light: icy-white core at the chest → cyan → deep blue dissipating into the dark
   const g=c.getContext('2d'); const gr=g.createLinearGradient(0,0,0,128);
-  gr.addColorStop(0,'rgba(255,255,255,0)'); gr.addColorStop(0.5,'rgba(255,255,255,0.45)'); gr.addColorStop(1,'rgba(255,255,255,0.95)');
+  gr.addColorStop(0,'rgba(40,110,170,0)');        // top — dissolves into the murk
+  gr.addColorStop(0.45,'rgba(64,220,255,0.30)');  // cyan body (matches the death-dissolve teal 0x40dcff)
+  gr.addColorStop(0.82,'rgba(150,240,255,0.55)');
+  gr.addColorStop(1,'rgba(215,250,255,0.80)');    // base — pale icy core where it meets the chest
   g.fillStyle=gr; g.fillRect(0,0,8,128); return new THREE.CanvasTexture(c); })();
+const soulTex=(()=>{ const c=document.createElement('canvas'); c.width=64; c.height=64;   // cool soul-glow radial (chest ground pool)
+  const g=c.getContext('2d'); const gr=g.createRadialGradient(32,32,2,32,32,32);
+  gr.addColorStop(0,'rgba(220,250,255,0.9)'); gr.addColorStop(0.4,'rgba(90,210,255,0.42)'); gr.addColorStop(1,'rgba(40,120,200,0)');
+  g.fillStyle=gr; g.fillRect(0,0,64,64); return new THREE.CanvasTexture(c); })();
 const skullTex=(()=>{ const c=document.createElement('canvas'); c.width=64; c.height=64;   // bone skull for the piles
   const g=c.getContext('2d'); g.fillStyle='#cabfa2'; g.fillRect(0,0,64,64);
   g.fillStyle='#120c08';
@@ -2464,6 +2478,32 @@ const portal=new THREE.Group(); portal.visible=false; scene.add(portal);
   portal.add(t);
 });
 const portalLight=new THREE.PointLight(0x39ffa0, 0, 400); portal.add(portalLight);
+/* ---- EMERALD GATE (always-visible extraction landmark) + PORTAL vortex GLB (fills the gate while extracting) ---- */
+let gateP=null, portalP=null; let GATE_YAW=0, PORTAL_YAW=0, PORTAL_RX=0, PAD_YAW=0;   // facing knobs — tune if a piece faces wrong
+const gateGrp=new THREE.Group(); gateGrp.visible=false; gateGrp.position.set(PADX,0,PADY-104); scene.add(gateGrp);
+_propLoader.load('assets/gate.glb', g=>{
+  gateP=_propFit(g.scene);
+  const s=210/gateP.fitY, m=gateP.m.clone();                                   // tall emerald archway, feet on the ground
+  m.scale.setScalar(s); m.position.set(-gateP.cx*s,-gateP.miny*s,-gateP.cz*s); m.rotation.y=GATE_YAW;
+  m.traverse(o=>{ if(o.isMesh&&o.material&&o.material.emissive){ o.material.emissive.set(0x0e3d2a); o.material.emissiveIntensity=o.material.emissiveMap?1.0:0.45; } });
+  gateGrp.add(m); gateGrp.visible=true;
+}, undefined, e=>console.error('gate GLB',e));
+_propLoader.load('assets/portal.glb', g=>{
+  portalP=_propFit(g.scene);
+  for(let i=portal.children.length-1;i>=0;i--){ if(portal.children[i].isMesh) portal.remove(portal.children[i]); }   // drop the procedural fallback rings
+  const s=70/Math.max(portalP.fitXZ,portalP.fitY), m=portalP.m.clone();
+  m.scale.setScalar(s); m.position.set(-portalP.cx*s, -(portalP.miny+portalP.fitY/2)*s, -portalP.cz*s);   // centered at the group origin → swirls in place
+  m.rotation.x=PORTAL_RX; m.rotation.y=PORTAL_YAW;
+  m.traverse(o=>{ if(o.isMesh&&o.material&&o.material.emissive){ o.material.emissive.set(0x39ffa0); o.material.emissiveIntensity=o.material.emissiveMap?1.6:1.2; } });   // bright magical glow
+  portal.add(m);
+}, undefined, e=>console.error('portal GLB',e));
+_propLoader.load('assets/pad.glb', g=>{
+  const p=_propFit(g.scene);
+  const s=(CFG.extractR*2*1.02)/p.fitXZ, m=p.m.clone();                          // emerald runic circle spanning the walkable pad
+  m.scale.setScalar(s); m.position.set(-p.cx*s, -p.miny*s+1, -p.cz*s); m.rotation.y=PAD_YAW;   // flat, just above the ground
+  m.traverse(o=>{ if(o.isMesh&&o.material&&o.material.emissive){ o.material.emissive.set(0x0e5a3a); o.material.emissiveIntensity=o.material.emissiveMap?1.0:0.6; } });
+  padGrp.add(m); if(padDisc) padDisc.visible=false;   // GLB replaces the flat cylinder disc; padDisc stays (invisible) so its extraction-pulse material writes stay harmless
+}, undefined, e=>console.error('pad GLB',e));
 // slam blast wave: a blue torus half-sunk in the ground (ground occludes the buried half → rising half-donut wave)
 const shock=new THREE.Mesh(new THREE.TorusGeometry(1,0.05,12,56),
   MBM({color:0xffe08a,transparent:true,side:THREE.DoubleSide,depthWrite:false,blending:THREE.AdditiveBlending}));
@@ -2534,7 +2574,7 @@ function syncScene(dt){
     else { let dl=faceAng-aimAng; while(dl>Math.PI)dl-=6.283; while(dl<-Math.PI)dl+=6.283;
       if(moving>0.05 && Math.abs(dl)>Math.PI/2) clip='Walk_Backward_with_Gun_inplace';   // back-pedal (aiming behind)
       else if(target) clip='Run_and_Shoot';        // shooting forward
-      else if(moving>0.05) clip='Walking';         // advancing, nothing to shoot
+      else if(moving>0.05) clip='Running';         // advancing, nothing to shoot → run (not walk)
       else ts=0; }                                 // idle: freeze the walk pose (no idle clip in the set)
     heroPlay(clip); if(heroCurAct) heroCurAct.timeScale=ts;
     if(heroMixer) heroMixer.update(dt);
@@ -2706,16 +2746,18 @@ function syncScene(dt){
     m.userData.lid.position.y=c.opened?32:28;
     const beam=m.userData.beam, pool=m.userData.pool;
     if(beam){
-      const breathe=0.72+0.28*Math.sin(time*2.2+c.x*0.013);   // slow living pulse, phase-offset per chest
-      if(c.opened){                                           // reward burst: flare up, then fade out
+      // calm ethereal waver — a soul-light drifts, it doesn't flicker like the braziers (two slow
+      // sines, phase-offset per chest so they don't pulse in unison)
+      const waver=0.62+0.15*Math.sin(time*1.7+c.x*0.02)+0.06*Math.sin(time*4.3+c.x*0.05);
+      if(c.opened){                                           // release: the soul-light swells, then dissipates upward
         const k=Math.max(0,1-c.t2/0.6);
-        beam.material.opacity=1.0*k; pool.material.opacity=0.9*k;
-        beam.scale.set(1+(1-k)*0.6,1+(1-k)*0.5,1+(1-k)*0.6); pool.scale.setScalar(1+(1-k)*1.4);
+        beam.material.opacity=0.72*k; pool.material.opacity=0.6*k;
+        beam.scale.set(1+(1-k)*0.45,1+(1-k)*0.7,1+(1-k)*0.45); pool.scale.setScalar(1+(1-k)*1.3);
       }else{
-        const near=1-Math.min(1,c.t/CFG.chestOpen);           // brightens as proximity works it open
-        beam.material.opacity=breathe*(0.55+0.5*near);
-        pool.material.opacity=breathe*(0.42+0.4*near);
-        beam.scale.set(1,1,1); pool.scale.setScalar(1+0.06*near);
+        const near=1-Math.min(1,c.t/CFG.chestOpen);           // intensifies as proximity works it open
+        beam.material.opacity=waver*(0.4+0.4*near);
+        pool.material.opacity=waver*(0.32+0.3*near);
+        beam.scale.set(1,1,1); pool.scale.setScalar(1+0.05*near);
       }
     }
   });
@@ -2800,7 +2842,7 @@ function syncScene(dt){
   else if(state==='cashing') pf=0.5+Math.min(1,seqT/0.5)*0.5;
   if(pf>0){
     portal.visible=true;
-    portal.position.set(PADX, 52, PADY-104);         // fixed doorway hovering at the NORTH edge of the platform
+    portal.position.set(PADX, 105, PADY-104);        // centered in the emerald gate opening at the NORTH edge of the platform
     portal.scale.setScalar(Math.max(0.05,pf)*2.5);   // radius grows with the extraction bar; 2.5x bigger at max
     portal.rotation.set(0, 0, time*0.5);             // opening faces SOUTH; gentle swirl on the tunnel axis
     portalLight.intensity=pf*110;
