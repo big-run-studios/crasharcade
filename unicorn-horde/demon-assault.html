@@ -130,6 +130,7 @@
       <button class="btn" id="playBtn">DESCEND</button>
       <button class="btn ghost" id="sandBtn">SANDBOX (dev)</button>
       <button class="btn ghost" id="envBtn">ROAM ENVIRONMENT (dev)</button>
+      <button class="btn ghost" id="tpsBtn">TPS SHOOTER (dev)</button>
       <div class="pb" id="menuBest"></div>
     </div>
 
@@ -155,7 +156,7 @@
 
   </div>
 
-  <div class="brand">CRASHARCADE · DEMON ASSAULT v0.24.3</div>
+  <div class="brand">CRASHARCADE · DEMON ASSAULT v0.25.0</div>
 </div>
 
 <audio id="music" src="demon-music.mp3" loop preload="auto"></audio>
@@ -198,6 +199,8 @@ const CFG={
   waveIntMax:5.2, waveIntMin:2.6, waveIntRate:0.03,
   waveScaleCap:3.2,
   spawnMinDist:620,           // 3D camera sees a little further — spawn beyond it
+  // TPS sub-mode (dev button) orbit camera: low & close, right-stick orbits it around the hero
+  cam:{dist:360, height:250, lookH:110, yawSpd:2.6},   // dist/height in world units, lookH = look-at height, yawSpd = rad/s at full throw
 };
 const MAST=[18,30,48,78,126,204,330,540];
 // low-health warnings — fire once each as HP crosses below the threshold
@@ -286,6 +289,8 @@ let slowT=0, slowF=1, paused=false, dbg=false, fps=60;
 let seqT=0, shattered=false, secured=0, gateWin=false, warn30=false, lastCount=99, healthBonusPct=0;
 
 let px=WW/2, py=WH/2+180, face=1, moving=0, walkPh=0, faceAng=0;
+let camYaw=0;      // TPS sub-mode: orbit angle of the camera around the hero (0 = behind, right stick drives it)
+let tps=false;     // TPS sub-mode toggle (dev button): low orbit cam + twin-stick + off-screen threat arrows
 let weap=null, fireCd=0, gatHits=0, aimAng=-Math.PI/2, target=null;
 let budget=0, spawnT=1, melonSeen=false, melonCd=0;
 let wpNext=0, slamLast=-99, gateNext=0, gateT=0;
@@ -1161,7 +1166,7 @@ function reset(){
   runT=0; mult=1; multProg=0; score=0; hp=CFG.maxHp; dispHp=CFG.maxHp; dmgHoldT=0; invulnT=1.0; hurtFx=0; hpWarned=[false,false,false];
   shake=0; slowT=0; seqT=0; shattered=false; secured=0; gateWin=false; warn30=false; lastCount=99; envSandbox=false;
   weap=newWeap(); fireCd=0.4; gatHits=0; aimAng=-Math.PI/2; target=null;
-  px=WW/2; py=WH/2+180; face=1; moving=0; walkPh=0; faceAng=0;
+  px=WW/2; py=WH/2+180; face=1; moving=0; walkPh=0; faceAng=0; camYaw=0;   // camYaw=0 = camera starts behind the hero (TPS sub-mode)
   budget=8; spawnT=0.8; waveN=0; baseAng=R(0,6.283); melonSeen=false; melonCd=0;
   wpNext=CFG.wpFirst; slamLast=0; gateNext=CFG.gateFirst; gateT=0;
   flushCorpses();
@@ -1187,6 +1192,7 @@ function startRun(){
   syncMusic();
 }
 function toMenu(){
+  tps=false;   // returning to the arcade menu clears the TPS sub-mode; each menu button re-selects
   state='menu'; overEl.classList.add('hide'); cashedEl.classList.add('hide');
   hudEl.classList.remove('on');
   document.getElementById('menuBest').textContent=best>0?('BEST '+best.toLocaleString()):'';
@@ -1245,7 +1251,8 @@ function enterSandbox(){
 function exitSandbox(){ sandbox=false; if(sandFloor)sandFloor.visible=false; if(_savedFog)scene.fog=_savedFog; hpTrack.visible=true; enemies.length=0; toMenu(); }
 document.getElementById('sandBtn').addEventListener('click',()=>{ ac(); enterSandbox(); });
 document.getElementById('envBtn').addEventListener('click',()=>{ ac(); startEnvSandbox(); });
-document.getElementById('playBtn').addEventListener('click',()=>{ ac(); startRun(); });
+document.getElementById('tpsBtn').addEventListener('click',()=>{ ac(); tps=true; startRun(); });   // TPS sub-mode: full run, low orbit cam + twin-stick
+document.getElementById('playBtn').addEventListener('click',()=>{ ac(); tps=false; startRun(); });
 document.getElementById('againBtn').addEventListener('click',()=>startRun());
 document.getElementById('menuBtn').addEventListener('click',()=>toMenu());
 document.getElementById('cashAgainBtn').addEventListener('click',()=>startRun());
@@ -1259,28 +1266,34 @@ document.getElementById('menuBest').textContent=best>0?('BEST '+best.toLocaleStr
    a floating analog stick that spawns wherever you touch. Touch anywhere, drag to run;
    the base follows the thumb past full throw so it never feels pinned. */
 const app=document.getElementById('app');
-const stick={on:false,id:null,bx:0,by:0,dx:0,dy:0};
+const stick={on:false,id:null,bx:0,by:0,dx:0,dy:0};        // move stick (camera-relative in TPS)
+const camStick={on:false,id:null,bx:0,by:0,dx:0,dy:0};     // TPS sub-mode: right-half orbit stick (never armed in base game)
 const STICK_R=54, STICK_DEAD=9;   // css px
 let goTarget=null;                // headless/debug navigation only
 const keys=new Set();
 let cw=innerWidth, ch=innerHeight;
+// base game: any touch = the (floating) move stick. TPS sub-mode: right half orbits the camera instead.
+const stickFor=x=> (tps && x>=cw*0.5) ? camStick : stick;
 app.addEventListener('pointerdown',e=>{
   if(e.target.closest('button')) return;
-  if(stick.on) return;
-  stick.on=true; stick.id=e.pointerId;
-  stick.bx=clamp(e.clientX,40,cw-40); stick.by=clamp(e.clientY,100,ch-40);
-  stick.dx=0; stick.dy=0; goTarget=null;
+  const st=stickFor(e.clientX);
+  if(st.on) return;                                 // this stick already owns a finger
+  st.on=true; st.id=e.pointerId;
+  st.bx=clamp(e.clientX,40,cw-40); st.by=clamp(e.clientY,100,ch-40);
+  st.dx=0; st.dy=0; goTarget=null;
   if(app.setPointerCapture) try{app.setPointerCapture(e.pointerId);}catch(_){}
 });
 app.addEventListener('pointermove',e=>{
-  if(!stick.on||e.pointerId!==stick.id) return;
-  let dx=e.clientX-stick.bx, dy=e.clientY-stick.by; const d=Math.hypot(dx,dy);
-  if(d>STICK_R){ stick.bx=e.clientX-dx/d*STICK_R; stick.by=e.clientY-dy/d*STICK_R; dx=e.clientX-stick.bx; dy=e.clientY-stick.by; }
-  if(d<STICK_DEAD){ stick.dx=0; stick.dy=0; }
-  else{ const m=Math.min(1,d/(STICK_R*0.7)), a=Math.atan2(dy,dx); stick.dx=Math.cos(a)*m; stick.dy=Math.sin(a)*m; }   // full speed at 70% throw
+  const st = e.pointerId===stick.id ? stick : e.pointerId===camStick.id ? camStick : null;
+  if(!st) return;
+  let dx=e.clientX-st.bx, dy=e.clientY-st.by; const d=Math.hypot(dx,dy);
+  if(d>STICK_R){ st.bx=e.clientX-dx/d*STICK_R; st.by=e.clientY-dy/d*STICK_R; dx=e.clientX-st.bx; dy=e.clientY-st.by; }
+  if(d<STICK_DEAD){ st.dx=0; st.dy=0; }
+  else{ const m=Math.min(1,d/(STICK_R*0.7)), a=Math.atan2(dy,dx); st.dx=Math.cos(a)*m; st.dy=Math.sin(a)*m; }   // full speed at 70% throw
 });
 function endPointer(e){
   if(e.pointerId===stick.id){ stick.on=false; stick.id=null; stick.dx=0; stick.dy=0; }
+  if(e.pointerId===camStick.id){ camStick.on=false; camStick.id=null; camStick.dx=0; camStick.dy=0; }
 }
 app.addEventListener('pointerup',endPointer);
 app.addEventListener('pointercancel',endPointer);
@@ -1348,13 +1361,17 @@ function keyVec(){
   if(L>1){ mx/=L; my/=L; }
   return {mx,my};
 }
+// TPS sub-mode: rotate raw stick/key input into world space by the camera's orbit angle,
+// so "up on the stick" always means "away from the camera". (Only used when tps is on.)
+function camRel(dx,dy){ const c=Math.cos(camYaw), s=Math.sin(camYaw); return {mx:dx*c+dy*s, my:-dx*s+dy*c}; }
 function movePlayer(dt){
   moveTgt=null;
+  if(tps && camStick.on) camYaw -= camStick.dx * CFG.cam.yawSpd * dt;   // right stick orbits the camera; push right → view turns right
   if(slamState){ moving=0; return; }
   let tx=null,ty=null;
   if(!stick.on && goTarget){ tx=goTarget.x; ty=goTarget.y; }   // headless/debug nav only
   let mx=0,my=0;
-  if(stick.on){ mx=stick.dx; my=stick.dy; wayPt=null; }
+  if(stick.on){ if(tps){ const r=camRel(stick.dx,stick.dy); mx=r.mx; my=r.my; } else { mx=stick.dx; my=stick.dy; } wayPt=null; }
   else if(tx!==null){
     tx=clamp(tx,WALL+CFG.playerR,WW-WALL-CFG.playerR);
     ty=clamp(ty,WALL+CFG.playerR,WH-WALL-CFG.playerR);
@@ -1373,7 +1390,7 @@ function movePlayer(dt){
       const L=Math.hypot(mx,my)||1; mx/=L; my/=L;
     }
   }else{
-    const k=keyVec(); mx=k.mx; my=k.my;
+    const k=keyVec(); if(tps){ const r=camRel(k.mx,k.my); mx=r.mx; my=r.my; } else { mx=k.mx; my=k.my; }   // keyboard is camera-relative in TPS
   }
   moving=Math.hypot(mx,my);
   if(moving>0.01){
@@ -2580,6 +2597,13 @@ function syncScene(dt){
     if(keys.has('KeyE'))sbxPos.y+=mv; if(keys.has('KeyQ'))sbxPos.y-=mv;   // E up / Q down
     camera.position.copy(sbxPos);
   }
+  else if(tps){
+    // TPS sub-mode: low, close orbit camera. camYaw (right stick) spins it around the hero.
+    // At camYaw=0 the camera sits behind (world +z), matching the old fixed offset's heading.
+    const cc=CFG.cam, ox=Math.sin(camYaw)*cc.dist, oz=Math.cos(camYaw)*cc.dist;
+    camera.position.set(px+ox+shx, cc.height, py+oz+shz);
+    camera.lookAt(px, cc.lookH, py);
+  }
   else { camera.position.set(px+shx, 700, py+520+shz);
     camera.lookAt(px, 0, py); }   // screen-center = the player exactly, so a finger on it means "stand still"
   // keep the shadow frustum tight around the player — translate the sun by a fixed offset so its
@@ -3022,6 +3046,16 @@ function overlayDraw(){
       octx.fillStyle='rgba(225,245,255,.6)';
       octx.beginPath(); octx.arc(stick.bx+stick.dx*STICK_R*0.62,stick.by+stick.dy*STICK_R*0.62,15,0,6.283); octx.fill();
     }
+    if(camStick.on){   // TPS right camera-orbit stick (amber, with a spin arc to read as "look")
+      octx.strokeStyle='rgba(255,200,120,.5)'; octx.lineWidth=2.5;
+      octx.beginPath(); octx.arc(camStick.bx,camStick.by,STICK_R*0.78,0,6.283); octx.stroke();
+      octx.strokeStyle='rgba(255,200,120,.32)'; octx.lineWidth=3.5;
+      octx.beginPath(); octx.arc(camStick.bx,camStick.by,STICK_R*0.5,-0.9,0.9); octx.stroke();   // little orbit hint
+      octx.fillStyle='rgba(255,200,120,.10)';
+      octx.beginPath(); octx.arc(camStick.bx,camStick.by,STICK_R*0.78,0,6.283); octx.fill();
+      octx.fillStyle='rgba(255,222,170,.65)';
+      octx.beginPath(); octx.arc(camStick.bx+camStick.dx*STICK_R*0.62,camStick.by+camStick.dy*STICK_R*0.62,15,0,6.283); octx.fill();
+    }
     // off-screen pickup arrows
     for(const p of pickups){
       const s=toScreen(p.x,p.y,20);
@@ -3061,6 +3095,36 @@ function overlayDraw(){
       octx.restore();
     }
     octx.globalAlpha=1;
+    // TPS sub-mode: off-screen enemy THREAT arrows — pinned to the screen edge, pointing at any
+    // near enemy you can't see (esp. behind you). Nearest first, capped so it never clutters.
+    if(tps){
+      const cx=cw/2, cy=ch/2, mx2=cw/2-30, my2=ch/2-104, RANGE=1200, CAP=10;
+      const cand=[];
+      for(const e of enemies){ if(e.dead) continue;
+        const dw=Math.hypot(e.x-px,e.y-py); if(dw>RANGE) continue;
+        const s=toScreen(e.x,e.y,FRUIT[e.type].r*1.2);
+        if(s.ok && s.x>24 && s.x<cw-24 && s.y>78 && s.y<ch-96) continue;   // already on screen
+        let sx=s.ok?s.x:cw-s.x, sy=s.ok?s.y:ch-s.y;                        // mirror through centre if behind camera
+        cand.push({dw, ang:Math.atan2(sy-cy, sx-cx)});
+      }
+      cand.sort((a,b)=>a.dw-b.dw);
+      for(let i=0;i<Math.min(cand.length,CAP);i++){
+        const {dw,ang}=cand[i];
+        const ca=Math.cos(ang), sa=Math.sin(ang);
+        const t=Math.min(ca!==0?mx2/Math.abs(ca):1e9, sa!==0?my2/Math.abs(sa):1e9);   // ray → inset-rect edge
+        const ex2=cx+ca*t, ey2=cy+sa*t;
+        const prox=1-Math.min(1,dw/RANGE), sz=9+prox*7;
+        const col = dw<450?'#ff3d5e' : dw<800?'#ff8a3d' : '#ffcf6a';
+        octx.save(); octx.translate(ex2,ey2); octx.rotate(ang);
+        octx.globalAlpha=0.5+0.4*prox;
+        octx.fillStyle='rgba(8,4,6,.55)';
+        octx.beginPath(); octx.moveTo(sz+2,0); octx.lineTo(-sz*0.75-2,-sz*0.75-2); octx.lineTo(-sz*0.75-2,sz*0.75+2); octx.closePath(); octx.fill();
+        octx.fillStyle=col;
+        octx.beginPath(); octx.moveTo(sz,0); octx.lineTo(-sz*0.72,-sz*0.72); octx.lineTo(-sz*0.72,sz*0.72); octx.closePath(); octx.fill();
+        octx.restore();
+      }
+      octx.globalAlpha=1;
+    }
     // low-hp vignette
     const lim=CFG.maxHp*0.3;
     if(hp<=lim){
@@ -3143,7 +3207,7 @@ reset(); state='menu';
 window.__game={
   get s(){ return {state,runT:+runT.toFixed(1),score,mult,multProg,hp,phase:phaseName(),
     weapon:weap?weap.cur:null,lv:weap?weap.lv:0,xp:weap?+weap.xp.toFixed(1):0,
-    x:+px.toFixed(0),y:+py.toFixed(0),target:target?target.type:null,
+    x:+px.toFixed(0),y:+py.toFixed(0),tps,camYaw:+camYaw.toFixed(2),target:target?target.type:null,
     enemies:enemies.length,proj:proj.length,pickups:pickups.map(p=>p.kind),slam:slamState,gate:+gateT.toFixed(1),
     budget:+budget.toFixed(1),wave:waveN,paint:paintCount,extractT:+extractT.toFixed(2),chests:chests.length,secured,
     draws:renderer.info.render.calls}; },
@@ -3166,6 +3230,12 @@ window.__game={
   goto:(x,y)=>{ goTarget={x,y}; },
   stop:()=>{ goTarget=null; },
   stickSet:(dx,dy)=>{ if(dx===null){ stick.on=false; stick.dx=0; stick.dy=0; } else { stick.on=true; stick.dx=dx; stick.dy=dy; } },
+  // TPS sub-mode controls
+  tps:v=>{ if(v!==undefined) tps=!!v; return tps; },
+  camStickSet:(dx,dy)=>{ if(dx===null){ camStick.on=false; camStick.dx=0; camStick.dy=0; } else { camStick.on=true; camStick.dx=dx; camStick.dy=dy||0; } },
+  camYaw:v=>{ if(v!==undefined) camYaw=v; return camYaw; },
+  orbit:d=>{ camYaw+=d; },                       // nudge the orbit angle (radians)
+  camSet:(o={})=>{ Object.assign(CFG.cam,o); return CFG.cam; },   // e.g. camSet({dist:300,height:200,lookH:120})
   tp:(x,y)=>{ px=x; py=y; },
   padPos:()=>({x:PADX,y:PADY}),
   clearBombNow:clearBomb,
