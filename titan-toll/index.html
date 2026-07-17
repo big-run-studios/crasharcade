@@ -40,71 +40,60 @@
   .epip.done{background:var(--ehp);box-shadow:0 0 6px var(--ehp);}
   .epip.cur{background:#fff;box-shadow:0 0 8px #fff;}
 
-  /* ---------- left stats ---------- */
-  #stats{position:absolute;left:8px;top:calc(max(8px,env(safe-area-inset-top)) + 78px);display:flex;flex-direction:column;gap:7px;width:min(46vw,208px);}
-  .bar{position:relative;height:13px;border-radius:7px;background:rgba(6,10,26,.55);border:1.5px solid rgba(255,255,255,.14);overflow:hidden;}
-  .bar .fill{position:absolute;inset:0;width:100%;transform-origin:left;}
-  .lab{position:absolute;left:7px;top:50%;transform:translateY(-50%);font-family:var(--display);font-weight:700;font-size:9px;letter-spacing:1px;color:#fff;text-shadow:0 1px 2px #000;z-index:2;}
-  .val{position:absolute;right:7px;top:50%;transform:translateY(-50%);font-family:var(--display);font-weight:800;font-size:9px;color:#fff;text-shadow:0 1px 2px #000;z-index:2;}
-  #hpFill{background:linear-gradient(90deg,#ff4d63,#ff8a7a);}
-  #xpFill{background:linear-gradient(90deg,#43c98a,#9bffcf);}
-  #multRow{display:flex;align-items:center;gap:7px;}
-  #multBadge{font-family:var(--display);font-weight:900;font-size:18px;letter-spacing:.5px;color:var(--blitz);
-    text-shadow:0 0 12px rgba(255,210,58,.6);min-width:42px;}
-  #multBar{flex:1;height:9px;}
-  #multFill{background:linear-gradient(90deg,#ffb648,#ffe08a);}
-  #levels{display:flex;gap:5px;margin-top:1px;}
-  .lvpip{flex:1;text-align:center;font-family:var(--display);font-weight:800;font-size:10px;letter-spacing:.5px;
-    padding:3px 0;border-radius:6px;background:rgba(6,10,26,.5);border:1.5px solid rgba(255,255,255,.12);color:#fff;}
-  .lvpip.s{border-color:var(--strike);} .lvpip.h{border-color:var(--shoot);}
-  .lvpip.c{border-color:var(--cast);} .lvpip.b{border-color:var(--blitz);}
-  .lvpip b{opacity:.75;font-size:8px;}
-  .lvpip.up{animation:pipUp .6s;}
-  @keyframes pipUp{0%{transform:scale(1);}30%{transform:scale(1.35);box-shadow:0 0 14px #fff;}100%{transform:scale(1);}}
-
-  /* ---------- cashout ---------- */
-  #cashBtn{position:absolute;right:8px;top:calc(max(8px,env(safe-area-inset-top)) + 78px);
-    display:flex;flex-direction:column;align-items:flex-end;gap:1px;padding:9px 14px;border-radius:14px;border:2px solid var(--cash);
-    background:linear-gradient(180deg,rgba(20,60,44,.92),rgba(8,30,22,.92));box-shadow:0 4px 16px rgba(0,0,0,.45),0 0 20px rgba(94,255,168,.28);
+  /* ---------- left: multiplier + score + cash out (one container) ---------- */
+  #hudLeft{position:absolute;left:8px;top:calc(max(8px,env(safe-area-inset-top)) + 74px);display:flex;flex-direction:column;gap:8px;width:min(46vw,200px);}
+  #multRow{display:flex;align-items:center;gap:8px;}
+  #multBadge{font-family:var(--display);font-weight:900;font-size:22px;letter-spacing:.5px;color:var(--blitz);text-shadow:0 0 14px rgba(255,210,58,.65);min-width:48px;}
+  #multBar{position:relative;flex:1;height:9px;border-radius:6px;background:rgba(6,10,26,.55);border:1.5px solid rgba(255,255,255,.16);overflow:hidden;}
+  #multFill{position:absolute;inset:0;width:100%;transform-origin:left;background:linear-gradient(90deg,#ffb648,#ffe08a);}
+  #cashBtn{display:flex;flex-direction:column;align-items:flex-start;gap:1px;padding:10px 16px;border-radius:15px;border:2px solid var(--cash);
+    background:linear-gradient(180deg,rgba(20,60,44,.94),rgba(8,30,22,.94));box-shadow:0 4px 16px rgba(0,0,0,.45),0 0 22px rgba(94,255,168,.3);
     cursor:pointer;transition:transform .08s,opacity .15s,filter .15s;}
-  #cashBtn:active{transform:scale(.95);}
+  #cashBtn:active{transform:scale(.96);}
   #cashBtn.lock{opacity:.42;filter:grayscale(.5);}
   #cashLab{font-family:var(--display);font-weight:800;font-size:10px;letter-spacing:2px;color:var(--cash);}
-  #cashVal{font-family:var(--display);font-weight:900;font-size:clamp(16px,4.4vw,24px);color:#fff;text-shadow:0 0 12px rgba(94,255,168,.5);line-height:1;}
+  #cashVal{font-family:var(--display);font-weight:900;font-size:clamp(22px,6vw,32px);color:#fff;text-shadow:0 0 14px rgba(94,255,168,.55);line-height:1;}
 
-  /* ---------- bottom controls ---------- */
-  #bottom{position:absolute;left:0;right:0;bottom:0;padding:0 8px calc(8px + env(safe-area-inset-bottom));display:flex;flex-direction:column;gap:7px;}
-  #blitzWrap{position:relative;height:15px;border-radius:8px;background:rgba(6,10,26,.6);border:1.5px solid rgba(255,210,58,.5);overflow:hidden;}
-  #blitzFill{position:absolute;inset:0;width:100%;transform-origin:left;background:linear-gradient(90deg,#ff8a2e,#ffd23a,#fff2b0);}
-  #blitzWrap.ready #blitzFill{animation:blitzPulse .9s infinite;}
-  @keyframes blitzPulse{0%,100%{filter:brightness(1);}50%{filter:brightness(1.4);}}
-  #blitzLab{position:absolute;left:8px;top:50%;transform:translateY(-50%);font-family:var(--display);font-weight:800;font-size:9px;letter-spacing:2px;color:var(--ink);z-index:2;}
-  #actWrap{position:relative;height:11px;border-radius:6px;background:rgba(6,10,26,.6);border:1.5px solid rgba(255,255,255,.16);overflow:hidden;}
-  #actFill{position:absolute;inset:0;width:100%;transform-origin:left;background:linear-gradient(90deg,#5a7bd8,#9fc0ff);transition:none;}
-  #actWrap.full #actFill{background:linear-gradient(90deg,#7be0a8,#c9ffe4);animation:actReady .8s infinite;}
-  @keyframes actReady{0%,100%{filter:brightness(1);}50%{filter:brightness(1.45);}}
-  #actWrap.full::after{content:'CHOOSE';position:absolute;right:8px;top:50%;transform:translateY(-50%);font-family:var(--display);font-weight:800;font-size:8px;letter-spacing:2px;color:#0b1226;}
-  #btnRow{display:flex;gap:7px;}
-  .abtn{flex:1;position:relative;border:none;border-radius:14px;padding:11px 4px 9px;cursor:pointer;
-    background:linear-gradient(180deg,rgba(18,26,54,.95),rgba(10,16,36,.95));
-    box-shadow:0 3px 10px rgba(0,0,0,.4),inset 0 0 0 2px rgba(255,255,255,.06);
-    display:flex;flex-direction:column;align-items:center;gap:2px;opacity:.5;filter:grayscale(.5);transition:transform .07s,opacity .12s,filter .12s;}
-  .abtn.on{opacity:1;filter:none;}
-  .abtn.on:active{transform:scale(.94);}
-  .abtn .ic{font-size:22px;line-height:1;}
-  .abtn .nm{font-family:var(--display);font-weight:800;font-size:10px;letter-spacing:1px;}
-  .abtn .lv{font-family:var(--display);font-weight:700;font-size:8px;opacity:.7;}
-  .abtn.strike{box-shadow:0 3px 10px rgba(0,0,0,.4),inset 0 0 0 2px var(--strike);} .abtn.strike .nm{color:var(--strike);}
-  .abtn.shoot{box-shadow:0 3px 10px rgba(0,0,0,.4),inset 0 0 0 2px var(--shoot);} .abtn.shoot .nm{color:var(--shoot);}
-  .abtn.cast{box-shadow:0 3px 10px rgba(0,0,0,.4),inset 0 0 0 2px var(--cast);} .abtn.cast .nm{color:var(--cast);}
-  .abtn.blitz{box-shadow:0 3px 12px rgba(0,0,0,.4),inset 0 0 0 2px var(--blitz);} .abtn.blitz .nm{color:var(--blitz);}
-  .abtn.blitz.on{background:linear-gradient(180deg,rgba(80,60,10,.95),rgba(40,28,6,.95));animation:blitzBtn .9s infinite;}
-  @keyframes blitzBtn{0%,100%{box-shadow:0 3px 12px rgba(0,0,0,.4),inset 0 0 0 2px var(--blitz);}50%{box-shadow:0 3px 20px rgba(255,210,58,.6),inset 0 0 0 2px #fff2b0;}}
-  /* action committed while the enemy is attacking — waiting to fire */
-  .abtn.queued{opacity:1;filter:none;animation:queuedPulse .7s infinite;}
-  .abtn.queued::after{content:'QUEUED';position:absolute;top:-7px;left:50%;transform:translateX(-50%);
-    font-family:var(--display);font-weight:800;font-size:8px;letter-spacing:1px;color:#0b1226;background:#fff;padding:2px 6px;border-radius:6px;box-shadow:0 1px 4px rgba(0,0,0,.4);}
-  @keyframes queuedPulse{0%,100%{box-shadow:0 3px 10px rgba(0,0,0,.4),inset 0 0 0 2px rgba(255,255,255,.55);}50%{box-shadow:0 3px 16px rgba(255,255,255,.5),inset 0 0 0 2px #fff;}}
+  /* ---------- HP at the bottom ---------- */
+  #hpBottom{position:absolute;left:8px;right:8px;bottom:calc(7px + env(safe-area-inset-bottom));height:17px;border-radius:9px;
+    background:rgba(6,10,26,.62);border:1.5px solid rgba(255,255,255,.18);overflow:hidden;}
+  #hpFill{position:absolute;inset:0;width:100%;transform-origin:left;background:linear-gradient(90deg,#ff4d63,#ff8a7a);transition:transform .14s;}
+  #hpLab{position:absolute;left:10px;top:50%;transform:translateY(-50%);font-family:var(--display);font-weight:800;font-size:10px;letter-spacing:2px;color:#fff;text-shadow:0 1px 2px #000;z-index:2;}
+  #hpVal{position:absolute;right:10px;top:50%;transform:translateY(-50%);font-family:var(--display);font-weight:800;font-size:12px;color:#fff;text-shadow:0 1px 2px #000;z-index:2;}
+
+  /* ---------- radial action menu (lower-right, shown only when selectable) ---------- */
+  #radial{position:absolute;right:0;bottom:0;width:240px;height:255px;pointer-events:none;opacity:0;transform:scale(.82);transition:opacity .16s,transform .16s;}
+  #radial.show{opacity:1;transform:scale(1);}
+  .rbtn{position:absolute;width:58px;height:58px;border-radius:50%;border:none;cursor:pointer;pointer-events:auto;color:#fff;
+    display:flex;align-items:center;justify-content:center;
+    background:radial-gradient(120% 120% at 50% 28%,rgba(30,40,74,.96),rgba(9,14,32,.97));
+    box-shadow:0 3px 12px rgba(0,0,0,.5),inset 0 0 0 2px rgba(255,255,255,.12);
+    opacity:.38;filter:grayscale(.6);transition:transform .08s,opacity .12s,filter .12s;}
+  .rbtn .ic{font-size:25px;line-height:1;color:currentColor;text-shadow:0 0 8px currentColor;}
+  .rbtn .rlv{position:absolute;bottom:-3px;right:-3px;min-width:19px;height:19px;border-radius:10px;padding:0 4px;
+    font-family:var(--display);font-weight:800;font-size:10px;color:#0b1226;background:#fff;display:flex;align-items:center;justify-content:center;box-shadow:0 1px 4px rgba(0,0,0,.5);}
+  .rbtn.strike{color:var(--strike);} .rbtn.shoot{color:var(--shoot);} .rbtn.cast{color:var(--cast);} .rbtn.blitz{color:var(--blitz);}
+  .rbtn.on{opacity:1;filter:none;} .rbtn.on:active{transform:scale(.9);}
+  /* per-level milestone states (Lv3 / Lv6 / Lv9) — escalating ring + glow */
+  .rbtn.on.t1{box-shadow:0 3px 12px rgba(0,0,0,.5),inset 0 0 0 2.5px currentColor;}
+  .rbtn.on.t2{box-shadow:0 3px 14px rgba(0,0,0,.5),inset 0 0 0 3px currentColor,0 0 12px -3px currentColor;}
+  .rbtn.on.t3{box-shadow:0 3px 16px rgba(0,0,0,.5),inset 0 0 0 3.5px currentColor,0 0 20px -2px currentColor;animation:t3pulse 1.2s infinite;}
+  .rbtn.on.t0{box-shadow:0 3px 12px rgba(0,0,0,.5),inset 0 0 0 2px currentColor;}
+  @keyframes t3pulse{0%,100%{filter:brightness(1);}50%{filter:brightness(1.32);}}
+  .rbtn.t3 .rlv{background:var(--blitz);color:#3a2600;}
+  .rbtn.blitz.on{animation:blitzBtn .9s infinite;}
+  @keyframes blitzBtn{0%,100%{box-shadow:0 3px 12px rgba(0,0,0,.5),inset 0 0 0 2.5px var(--blitz);}50%{box-shadow:0 3px 24px rgba(255,210,58,.75),inset 0 0 0 3.5px #fff2b0;}}
+  .rbtn.queued{opacity:1;filter:none;animation:queuedPulse .7s infinite;}
+  .rbtn.queued::after{content:'▶ QUEUED';position:absolute;top:-16px;left:50%;transform:translateX(-50%);white-space:nowrap;
+    font-family:var(--display);font-weight:800;font-size:8px;letter-spacing:1px;color:#0b1226;background:#fff;padding:2px 6px;border-radius:6px;}
+  @keyframes queuedPulse{0%,100%{box-shadow:0 3px 12px rgba(0,0,0,.5),inset 0 0 0 2px rgba(255,255,255,.6);}50%{box-shadow:0 3px 18px rgba(255,255,255,.6),inset 0 0 0 3px #fff;}}
+
+  /* ---------- level-up flyout ---------- */
+  #levelToast{position:absolute;left:50%;top:40%;transform:translate(-50%,-50%);opacity:0;pointer-events:none;text-align:center;z-index:15;}
+  #levelToast .big{font-family:var(--display);font-weight:900;font-size:30px;letter-spacing:1px;color:#ffe89a;text-shadow:0 2px 0 rgba(120,70,0,.5),0 0 24px rgba(255,210,58,.85);}
+  #levelToast .sm{font-family:var(--display);font-weight:800;font-size:13px;letter-spacing:3px;color:#fff;margin-top:2px;text-shadow:0 0 10px rgba(255,210,58,.7);}
+  #levelToast.show{animation:levelToast 1.7s ease-out;}
+  @keyframes levelToast{0%{opacity:0;transform:translate(-50%,-45%) scale(.6);}16%{opacity:1;transform:translate(-50%,-54%) scale(1.1);}68%{opacity:1;transform:translate(-50%,-58%) scale(1);}100%{opacity:0;transform:translate(-50%,-70%) scale(1);}}
 
   /* ---------- corner buttons ---------- */
   .corner{position:absolute;width:38px;height:38px;border-radius:50%;display:grid;place-items:center;font-size:18px;cursor:pointer;
@@ -113,7 +102,7 @@
   #muteBtn{left:96px;top:max(8px,env(safe-area-inset-top));}
   #dbgBtn{left:52px;top:max(8px,env(safe-area-inset-top));font-size:15px;}
   /* hide the combat HUD on the menu so it doesn't bleed behind the overlay */
-  .ui.menumode #topbar,.ui.menumode #stats,.ui.menumode #cashBtn,.ui.menumode #bottom,.ui.menumode #muteBtn{display:none;}
+  .ui.menumode #topbar,.ui.menumode #hudLeft,.ui.menumode #hpBottom,.ui.menumode #radial,.ui.menumode #muteBtn{display:none;}
 
   /* ---------- overlays ---------- */
   .screen{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;text-align:center;
@@ -169,30 +158,25 @@
       <div id="enemyPips"><div class="epip cur"></div><div class="epip"></div><div class="epip"></div></div>
     </div>
 
-    <div id="stats">
-      <div class="bar" id="hpBar"><div class="fill" id="hpFill"></div><span class="lab">HP</span><span class="val" id="hpVal">100</span></div>
-      <div id="multRow"><span id="multBadge">×1.0</span><div class="bar" id="multBar"><div class="fill" id="multFill"></div></div></div>
-      <div class="bar" id="xpBar"><div class="fill" id="xpFill"></div><span class="lab">XP</span><span class="val" id="xpVal">0/8</span></div>
-      <div id="levels">
-        <div class="lvpip s" id="lvS"><b>STR</b> 1</div>
-        <div class="lvpip h" id="lvH"><b>SHT</b> 1</div>
-        <div class="lvpip c" id="lvC"><b>CST</b> 1</div>
-        <div class="lvpip b" id="lvB"><b>BLZ</b> 1</div>
-      </div>
+    <!-- left: multiplier + score + cash out, one container -->
+    <div id="hudLeft">
+      <div id="multRow"><span id="multBadge">×1</span><div id="multBar"><div id="multFill"></div></div></div>
+      <div id="cashBtn"><span id="cashLab">CASH OUT</span><span id="cashVal">0</span></div>
     </div>
 
-    <div id="cashBtn"><span id="cashLab">CASH OUT</span><span id="cashVal">0</span></div>
+    <!-- bottom: HP -->
+    <div id="hpBottom"><div id="hpFill"></div><span id="hpLab">HP</span><span id="hpVal">120</span></div>
 
-    <div id="bottom">
-      <div id="blitzWrap"><div id="blitzFill"></div><span id="blitzLab">BLITZ</span></div>
-      <div id="actWrap"><div id="actFill"></div></div>
-      <div id="btnRow">
-        <button class="abtn strike" id="btnStrike"><span class="ic">⚔️</span><span class="nm">STRIKE</span><span class="lv" id="btnStrikeLv">Lv1</span></button>
-        <button class="abtn shoot" id="btnShoot"><span class="ic">💥</span><span class="nm">SHOOT</span><span class="lv" id="btnShootLv">Lv1</span></button>
-        <button class="abtn cast" id="btnCast"><span class="ic">✨</span><span class="nm">CAST</span><span class="lv" id="btnCastLv">Lv1</span></button>
-        <button class="abtn blitz" id="btnBlitz"><span class="ic">🌟</span><span class="nm">BLITZ</span><span class="lv" id="btnBlitzLv">Lv1</span></button>
-      </div>
+    <!-- lower-right radial: appears only when a selection is available -->
+    <div id="radial">
+      <button class="rbtn strike" id="btnStrike"><span class="ic">⚔</span><span class="rlv" id="btnStrikeLv">1</span></button>
+      <button class="rbtn shoot"  id="btnShoot"><span class="ic">◎</span><span class="rlv" id="btnShootLv">1</span></button>
+      <button class="rbtn cast"   id="btnCast"><span class="ic">✦</span><span class="rlv" id="btnCastLv">1</span></button>
+      <button class="rbtn blitz"  id="btnBlitz"><span class="ic">✹</span><span class="rlv" id="btnBlitzLv">1</span></button>
     </div>
+
+    <!-- level-up flyout -->
+    <div id="levelToast"></div>
 
     <div id="backBtn" class="corner" title="Arcade">‹</div>
     <div id="dbgBtn" class="corner" title="Debug">⚙</div>
@@ -203,10 +187,10 @@
       <h1>TITAN<br><span class="a">GUARD</span></h1>
       <div class="sub">One warrior. One pike, three forms. Three colossal foes. Build your score — then <b style="color:var(--cash)">cash out before you fall</b>.</div>
       <div class="howto">
-        <div><span class="k">CHOOSE</span> When the action bar fills, tap <b style="color:var(--strike)">Strike</b> / <b style="color:var(--shoot)">Shoot</b> / <b style="color:var(--cast)">Cast</b>.</div>
-        <div><span class="k">HIT</span> Tap the glowing rings <b>on the titan</b> at the perfect moment.</div>
-        <div><span class="k">DODGE</span> When the titan strikes, tap the <b>open ground</b> (lower screen) right as it lands.</div>
-        <div><span class="k">BLITZ</span> Fill the gold bar, then unleash the ultimate combo.</div>
+        <div><span class="k">CHOOSE</span> When the ring at your feet fills, pick <b style="color:var(--strike)">Strike</b> / <b style="color:var(--shoot)">Shoot</b> / <b style="color:var(--cast)">Cast</b> from the wheel.</div>
+        <div><span class="k">HIT</span> Line the shrinking ring up with the <b>glowing target</b> on the titan.</div>
+        <div><span class="k">DODGE</span> When the titan strikes, <b>tap anywhere</b> the instant it lands.</div>
+        <div><span class="k">BLITZ</span> Charge the gold — your pike blazes — then unleash the ultimate combo.</div>
         <div><span class="k">CASH</span> Bank your score anytime. Fall first and you lose it all.</div>
       </div>
       <button class="bigbtn" id="startBtn">ENTER BATTLE</button>
@@ -241,7 +225,7 @@
       <div id="dbgLog"></div>
     </div>
 
-    <div id="brand">CRASHARCADE · TITAN GUARD v0.4.0</div>
+    <div id="brand">CRASHARCADE · TITAN GUARD v0.5.0</div>
   </div>
 </div>
 
@@ -542,6 +526,12 @@ const clouds=[];
   }
 })();
 
+/* action bar as a ground ring around the hero's feet (fills from the centre out) */
+const actGrp=new THREE.Group(); actGrp.rotation.x=-Math.PI/2; actGrp.position.y=0.09; actGrp.visible=false; scene.add(actGrp);
+const actRing=new THREE.Mesh(new THREE.RingGeometry(1.16,1.34,44), unlit(0x9fc0ff,{transparent:true,opacity:0.55,side:THREE.DoubleSide,depthWrite:false,depthTest:false}));
+const actDisc=new THREE.Mesh(new THREE.CircleGeometry(1.16,44), unlit(0x5a7bd8,{transparent:true,opacity:0.4,side:THREE.DoubleSide,depthWrite:false,depthTest:false}));
+actRing.renderOrder=3; actDisc.renderOrder=2; actGrp.add(actDisc, actRing);
+
 /* =========================================================================
    PLAYER — low-poly warrior with a transforming pike
    ========================================================================= */
@@ -576,10 +566,16 @@ function buildPlayer(){
   const cross=new THREE.Mesh(new THREE.BoxGeometry(0.5,0.08,0.08),flat(STEEL)); cross.position.y=1.35; pike.add(cross);
   // muzzle (shoot form, hidden until used)
   const muzzle=new THREE.Mesh(new THREE.CylinderGeometry(0.16,0.13,0.5,10),flat(0x353b48)); muzzle.position.y=1.45; muzzle.visible=false; pike.add(muzzle); g.userData.muzzle=muzzle;
-  // energy tip (glows; color = form)
-  const tip=new THREE.Mesh(new THREE.IcosahedronGeometry(0.16,0),unlit(0xffb648)); tip.position.y=1.9; pike.add(tip); g.userData.tip=tip;
-  const tipL=new THREE.PointLight(0xffb648,0,6); tip.add(tipL); g.userData.tipLight=tipL;
-  // rune ring for cast (hidden)
+  // pike materials that tint to glowing gold as the Blitz charge builds
+  g.userData.pikeMats=[shaft.material, blade.material, cross.material, muzzle.material];
+  // Blitz aura: rune-magic ribbons orbiting an invisible sphere at the tip (no visible ball).
+  const aura=new THREE.Group(); aura.position.y=1.9; pike.add(aura); g.userData.blitzAura=aura;
+  const ribbons=[];
+  for(let i=0;i<3;i++){ const rb=new THREE.Mesh(new THREE.TorusGeometry(0.24,0.018,4,22,Math.PI*1.35), unlit(0xffd23a,{transparent:true,opacity:0}));
+    rb.rotation.set(i*1.15,i*0.8,i*0.5); aura.add(rb); ribbons.push(rb); }
+  g.userData.blitzRibbons=ribbons;
+  const tipL=new THREE.PointLight(0xffd23a,0,6); tipL.position.y=1.9; pike.add(tipL); g.userData.tipLight=tipL;
+  // rune ring for cast (hidden until casting)
   const rune=new THREE.Mesh(new THREE.TorusGeometry(0.32,0.03,6,20),unlit(0xc07bff)); rune.position.y=1.0; rune.rotation.x=Math.PI/2; rune.visible=false; pike.add(rune); g.userData.rune=rune;
 
   // grip pike into right hand
@@ -878,7 +874,7 @@ function beginOffense(action){
 }
 
 function setPikeForm(kind,action){
-  const u=playerMesh.userData; if(!u.tip)return;
+  const u=playerMesh.userData; if(!u.tipLight)return;
   const melee=(kind==='thrust'||kind==='launch'||kind==='heavy'||action==='strike');
   const shot =(kind==='reticle'||kind==='charge'&&action==='shoot');
   const casty=(kind==='glyph'||kind==='detonate'||action==='cast');
@@ -886,7 +882,7 @@ function setPikeForm(kind,action){
   if(action==='shoot'||shot) col=0x5fe0ff;
   else if(action==='cast'||casty) col=0xc07bff;
   else if(action==='blitz') col=0xffd23a;
-  u.tip.material.color.setHex(col); u.tipLight.color.setHex(col);
+  u.tipLight.color.setHex(col);
   u.muzzle.visible=(action==='shoot');
   u.blade.visible=!(action==='shoot');
   u.rune.visible=(action==='cast'); if(u.rune.visible)u.rune.material.color.setHex(col);
@@ -968,7 +964,7 @@ function endOffense(){
   }
   if(off) use[off.action]+=0.0;
   off=null; playerPose='idle'; poseT=0;
-  const u=playerMesh.userData; if(u){ u.muzzle.visible=false; u.blade.visible=true; u.rune.visible=false; u.tip.material.color.setHex(0xcfd6e0); u.tipLight.color.setHex(0xcfd6e0); }
+  const u=playerMesh.userData; if(u){ u.muzzle.visible=false; u.blade.visible=true; u.rune.visible=false; u.tipLight.color.setHex(0xffd23a); }
 }
 function interruptOffense(){
   if(!off)return;
@@ -1136,12 +1132,8 @@ function doLevelUp(){
   let r=rngXp()*sum, pick=cands[cands.length-1];
   for(let i=0;i<cands.length;i++){ r-=weights[i]; if(r<=0){pick=cands[i];break;} }
   lv[pick]++;
-  sfx('levelup'); groundBeams('#9bffcf');
-  const milestone=(lv[pick]===3||lv[pick]===6||lv[pick]===9);
-  if(playerMesh) addFloater(playerMesh.position.clone().setY(3.8),
-    (pick.toUpperCase())+' Lv'+lv[pick]+(milestone?' ★':''),
-    milestone?'#ffd23a':'#9bffcf', milestone?1.15:0.95, milestone?26:20);
-  flashLevelPip(pick);
+  sfx('levelup');
+  levelUpFX(pick, lv[pick]);
   updateHudStatic();
 }
 
@@ -1160,6 +1152,8 @@ function burst(worldPos,color,n){
 }
 const beamRings=[];
 function groundBeams(color){ if(!playerMesh)return; beamRings.push({p:playerMesh.position.clone(),color,life:0,max:0.7}); }
+const goldBursts=[];   // level-up: golden beams firing up in a ring around the hero
+function goldBeamBurst(){ if(!playerMesh)return; goldBursts.push({p:playerMesh.position.clone(),life:0,max:1.1}); }
 
 /* =========================================================================
    INPUT
@@ -1180,6 +1174,14 @@ document.getElementById('btnShoot').addEventListener('pointerdown',e=>{e.prevent
 document.getElementById('btnCast').addEventListener('pointerdown',e=>{e.preventDefault();commit('cast');});
 document.getElementById('btnBlitz').addEventListener('pointerdown',e=>{e.preventDefault();commit('blitz');});
 document.getElementById('cashBtn').addEventListener('pointerdown',e=>{e.preventDefault();cashOut(false);});
+// lay the 4 radial buttons on a 90° arc in the lower-right (pivot near the bottom-right corner)
+(function layoutRadial(){
+  const pivotR=14, pivotB=54, R=122, D2R=Math.PI/180;   // px from corner; arc radius (cleared above the bottom HP bar)
+  const arc=[['btnStrike',80],['btnShoot',58],['btnCast',36],['btnBlitz',14]]; // [id, angle: 90=left/low .. 0=up/right]
+  for(const [id,a] of arc){ const b=document.getElementById(id);
+    const right=pivotR+R*Math.sin(a*D2R)-29, bottom=pivotB+R*Math.cos(a*D2R)-29;
+    b.style.right=right+'px'; b.style.bottom=bottom+'px'; }
+})();
 
 document.getElementById('startBtn').addEventListener('click',()=>{ unlockAudio(); startRun(document.getElementById('seedIn').value.trim()); });
 document.getElementById('rndSeed').addEventListener('click',()=>{ document.getElementById('seedIn').value=String(Math.floor(Math.random()*1e9)); });
@@ -1215,6 +1217,7 @@ function update(rdt){
   for(let i=floaters.length-1;i>=0;i--){ const f=floaters[i]; f.life+=rdt; f.p.y+=f.vy*rdt; if(f.life>=f.max)floaters.splice(i,1); }
   for(let i=particles.length-1;i>=0;i--){ const p=particles[i]; p.life+=rdt; p.v.y-=14*rdt; p.p.addScaledVector(p.v,rdt); if(p.life>=p.max)particles.splice(i,1); }
   for(let i=beamRings.length-1;i>=0;i--){ beamRings[i].life+=rdt; if(beamRings[i].life>=beamRings[i].max)beamRings.splice(i,1); }
+  for(let i=goldBursts.length-1;i>=0;i--){ goldBursts[i].life+=rdt; if(goldBursts[i].life>=goldBursts[i].max)goldBursts.splice(i,1); }
   poseT+=rdt;
 
   if(state==='defeated'){ defeatedT+=rdt; if(defeatedT>1.3) proceedNext(); return; }
@@ -1277,6 +1280,28 @@ function animatePlayer(rdt){
   u.armR.rotation.z=lerp(u.armR.rotation.z,armRZ,0.3);
   u.armL.rotation.x=lerp(u.armL.rotation.x,playerPose==='cast'?-1.6:(playerPose==='shoot'?-1.4:-0.3),0.3);
   u.cloak.rotation.x=Math.sin(t*3)*0.05+bodyLean*0.3;
+
+  // ---- Blitz charge: pike tints to glowing gold + rune ribbons swirl at the tip ----
+  const bf=clamp(blitz/CFG.blitzMax,0,1);
+  if(u.pikeMats){ const ge=bf*0.85; for(const m of u.pikeMats){ if(m.emissive) m.emissive.setRGB(ge,ge*0.72,ge*0.12); } }
+  if(u.blitzAura){ u.blitzAura.rotation.y+=rdt*(1.4+bf*4.5); u.blitzAura.rotation.x+=rdt*0.7;
+    const op=bf*bf, sc=0.55+bf*0.8;
+    for(const rb of u.blitzRibbons){ rb.material.opacity=op*0.9; rb.scale.setScalar(sc); rb.rotation.z+=rdt*(1.5+bf*3.5); } }
+  u.tipLight.intensity = Math.max(tipInt.intensity, bf*2.0 + (bf>=1?0.6+Math.sin(t*10)*0.4:0));
+
+  // ---- action bar as a ground ring around the feet (fills centre-out) ----
+  if(actGrp){
+    const showRing = state==='combat' && !off && !queuedAction;
+    actGrp.visible = showRing;
+    if(showRing){
+      actGrp.position.set(playerMesh.position.x, 0.07, playerMesh.position.z);
+      actDisc.scale.setScalar(Math.max(0.001, actBar));
+      const ready = actBar>=1;
+      const pulse = ready ? 0.85+Math.sin(t*6)*0.15 : 1;
+      actDisc.material.color.setHex(ready?0x7be0a8:0x5a7bd8); actDisc.material.opacity=(ready?0.5:0.4)*pulse;
+      actRing.material.color.setHex(ready?0x9bffcf:0x9fc0ff); actRing.material.opacity=(ready?0.85:0.5)*pulse;
+    }
+  }
 }
 function animateEnemy(rdt){
   if(!enemyMesh)return; const u=enemyMesh.userData; const t=performance.now()/1000;
@@ -1370,6 +1395,18 @@ function overlayDraw(){
     for(let k=0;k<8;k++){ const ang=k/8*Math.PI*2+b.life*4; octx.beginPath(); octx.moveTo(s.x+Math.cos(ang)*R*0.4,s.y+Math.sin(ang)*R*0.2); octx.lineTo(s.x+Math.cos(ang)*R,s.y+Math.sin(ang)*R*0.5); octx.stroke(); }
     octx.restore(); } }
 
+  // level-up: golden beams firing up in a ring around the hero
+  if(playerMesh){ for(const g of goldBursts){ const f=g.life/g.max; const a=Math.sin(Math.min(f,1)*Math.PI);
+    const foot=toScreen(playerMesh.position.clone().setY(0.1)); const N=11, ringR=48;
+    octx.save(); octx.lineCap='round';
+    for(let k=0;k<N;k++){ const ang=k/N*Math.PI*2; const bx=Math.cos(ang)*ringR, bz=Math.sin(ang)*ringR*0.45;
+      const base=toScreen(playerMesh.position.clone().add(new THREE.Vector3(bx*0.05,0.1,bz*0.05)));
+      const rise=1.0+f*3.2; const top=toScreen(playerMesh.position.clone().add(new THREE.Vector3(bx*0.05,rise,bz*0.05)));
+      const grad=octx.createLinearGradient(base.x,base.y,top.x,top.y);
+      grad.addColorStop(0,'rgba(255,210,90,0)'); grad.addColorStop(0.5,`rgba(255,224,138,${a*0.85})`); grad.addColorStop(1,'rgba(255,245,200,0)');
+      octx.strokeStyle=grad; octx.lineWidth=3.5; octx.globalAlpha=a; octx.beginPath(); octx.moveTo(base.x,base.y); octx.lineTo(top.x,top.y); octx.stroke(); }
+    octx.restore(); } }
+
   // dodge cue — incoming enemy hit (thin ring converging onto the thick success band, over the player)
   if(enemyAttacking() && playerMesh){
     let best=null,bd=1e9; for(const h of atk.hits){ if(h.resolved)continue; const d=(atk.startT+h.at)-T; if(d>-CFG.dodgeWin*1.6 && d<bd){bd=d;best=h;} }
@@ -1421,44 +1458,40 @@ function syncHud(){
   el('ehpFill').style.transform=`scaleX(${ef})`;
   if(_lastHud.ehpChip==null||ef>_lastHud.ehpChip-0.001) el('ehpChip').style.transform=`scaleX(${ef})`;
   _lastHud.ehpChip=ef;
-  // player hp
-  const hf=clamp(hp/CFG.playerHP,0,1);
-  el('hpFill').style.transform=`scaleX(${hf})`; el('hpVal').textContent=Math.round(hp);
-  // mult
+  // hp (bottom bar)
+  el('hpFill').style.transform=`scaleX(${clamp(hp/CFG.playerHP,0,1)})`; el('hpVal').textContent=Math.round(hp);
+  // mult + score/cashout (left container)
   el('multBadge').textContent='×'+mult+(mult>=CFG.multMax?' MAX':'');
   el('multFill').style.transform=`scaleX(${mult>=CFG.multMax?1:multMeter})`;
-  // xp
-  const xt=levelUps<CFG.maxLevelUps?CFG.xpThresh[levelUps]:1;
-  el('xpFill').style.transform=`scaleX(${levelUps>=CFG.maxLevelUps?1:clamp(xp/xt,0,1)})`;
-  el('xpVal').textContent=levelUps+'/'+CFG.maxLevelUps;
-  // blitz
-  const bf=clamp(blitz/CFG.blitzMax,0,1); el('blitzFill').style.transform=`scaleX(${bf})`;
-  el('blitzWrap').classList.toggle('ready',blitz>=CFG.blitzMax);
-  // action bar
-  el('actFill').style.transform=`scaleX(${(off||queuedAction)?0:actBar})`;
-  el('actWrap').classList.toggle('full',!off&&!queuedAction&&actBar>=1);
-  // buttons: enabled only when idle & bar full; the queued one is marked
-  const canAct=!off&&!queuedAction&&actBar>=1&&state==='combat';
-  const btn={strike:'btnStrike',shoot:'btnShoot',cast:'btnCast',blitz:'btnBlitz'};
-  el('btnStrike').classList.toggle('on',canAct);
-  el('btnShoot').classList.toggle('on',canAct);
-  el('btnCast').classList.toggle('on',canAct);
-  el('btnBlitz').classList.toggle('on',!off&&!queuedAction&&blitz>=CFG.blitzMax&&state==='combat');
-  for(const a in btn){ el(btn[a]).classList.toggle('queued', queuedAction===a); }
-  // cashout
   el('cashVal').textContent=Math.round(score).toLocaleString();
   el('cashBtn').classList.toggle('lock',resolveLockT>0||state!=='combat');
+  // radial: shown only when a selection is available (or one is queued)
+  const canAct=!off&&!queuedAction&&actBar>=1&&state==='combat';
+  const blitzReadyNow=!off&&!queuedAction&&blitz>=CFG.blitzMax&&state==='combat';
+  el('radial').classList.toggle('show', canAct||blitzReadyNow||!!queuedAction);
+  const bid={strike:'btnStrike',shoot:'btnShoot',cast:'btnCast',blitz:'btnBlitz'};
+  for(const a in bid){ const b=el(bid[a]);
+    b.classList.toggle('on', (a==='blitz'?blitzReadyNow:canAct) || queuedAction===a);
+    b.classList.toggle('queued', queuedAction===a);
+    const t=tierOf(lv[a]); b.classList.toggle('t0',t===0); b.classList.toggle('t1',t===1); b.classList.toggle('t2',t===2); b.classList.toggle('t3',t===3);
+  }
 }
 function updateHudStatic(){
   el('enemyName').textContent=enemy?enemy.name:'—';
   el('enemyTag').textContent='FOE '+(enemyIdx+1)+'/3';
   const pips=document.querySelectorAll('.epip'); pips.forEach((p,i)=>{ p.className='epip'+(i<enemyIdx?' done':i===enemyIdx?' cur':''); });
-  el('lvS').innerHTML='<b>STR</b> '+lv.strike; el('lvH').innerHTML='<b>SHT</b> '+lv.shoot;
-  el('lvC').innerHTML='<b>CST</b> '+lv.cast; el('lvB').innerHTML='<b>BLZ</b> '+lv.blitz;
-  el('btnStrikeLv').textContent='Lv'+lv.strike; el('btnShootLv').textContent='Lv'+lv.shoot;
-  el('btnCastLv').textContent='Lv'+lv.cast; el('btnBlitzLv').textContent='Lv'+lv.blitz;
+  const ms=l=>(l>=3?(l>=6?(l>=9?'★':'✦'):'•'):'');   // milestone marker on the level badge
+  el('btnStrikeLv').textContent=lv.strike; el('btnShootLv').textContent=lv.shoot;
+  el('btnCastLv').textContent=lv.cast; el('btnBlitzLv').textContent=lv.blitz;
 }
-function flashLevelPip(a){ const map={strike:'lvS',shoot:'lvH',cast:'lvC',blitz:'lvB'}; const e=el(map[a]); if(e){e.classList.remove('up');void e.offsetWidth;e.classList.add('up');} }
+// level-up notification: text flyout + golden beams around the hero
+function levelUpFX(pick, level){
+  goldBeamBurst(); groundBeams('#ffe08a');
+  const milestone=(level===3||level===6||level===9);
+  if(playerMesh) addFloater(playerMesh.position.clone().setY(3.6), pick.toUpperCase()+' Lv'+level+(milestone?' ★':''), milestone?'#ffd23a':'#ffe89a', milestone?1.2:1.0, milestone?26:22);
+  const lt=el('levelToast'); lt.innerHTML='<div class="big">'+pick.toUpperCase()+' · LV '+level+(milestone?' ★':'')+'</div><div class="sm">'+(milestone?'NEW POWER':'LEVEL UP')+'</div>';
+  lt.classList.remove('show'); void lt.offsetWidth; lt.classList.add('show');
+}
 
 /* =========================================================================
    RESIZE

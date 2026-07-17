@@ -98,6 +98,15 @@ because only one timing game is live): while attacking, any tap = the current at
 while the enemy attacks, any tap = dodge; otherwise taps do nothing (dodge only activates when
 there's an incoming attack, so you're never "accidentally dodging" while trying to time a hit).
 
+**Mobile HUD (diegetic-first).** The action bar is a **ground ring around the hero's feet** that
+fills centre-out (green + pulsing when ready); action selection is a **radial wheel of circle
+buttons** in the lower-right that only appears when a choice is available, each button carrying its
+level and an escalating ring at the 3/6/9 milestones. **Blitz has no bar** — it's shown on the pike
+itself: the weapon tints to glowing gold and rune ribbons swirl at the tip as it charges, full when
+ready. Multiplier + score + the **Cash Out** button sit in one container top-left; **HP** is a bar
+across the bottom; the **XP bar is hidden** — a level-up instead fires a text flyout + a ring of
+golden beams up around the hero. This keeps the battlefield clear.
+
 ### Ability levels & 3/6/9 evolutions
 Each action has a level 1–9. Milestones at **3 / 6 / 9** swap in a **new, longer timing
 sequence** (see `SEQ` in code); levels between milestones give numeric buffs (more base
