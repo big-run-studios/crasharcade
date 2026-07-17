@@ -156,7 +156,7 @@
 
   </div>
 
-  <div class="brand">CRASHARCADE · DEMON ASSAULT v0.26.1</div>
+  <div class="brand">CRASHARCADE · DEMON ASSAULT v0.26.2</div>
 </div>
 
 <audio id="music" src="demon-music.mp3" loop preload="auto"></audio>
@@ -1513,7 +1513,7 @@ scene.background=new THREE.Color(0x0e0604);
 const _pmrem=new THREE.PMREMGenerator(renderer); const _envScene=new THREE.Scene();
 _envScene.add(new THREE.Mesh(new THREE.SphereGeometry(50,20,10),MBM({color:0x3a1c14,side:THREE.BackSide})));
 const uniEnv=_pmrem.fromScene(_envScene,0.06).texture;
-scene.fog=new THREE.Fog(0x3a1008, 1500, 3200);   // ember-red haze. near pushed OUT (was 900) so enemies spawning just outside the walls stay readable; dense only further out (far 3200) → the far scatter dissolves into the red glow
+scene.fog=new THREE.Fog(0x8a2c12, 1500, 2500);   // warm ember haze MATCHED to the sky's horizon glow so the distance dissolves INTO the glow (hides the world edge / far seams beyond the boundary). near kept out (1500) so enemies just outside the walls stay readable; far pulled back IN (was 3200) to restore the draw-distance hiding
 const camera=new THREE.PerspectiveCamera(55, innerWidth/innerHeight, 10, 4200);
 camera.layers.enable(1);   // render layer 1 (character-only lights live here, else the renderer culls them)
 
