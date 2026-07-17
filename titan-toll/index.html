@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
-<title>Titan Toll</title>
+<title>Titan Guard</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@600;700;900&family=Fredoka:wght@500;600;700&family=Orbitron:wght@600;700;900&display=swap" rel="stylesheet">
 <style>
@@ -195,7 +195,7 @@
 
     <!-- menu -->
     <div class="screen" id="menu">
-      <h1>TITAN<br><span class="a">TOLL</span></h1>
+      <h1>TITAN<br><span class="a">GUARD</span></h1>
       <div class="sub">One warrior. One pike, three forms. Three colossal foes. Build your score — then <b style="color:var(--cash)">cash out before you fall</b>.</div>
       <div class="howto">
         <div><span class="k">CHOOSE</span> When the action bar fills, tap <b style="color:var(--strike)">Strike</b> / <b style="color:var(--shoot)">Shoot</b> / <b style="color:var(--cast)">Cast</b>.</div>
@@ -236,7 +236,7 @@
       <div id="dbgLog"></div>
     </div>
 
-    <div id="brand">CRASHARCADE · TITAN TOLL v0.2.0</div>
+    <div id="brand">CRASHARCADE · TITAN GUARD v0.3.0</div>
   </div>
 </div>
 
@@ -249,7 +249,7 @@
 import * as THREE from './lib/three.module.js';
 
 /* =========================================================================
-   TITAN TOLL — 1v1 JRPG crash-combat prototype
+   TITAN GUARD — 1v1 JRPG crash-combat prototype
    Sim is deterministic from a run seed + player-input sequence.
    ========================================================================= */
 
@@ -301,6 +301,7 @@ const CFG={
   seqTail:0.35,            // pause after last offensive target before bar frees
   breather:[1.45,1.05,0.62],// idle gap before next enemy telegraph, per enemy
   staggerTime:1.4,         // blitz stagger: enemy can't start a set for this long
+  timeScale:2,             // global slowdown for telegraphs + attack/sequence pacing (higher = easier to read)
 };
 
 /* action base damage units + per-action character */
@@ -352,7 +353,8 @@ const SEQ={
    hit = {sp:'slow'|'med'|'fast', dmg, at}  at = impact time from set start (s)
    dodge windows never overlap (all gaps >= 0.24s > 2*dodgeWin)
    ========================================================================= */
-const LEAD={slow:0.9, med:0.58, fast:0.34};   // telegraph lead per speed
+const LEAD={slow:0.9, med:0.58, fast:0.34};   // telegraph lead per speed (base; scaled by CFG.timeScale)
+const LD=sp=>LEAD[sp]*CFG.timeScale;           // effective telegraph lead
 const H=(sp,dmg,at)=>({sp,dmg,at});
 
 const ENEMIES=[
@@ -447,12 +449,13 @@ const scene=new THREE.Scene();
 scene.background=new THREE.Color(0x8fc4f0);
 scene.fog=new THREE.Fog(0xbfe0f5, 40, 165);
 
-const camera=new THREE.PerspectiveCamera(60, cw/ch, 0.1, 600);
-// low, behind + slightly left of the player, angled up toward the titan (dramatic wide-angle hero shot)
-const CAM={pos:new THREE.Vector3(0.2,2.95,7.35), look:new THREE.Vector3(-0.55,3.85,-6)};
-const PHOME={x:0.5, z:2.15, ry:0.15};    // player home: bottom-right of frame, facing the titan
-const ENEMY_Z=-10.0;
-const ENEMY_SCALE=[1.15,1.22,0.96];      // per-enemy: normalise on-screen height (Titan is 13.5u tall, dominates by mass)
+const camera=new THREE.PerspectiveCamera(41, cw/ch, 0.1, 600);
+// quarter-profile: orbited ~22.5° off the lane axis, zoomed out, low — shows the depth/distance
+// between player (bottom-left) and titan (upper-right).
+const CAM={pos:new THREE.Vector3(7.65,3.6,14.48), look:new THREE.Vector3(0,3.0,-4)};
+const PHOME={x:0.8, z:2.2, ry:-0.55, mirror:true};   // player home: bottom-left, mirrored stance, feet just above the Strike button
+const ENEMY_Z=-11.0;
+const ENEMY_SCALE=[1.0,1.06,0.86];       // per-enemy: normalise on-screen height for the quarter frame (Titan looms largest)
 camera.position.copy(CAM.pos); camera.lookAt(CAM.look);
 
 // lights — bright daytime
@@ -578,8 +581,10 @@ function buildPlayer(){
   pike.position.set(0.05,-0.8,0.1);
   armR.add(pike); g.userData.pike=pike;
 
+  g.traverse(o=>{ if(o.material) o.material.side=THREE.DoubleSide; }); // allow horizontal mirror (scale.x=-1) without back-face culling
   g.position.set(PHOME.x,0,PHOME.z);
-  g.rotation.y=PHOME.ry;                  // facing the titan (up-left)
+  g.rotation.y=PHOME.ry;                  // facing the titan
+  g.scale.x=PHOME.mirror?-1:1;
   return g;
 }
 
@@ -849,7 +854,7 @@ function commit(action){
   else { tier=tierOf(level); seqList=SEQ[action][tier]; }
   // build targets w/ absolute times
   const targets=[]; let t=0;
-  for(const d of seqList){ t+=d.g; targets.push({t, an:d.an, w:d.w, k:d.k, fin:!!d.fin, mv:d.mv||null, resolved:false, grade:null}); }
+  for(const d of seqList){ t+=d.g*CFG.timeScale; targets.push({t, an:d.an, w:d.w, k:d.k, fin:!!d.fin, mv:d.mv||null, resolved:false, grade:null}); }
   const dur=targets[targets.length-1].t;
   off={action, level, tier, startT:T, targets, dur, idx:0, clean:true, dmgMul:lvDmg(level)*(action==='blitz'?1.35:1)};
   if(action!=='blitz'){ actBar=0; }
@@ -1033,7 +1038,7 @@ function chooseAttack(){
 }
 function startAttack(idx){
   const s=enemy.sets[idx];
-  atk={setIdx:idx, set:s, startT:T, hits:s.hits.map(h=>({...h, resolved:false, dodged:false, tele:false}))};
+  atk={setIdx:idx, set:s, startT:T, hits:s.hits.map(h=>({...h, at:h.at*CFG.timeScale, dmg:h.dmg, resolved:false, dodged:false, tele:false}))};
   last2Atk=lastAtk; lastAtk=idx;
   recentFast = isFast(s) ? recentFast+1 : 0;
   enemyState='telegraph'; enemyTimer=0;
@@ -1052,10 +1057,10 @@ function updateEnemy(dt){
   if(enemyState==='telegraph'||enemyState==='active'){
     const rel=T-atk.startT;
     // 'active' must open no later than the dodge window's early edge, so the first hit's full ±dodgeWin is dodgeable.
-    enemyState = rel<atk.hits[0].at-Math.max(LEAD[atk.hits[0].sp]*0.15, CFG.dodgeWin) ? 'telegraph':'active';
+    enemyState = rel<atk.hits[0].at-Math.max(LD(atk.hits[0].sp)*0.15, CFG.dodgeWin) ? 'telegraph':'active';
     // per-hit telegraph audio
     for(const hit of atk.hits){
-      if(!hit.tele){ const lead=LEAD[hit.sp]; if(rel>=hit.at-lead){ hit.tele=true; } }
+      if(!hit.tele){ const lead=LD(hit.sp); if(rel>=hit.at-lead){ hit.tele=true; } }
       // resolve at window close if undodged
       if(!hit.resolved){
         const imp=hit.at;
@@ -1280,7 +1285,7 @@ function animateEnemy(rdt){
     const rel=T-atk.startT;
     // find the imminent hit for pose
     let best=null,bd=1e9; for(const h of atk.hits){ if(h.resolved)continue; const d=h.at-rel; if(d>-0.15 && d<bd){bd=d;best=h;} }
-    if(best){ const lead=LEAD[best.sp]; const wind=clamp(1-(best.at-rel)/lead,0,1); telAmt=smooth(wind); const impactPh=clamp(1-Math.abs(rel-best.at)/0.14,0,1); strikeAmt=impactPh; curHit=best; }
+    if(best){ const lead=LD(best.sp); const wind=clamp(1-(best.at-rel)/lead,0,1); telAmt=smooth(wind); const impactPh=clamp(1-Math.abs(rel-best.at)/0.14,0,1); strikeAmt=impactPh; curHit=best; }
   }
   const rec = enemyState==='recovery';
   // arm windup + strike
@@ -1346,7 +1351,7 @@ function overlayDraw(){
       const ps=toScreen(playerMesh.position.clone().setY(2.2));
       const spd=best.sp; const col= spd==='fast'?'#ffe14d':spd==='med'?'#ff9a3c':'#ff3b5c';
       // incoming ring shrinks to the dodge moment
-      const prog=clamp(1-(d/ (LEAD[spd])),0,1);
+      const prog=clamp(1-(d/ (LD(spd))),0,1);
       const R=90*(1-prog)+18;
       octx.save(); octx.globalAlpha=0.35+prog*0.55; octx.strokeStyle=col; octx.lineWidth=4;
       octx.beginPath(); octx.arc(ps.x,ps.y,R,0,Math.PI*2); octx.stroke();
@@ -1363,7 +1368,7 @@ function overlayDraw(){
       const tg=off.targets[i]; if(tg.resolved) continue;
       const wp=offAnchor(tg); if(tg.mv==='drift'){ wp.x+=Math.sin((T-off.startT+i)*4)*1.4; }
       const s=toScreen(wp); if(!s.ok)continue;
-      const abs=off.startT+tg.t; const d=abs-T; const lead=0.85;
+      const abs=off.startT+tg.t; const d=abs-T; const lead=0.85*CFG.timeScale;
       const prog=clamp(1-d/lead,0,1);
       const isNext=(i===firstUnres);
       const col= off.action==='strike'?'#ffb648': off.action==='shoot'?'#5fe0ff': off.action==='cast'?'#c07bff':'#ffd23a';
@@ -1505,10 +1510,13 @@ window.__game={
   cfg:CFG, enemies:ENEMIES, seq:SEQ,
   setCam:(px,py,pz,lx,ly,lz)=>{ CAM.pos.set(px,py,pz); CAM.look.set(lx,ly,lz); camera.position.copy(CAM.pos); camera.lookAt(CAM.look); camera.updateMatrixWorld(true); },
   setPlayerHome:(x,z,ry)=>{ PHOME.x=x; PHOME.z=z; PHOME.ry=ry; if(playerMesh){playerMesh.position.set(x,0,z);playerMesh.rotation.y=ry;} },
+  setMirror:(v)=>{ PHOME.mirror=v; if(playerMesh)playerMesh.scale.x=v?-1:1; },
   setEnemyZ:(z)=>{ if(enemyMesh)enemyMesh.position.z=z; },
   setEnemyScale:(s)=>{ if(enemyMesh)enemyMesh.scale.setScalar(s); },
   setFov:(f)=>{ camera.fov=f; camera.updateProjectionMatrix(); },
   _dbg:()=>({ pPos:playerMesh?playerMesh.position.toArray().map(n=>+n.toFixed(2)):null,
+    pFeet:playerMesh?(s=>({x:Math.round(s.x),y:Math.round(s.y),ok:s.ok}))(toScreen(playerMesh.position.clone().setY(0.05))):null,
+    pHead:playerMesh?(s=>({x:Math.round(s.x),y:Math.round(s.y),ok:s.ok}))(toScreen(playerMesh.position.clone().setY(2.4))):null,
     pScreen:playerMesh?(s=>({x:Math.round(s.x),y:Math.round(s.y),ok:s.ok}))(toScreen(playerMesh.position.clone().setY(1.4))):null,
     eHead:(s=>({x:Math.round(s.x),y:Math.round(s.y),ok:s.ok}))(toScreen(enemyMesh.userData.anchors.head.getWorldPosition(new THREE.Vector3()))),
     eFeet:(s=>({x:Math.round(s.x),y:Math.round(s.y),ok:s.ok}))(toScreen(enemyMesh.userData.anchors.low.getWorldPosition(new THREE.Vector3()))),

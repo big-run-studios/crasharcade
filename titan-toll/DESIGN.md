@@ -1,4 +1,7 @@
-# Titan Toll — Vertical-Slice Design Doc
+# Titan Guard — Vertical-Slice Design Doc
+
+> Display name **Titan Guard**. The folder / URL stays `titan-toll/` (like Unicorn Assault kept
+> `unicorn-horde/`), so links and git history are undisturbed.
 
 A skill-based **crash game** presented as a dramatic 1v1 JRPG boss battle. One low-poly
 warrior with a **transforming pike** (melee / bazooka / staff) fights up to **three
@@ -7,14 +10,17 @@ risk until cashout**. Fall before cashing = **zero**.
 
 Everything lives in one self-contained file: [`titan-toll/index.html`](index.html) (three.js r160,
 vendored in `lib/`). Deterministic from a run seed. Headless harness at `window.__game`.
+All telegraph/attack/sequence timings run through a global `CFG.timeScale` (currently **2×**,
+i.e. deliberately slow/readable).
 
 ---
 
 ## 1. Core fantasy & framing
 
-- Warrior in the **bottom-right**, over-the-shoulder, low **wide-angle** camera (FOV 60) angled up.
-- One titan fills the upper composition (~65–75%), a grassy/rocky field between them, distant
-  hills/mesas, bright sky, big billboard clouds — late-90s low-poly, original assets only.
+- **Quarter-profile camera** (FOV 41, orbited ~22.5° off the lane axis, zoomed out): warrior
+  **bottom-left**, mirrored stance, feet just above the Strike button; titan looming **upper-right**;
+  the grassy field/lane runs diagonally between them so you read the **depth and distance**.
+- Distant hills/mesas, bright sky, big billboard clouds — late-90s low-poly, original assets only.
 - The pike **visibly transforms** through the character's animation: held for **Strike**, flipped
   muzzle-over-shoulder for **Shoot**, planted as a glowing staff for **Cast**. The energy tip
   recolours per form (amber / cyan / violet / gold-blitz).
