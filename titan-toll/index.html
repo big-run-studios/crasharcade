@@ -57,7 +57,7 @@
     50%{box-shadow:0 6px 22px rgba(47,214,137,.5),0 0 28px rgba(94,255,168,.9);}}
 
   /* ---------- dodge shield: lower-right corner, under the action radial ---------- */
-  #dodgeShield{position:absolute;right:16px;bottom:calc(30px + env(safe-area-inset-bottom));width:68px;height:84px;z-index:24;
+  #dodgeShield{position:absolute;right:48px;bottom:calc(80px + env(safe-area-inset-bottom));width:78px;height:94px;z-index:24;
     pointer-events:auto;border:none;background:none;padding:0;cursor:pointer;opacity:.4;
     transition:opacity .15s,transform .06s,filter .12s;}
   #dodgeShield svg{width:100%;height:100%;display:block;overflow:visible;}
@@ -79,16 +79,16 @@
   #hpVal{position:absolute;right:10px;top:50%;transform:translateY(-50%);font-family:var(--display);font-weight:800;font-size:12px;color:#fff;text-shadow:0 1px 2px #000;z-index:2;}
 
   /* ---------- radial action menu (lower-right, shown only when selectable) ---------- */
-  #radial{position:absolute;right:0;bottom:0;width:252px;height:300px;pointer-events:none;opacity:0;transform:scale(.85);transition:opacity .16s,transform .16s;}
+  #radial{position:absolute;right:0;bottom:0;width:320px;height:360px;pointer-events:none;opacity:0;transform:scale(.85);transition:opacity .16s,transform .16s;}
   #radial.show{opacity:1;transform:scale(1);}
-  .rbtn{position:absolute;width:58px;height:58px;border-radius:50%;border:none;cursor:pointer;pointer-events:auto;color:#fff;
+  .rbtn{position:absolute;width:74px;height:74px;border-radius:50%;border:none;cursor:pointer;pointer-events:auto;color:#fff;
     display:flex;align-items:center;justify-content:center;
     background:radial-gradient(120% 120% at 50% 28%,rgba(30,40,74,.96),rgba(9,14,32,.97));
     box-shadow:0 3px 12px rgba(0,0,0,.5),inset 0 0 0 2px rgba(255,255,255,.12);
     opacity:.38;filter:grayscale(.6);transition:transform .08s,opacity .12s,filter .12s;}
-  .rbtn .ic{font-size:25px;line-height:1;color:currentColor;text-shadow:0 0 8px currentColor;}
-  .rbtn .rlv{position:absolute;bottom:-11px;left:50%;transform:translateX(-50%);white-space:nowrap;padding:2px 7px;border-radius:999px;
-    font-family:var(--display);font-weight:800;font-size:9px;letter-spacing:.5px;color:#0b1226;background:#fff;box-shadow:0 1px 5px rgba(0,0,0,.55);}
+  .rbtn .ic{font-size:33px;line-height:1;color:currentColor;text-shadow:0 0 8px currentColor;}
+  .rbtn .rlv{position:absolute;bottom:-12px;left:50%;transform:translateX(-50%);white-space:nowrap;padding:3px 9px;border-radius:999px;
+    font-family:var(--display);font-weight:800;font-size:11px;letter-spacing:.5px;color:#0b1226;background:#fff;box-shadow:0 1px 5px rgba(0,0,0,.55);}
   .rbtn.strike{color:var(--strike);} .rbtn.shoot{color:var(--shoot);} .rbtn.cast{color:var(--cast);} .rbtn.blitz{color:var(--blitz);}
   .rbtn.on{opacity:1;filter:none;} .rbtn.on:active{transform:scale(.9);}
   /* cooldown: dark conic sweep + remaining-seconds countdown (level 2+) */
@@ -272,7 +272,7 @@
       <div id="dbgLog"></div>
     </div>
 
-    <div id="brand">CRASHARCADE · TITAN GUARD v0.10.0</div>
+    <div id="brand">CRASHARCADE · TITAN GUARD v0.10.1</div>
   </div>
 </div>
 
@@ -1375,10 +1375,10 @@ document.getElementById('btnBlitz').addEventListener('pointerdown',e=>{e.prevent
 document.getElementById('cashBtn').addEventListener('pointerdown',e=>{e.preventDefault();cashOut(false);});
 // lay the 4 radial buttons on a 90° arc in the lower-right (pivot near the bottom-right corner)
 (function layoutRadial(){
-  const pivotR=14, pivotB=54, R=180, D2R=Math.PI/180;   // px from corner; arc radius (spread out so buttons never overlap)
+  const pivotR=16, pivotB=56, R=214, D2R=Math.PI/180;   // px from corner; arc radius (spread out so buttons never overlap)
   const arc=[['btnStrike',80],['btnShoot',58],['btnCast',36],['btnBlitz',14]]; // [id, angle: 90=left/low .. 0=up/right]
   for(const [id,a] of arc){ const b=document.getElementById(id);
-    const right=pivotR+R*Math.sin(a*D2R)-29, bottom=pivotB+R*Math.cos(a*D2R)-29;
+    const right=pivotR+R*Math.sin(a*D2R)-37, bottom=pivotB+R*Math.cos(a*D2R)-37;
     b.style.right=right+'px'; b.style.bottom=bottom+'px'; }
 })();
 
@@ -1728,7 +1728,7 @@ function syncHud(){
       for(const h of atk.hits){ if(h.resolved) continue; const d=(atk.startT+h.at)-T; if(d<bd){bd=d;inc={dt:d,sp:h.sp};} } }
     if(inc && inc.dt < LD(inc.sp)*1.05 && inc.dt > -dwin()*1.6){
       const app=LD(inc.sp), f=clamp(1-inc.dt/app,0,1), aligned=Math.abs(inc.dt)<=dwin(); const H=116;
-      fillEl.setAttribute('y',(H*(1-f)).toFixed(1)); fillEl.setAttribute('height',(H*f).toFixed(1));
+      fillEl.setAttribute('y',(H/2*(1-f)).toFixed(1)); fillEl.setAttribute('height',(H*f).toFixed(1));  // grows from the centre out
       fillEl.style.fill = inc.sp==='fast'?'#ffe14d':inc.sp==='med'?'#ffb14d':'#ff6a5c';
       sh.classList.add('live'); sh.classList.toggle('full',aligned);
     } else { fillEl.setAttribute('height','0'); sh.classList.remove('live','full'); } }
