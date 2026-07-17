@@ -76,6 +76,12 @@
     font-family:var(--display);font-weight:800;font-size:9px;letter-spacing:.5px;color:#0b1226;background:#fff;box-shadow:0 1px 5px rgba(0,0,0,.55);}
   .rbtn.strike{color:var(--strike);} .rbtn.shoot{color:var(--shoot);} .rbtn.cast{color:var(--cast);} .rbtn.blitz{color:var(--blitz);}
   .rbtn.on{opacity:1;filter:none;} .rbtn.on:active{transform:scale(.9);}
+  /* cooldown: dark conic sweep + remaining-seconds countdown (level 2+) */
+  .rbtn .rcd{position:absolute;inset:0;border-radius:50%;display:none;align-items:center;justify-content:center;
+    font-family:var(--display);font-weight:900;font-size:19px;color:#fff;text-shadow:0 1px 3px #000;pointer-events:none;
+    background:conic-gradient(from -90deg, rgba(4,8,20,.78) calc(var(--cd,0)*360deg), rgba(4,8,20,.14) 0);}
+  .rbtn.cooling{opacity:.8;filter:grayscale(.3);}
+  .rbtn.cooling .ic{opacity:.2;} .rbtn.cooling .rcd{display:flex;}
   /* per-level milestone states (Lv3 / Lv6 / Lv9) — escalating ring + glow */
   .rbtn.on.t1{box-shadow:0 3px 12px rgba(0,0,0,.5),inset 0 0 0 2.5px currentColor;}
   .rbtn.on.t2{box-shadow:0 3px 14px rgba(0,0,0,.5),inset 0 0 0 3px currentColor,0 0 12px -3px currentColor;}
@@ -183,9 +189,9 @@
 
     <!-- lower-right radial: appears only when a selection is available -->
     <div id="radial">
-      <button class="rbtn strike" id="btnStrike"><span class="ic">⚔</span><span class="rlv" id="btnStrikeLv">1</span></button>
-      <button class="rbtn shoot"  id="btnShoot"><span class="ic">◎</span><span class="rlv" id="btnShootLv">1</span></button>
-      <button class="rbtn cast"   id="btnCast"><span class="ic">✦</span><span class="rlv" id="btnCastLv">1</span></button>
+      <button class="rbtn strike" id="btnStrike"><span class="ic">⚔</span><span class="rlv" id="btnStrikeLv">1</span><span class="rcd" id="btnStrikeCd"></span></button>
+      <button class="rbtn shoot"  id="btnShoot"><span class="ic">◎</span><span class="rlv" id="btnShootLv">1</span><span class="rcd" id="btnShootCd"></span></button>
+      <button class="rbtn cast"   id="btnCast"><span class="ic">✦</span><span class="rlv" id="btnCastLv">1</span><span class="rcd" id="btnCastCd"></span></button>
       <button class="rbtn blitz"  id="btnBlitz"><span class="ic">✹</span><span class="rlv" id="btnBlitzLv">1</span></button>
     </div>
 
@@ -241,7 +247,7 @@
       <div id="dbgLog"></div>
     </div>
 
-    <div id="brand">CRASHARCADE · TITAN GUARD v0.6.1</div>
+    <div id="brand">CRASHARCADE · TITAN GUARD v0.7.0</div>
   </div>
 </div>
 
@@ -282,6 +288,8 @@ const CFG={
   // offensive timing (base; widened by ability level)
   goodWin:0.115, perfectWin:0.05, centerWin:0.022,
   winPerLv:0.004,          // +good window per ability level
+  closurePerLv:0.25,       // +25% ring-closure speed per ability level (tighter timing at higher levels)
+  cdPerLevel:5,            // ability cooldown grows 5s/level beyond the action bar; starts at level 2
   // grade -> damage
   dmgMiss:0.18, dmgGood:1.0, dmgPerfect:1.55,
   critMult:1.9,
@@ -322,6 +330,8 @@ const ABASE={strike:15, shoot:17, cast:22, blitz:20};
 /* per-level numeric scaling */
 function lvDmg(lv){return 1+0.13*(lv-1);}            // base damage grows with level
 function lvGood(lv){return CFG.goodWin+CFG.winPerLv*(lv-1);}
+function closureSpeed(lv){return Math.pow(1+CFG.closurePerLv, lv-1);}   // ring closes 25% faster per level
+function abilityCd(lv){return lv>=2 ? CFG.actionFill+CFG.cdPerLevel*(lv-1) : 0;}  // cooldown: none at L1, then bar + 5s/level
 function lvCrit(lv){return CFG.critPerLv*(lv-1);}
 
 /* tier from ability level: 0=L1-2 .. 3=L9 (milestones @3,6,9) */
@@ -770,6 +780,8 @@ let use={strike:1,shoot:1,cast:1,blitz:1};   // damage-weighted usage for level-
 let actBar=0;               // 0..1
 let off=null;               // active offensive sequence
 let queuedAction=null;      // action committed while the enemy is attacking; fires after their attack
+let cooldown={strike:0,shoot:0,cast:0};      // per-ability cooldown remaining (s); blitz is gated by its bar
+let cooldownMax={strike:1,shoot:1,cast:1};   // the cooldown's full duration (for the radial sweep)
 let atk=null;               // active enemy attack
 let enemyState='idle';      // idle | telegraph | active | recovery | stagger
 let enemyTimer=0;           // counts within a state
@@ -848,7 +860,8 @@ function startRun(sd){
   document.getElementById('dSeed').value=seed;
   hp=CFG.playerHP; score=0; mult=1; multMeter=0; blitz=0; xp=0; levelUps=0;
   lv={strike:1,shoot:1,cast:1,blitz:1}; use={strike:1,shoot:1,cast:1,blitz:1};
-  actBar=0; off=null; queuedAction=null; T=0; runClock=0; ragePhase=0; resolveLockT=0; castStreak=0; staggerT=0; forcedAttack=-1;
+  actBar=0; off=null; queuedAction=null; cooldown={strike:0,shoot:0,cast:0}; cooldownMax={strike:1,shoot:1,cast:1};
+  T=0; runClock=0; ragePhase=0; resolveLockT=0; castStreak=0; staggerT=0; forcedAttack=-1;
   hitLog.length=0; floaters.length=0; particles.length=0; paused=false;
   if(!playerMesh){playerMesh=buildPlayer(); scene.add(playerMesh);}
   playerPose='idle'; poseT=0;
@@ -915,7 +928,7 @@ function showResult(dead){
 const enemyAttacking=()=> !!atk && (enemyState==='telegraph'||enemyState==='active') && atk.hits.some(h=>!h.resolved);
 function commit(action){
   if(state!=='combat'||off||queuedAction) return;      // already attacking or one queued
-  if(action==='blitz'){ if(blitz<CFG.blitzMax) return; } else { if(actBar<1) return; }
+  if(action==='blitz'){ if(blitz<CFG.blitzMax) return; } else { if(actBar<1) return; if(cooldown[action]>0) return; }  // can't pick a cooling ability
   // consume the resource now
   if(action==='blitz') blitz=0; else actBar=0;
   // Never two timing games at once: if the enemy is mid-attack, QUEUE this action to fire after.
@@ -935,6 +948,7 @@ function beginOffense(action){
     addFloater(playerMesh.position.clone().setY(3),'BLITZ!','#ffd23a',1.2,30);
   }
   if(action==='cast') castStreak++; else castStreak=0;
+  if(action!=='blitz'){ const cd=abilityCd(level); cooldown[action]=cd; cooldownMax[action]=cd||1; }  // start the cooldown (L2+)
   playerPose=action; poseT=0;
   setPikeForm(off.targets[0]?off.targets[0].k:action, action);
   sfx('tele');
@@ -1329,6 +1343,7 @@ function step(dt){
   T+=dt; runClock+=dt;
   { const rp = runClock>=CFG.enrageAt?2 : runClock>=CFG.angryAt?1 : 0; if(rp>ragePhase){ ragePhase=rp; onRageChange(rp); } }
   resolveLockT=Math.max(0,resolveLockT-dt);
+  cooldown.strike=Math.max(0,cooldown.strike-dt); cooldown.shoot=Math.max(0,cooldown.shoot-dt); cooldown.cast=Math.max(0,cooldown.cast-dt);
   if(!off && !queuedAction && actBar<1){ actBar=Math.min(1, actBar+dt/CFG.actionFill); }
   if(off){
     // auto-miss expired targets, end when done
@@ -1471,8 +1486,8 @@ function drawReticle(cx,cy,R0,dt,win,perfWin,app,col,Rmax,glyph,next){
   octx.beginPath(); octx.arc(0,0,R0+band,0,Math.PI*2); octx.stroke();
   octx.strokeStyle='#fff'; octx.globalAlpha=next?0.75:0.3; octx.lineWidth=2;
   octx.beginPath(); octx.arc(0,0,R0,0,Math.PI*2); octx.stroke();
-  // thin converging ring
-  if(dt>-win*1.6){ const R=R0+K*dt; if(R>2){ octx.strokeStyle=col; octx.globalAlpha=next?1:0.4; octx.lineWidth=next?3.5:2;
+  // thin converging ring (only once it enters the approach, so fast closures don't draw a giant off-screen arc)
+  if(dt>-win*1.6 && dt<app*1.06){ const R=R0+K*dt; if(R>2){ octx.strokeStyle=col; octx.globalAlpha=next?1:0.4; octx.lineWidth=next?3.5:2;
     octx.beginPath(); octx.arc(0,0,R,0,Math.PI*2); octx.stroke(); } }
   // aligned pulse
   if(Math.abs(dt)<=win){ octx.globalAlpha=Math.abs(dt)<=perfWin?0.95:0.55; octx.fillStyle='#fff'; octx.beginPath(); octx.arc(0,0,band*0.6,0,Math.PI*2); octx.fill(); }
@@ -1539,7 +1554,7 @@ function overlayDraw(){
       const R0=tg.fin?42:32;
       const sym = tg.k==='reticle'?'◎': tg.k==='charge'?'✦': tg.k==='glyph'?'❖': tg.k==='detonate'?'✸': tg.k==='launch'?'▲': tg.k==='heavy'?'✖':'●';
       if(i===firstUnres){
-        drawReticle(s.x,s.y,R0,(off.startT+tg.t)-T,lvGood(off.level),CFG.perfectWin,0.85*CFG.timeScale,col,120,sym,true);
+        drawReticle(s.x,s.y,R0,(off.startT+tg.t)-T,lvGood(off.level),CFG.perfectWin,0.85*CFG.timeScale/closureSpeed(off.level),col,120,sym,true);
       } else {
         octx.save(); octx.globalAlpha=0.26; octx.strokeStyle=col; octx.lineWidth=2; octx.beginPath(); octx.arc(s.x,s.y,R0,0,Math.PI*2); octx.stroke();
         octx.globalAlpha=0.4; octx.fillStyle='#fff'; octx.font='800 14px Orbitron,sans-serif'; octx.textAlign='center'; octx.textBaseline='middle'; octx.fillText(sym,s.x,s.y); octx.restore();
@@ -1582,7 +1597,11 @@ function syncHud(){
   el('radial').classList.toggle('show', canAct||blitzReadyNow||!!queuedAction);
   const bid={strike:'btnStrike',shoot:'btnShoot',cast:'btnCast',blitz:'btnBlitz'};
   for(const a in bid){ const b=el(bid[a]);
-    b.classList.toggle('on', (a==='blitz'?blitzReadyNow:canAct) || queuedAction===a);
+    const cd = a!=='blitz' ? cooldown[a] : 0;
+    const cooling = cd>0.01;
+    b.classList.toggle('cooling', cooling);
+    if(cooling){ b.style.setProperty('--cd', clamp(cd/(cooldownMax[a]||1),0,1).toFixed(3)); el(bid[a]+'Cd').textContent=Math.ceil(cd); }
+    b.classList.toggle('on', ((a==='blitz'?blitzReadyNow:(canAct&&!cooling)) || queuedAction===a));
     b.classList.toggle('queued', queuedAction===a);
     const t=tierOf(lv[a]); b.classList.toggle('t0',t===0); b.classList.toggle('t1',t===1); b.classList.toggle('t2',t===2); b.classList.toggle('t3',t===3);
   }
@@ -1658,7 +1677,8 @@ window.__game={
     mult, multMeter:+multMeter.toFixed(2), blitz:Math.round(blitz), blitzReady:blitz>=CFG.blitzMax, xp:Math.round(xp), levelUps, lv:{...lv}, use:{strike:+use.strike.toFixed(0),shoot:+use.shoot.toFixed(0),cast:+use.cast.toFixed(0),blitz:+use.blitz.toFixed(0)},
     actBar:+actBar.toFixed(2), off:off?{action:off.action,tier:off.tier,left:off.targets.filter(t=>!t.resolved).length}:null, queued:queuedAction,
     enemyState, atk:atk?atk.set.name:null, atkLeft:atk?atk.hits.filter(h=>!h.resolved).length:0, vuln:vulnAction, lock:+resolveLockT.toFixed(2),
-    runClock:+runClock.toFixed(2), ragePhase, bank:bankValue(), draws:renderer.info.render.calls }; },
+    runClock:+runClock.toFixed(2), ragePhase, bank:bankValue(),
+    cd:{strike:+cooldown.strike.toFixed(1),shoot:+cooldown.shoot.toFixed(1),cast:+cooldown.cast.toFixed(1)}, draws:renderer.info.render.calls }; },
   step:d=>{ try{ if(state==='combat')step(d); else if(state==='defeated'){defeatedT+=d; if(defeatedT>1.3)proceedNext();} }catch(e){console.error(e);} },
   start:sd=>startRun(sd), toMenu,
   commit, cashout:()=>cashOut(false),
