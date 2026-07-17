@@ -185,7 +185,7 @@
     <button id="cashBtn" class="bigbtn">CASH OUT</button>
 
     <!-- bottom: HP -->
-    <div id="hpBottom"><div id="hpFill"></div><span id="hpLab">HP</span><span id="hpVal">120</span></div>
+    <div id="hpBottom"><div id="hpFill"></div><span id="hpLab">HP</span><span id="hpVal">100</span></div>
 
     <!-- lower-right radial: appears only when a selection is available -->
     <div id="radial">
@@ -247,7 +247,7 @@
       <div id="dbgLog"></div>
     </div>
 
-    <div id="brand">CRASHARCADE · TITAN GUARD v0.7.1</div>
+    <div id="brand">CRASHARCADE · TITAN GUARD v0.7.2</div>
   </div>
 </div>
 
@@ -279,7 +279,7 @@ const rf=(a,b)=>a+Math.random()*(b-a);   // cosmetic only (never gameplay)
    CFG — every adjustable value
    ========================================================================= */
 const CFG={
-  playerHP:120,
+  playerHP:100,
   enemyDmgScale:[0.55,0.68,0.96], // per-enemy incoming-damage multiplier (E1 forgiving -> E3 lethal)
   actionFill:2.7,          // s to fill the action bar
   // dodge
@@ -289,6 +289,7 @@ const CFG={
   goodWin:0.115, perfectWin:0.05, centerWin:0.022,
   winPerLv:0.004,          // +good window per ability level
   closurePerLv:0.25,       // +25% ring-closure speed per ability level (tighter timing at higher levels)
+  minSeqGap:0.22,          // floor on the gap between attack targets so high levels stay tappable
   cdPerLevel:3,            // ability cooldown grows 3s/level beyond the action bar; starts at level 2
   // grade -> damage
   dmgMiss:0.18, dmgGood:1.0, dmgPerfect:1.55,
@@ -939,7 +940,8 @@ function beginOffense(action){
   const level=lv[action], tier=tierOf(level);
   const seqList = action==='blitz' ? SEQ.blitz[tier] : SEQ[action][tier];
   const targets=[]; let t=0;
-  for(const d of seqList){ t+=d.g*CFG.timeScale; targets.push({t, an:d.an, w:d.w, k:d.k, fin:!!d.fin, mv:d.mv||null, resolved:false, grade:null}); }
+  const cs=closureSpeed(level);   // higher level => tighter gaps => the rings close faster (esp. blitz, which had big gaps)
+  for(const d of seqList){ t+=Math.max(CFG.minSeqGap, d.g*CFG.timeScale/cs); targets.push({t, an:d.an, w:d.w, k:d.k, fin:!!d.fin, mv:d.mv||null, resolved:false, grade:null}); }
   const dur=targets[targets.length-1].t;
   off={action, level, tier, startT:T, targets, dur, idx:0, clean:true, dmgMul:lvDmg(level)*(action==='blitz'?1.35:1)};
   if(action==='blitz'){
