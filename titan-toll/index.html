@@ -228,7 +228,7 @@
       <div id="dbgLog"></div>
     </div>
 
-    <div id="brand">CRASHARCADE · TITAN GUARD v0.5.1</div>
+    <div id="brand">CRASHARCADE · TITAN GUARD v0.5.2</div>
   </div>
 </div>
 
@@ -445,7 +445,7 @@ const camera=new THREE.PerspectiveCamera(41, cw/ch, 0.1, 600);
 // quarter-profile: orbited ~22.5° off the lane axis, zoomed out, low — shows the depth/distance
 // between player (bottom-left) and titan (upper-right).
 const CAM={pos:new THREE.Vector3(7.65,3.6,14.48), look:new THREE.Vector3(0,3.0,-4)};
-const PHOME={x:0.8, z:2.2, ry:-0.55, mirror:true};   // player home: bottom-left, mirrored stance, feet just above the Strike button
+const PHOME={x:0.8, z:2.2, ry:-0.55, mirror:false};  // player home: bottom-left; pike reads in the right hand (no mirror)
 const ENEMY_Z=-11.0;
 const ENEMY_SCALE=[1.0,1.06,0.86];       // per-enemy: normalise on-screen height for the quarter frame (Titan looms largest)
 camera.position.copy(CAM.pos); camera.lookAt(CAM.look);
@@ -536,6 +536,47 @@ const actRing=new THREE.Mesh(new THREE.RingGeometry(1.14,1.36,48), unlit(0x9fc0f
 const actDisc=new THREE.Mesh(new THREE.CircleGeometry(1.12,48), unlit(0x2f5fb0,{transparent:true,opacity:0.9,side:THREE.DoubleSide}));
 actGrp.add(actDisc, actRing);
 
+/* physics-driven Blitz ribbons — world-space trailing streamers, shown ONLY when Blitz is charged & usable */
+const RIB_N=11, RIB_COUNT=3, blitzRib=[];
+for(let r=0;r<RIB_COUNT;r++){
+  const pts=[],prev=[]; for(let i=0;i<RIB_N;i++){pts.push(new THREE.Vector3());prev.push(new THREE.Vector3());}
+  const geo=new THREE.BufferGeometry(), verts=new Float32Array(RIB_N*2*3);
+  geo.setAttribute('position',new THREE.BufferAttribute(verts,3));
+  const idx=[]; for(let i=0;i<RIB_N-1;i++){const a=i*2; idx.push(a,a+1,a+2, a+1,a+3,a+2);} geo.setIndex(idx);
+  const mesh=new THREE.Mesh(geo, new THREE.MeshBasicMaterial({color:r===1?0xfff0b0:0xffd23a,transparent:true,opacity:0.92,side:THREE.DoubleSide,depthWrite:false,blending:THREE.AdditiveBlending}));
+  mesh.frustumCulled=false; mesh.visible=false; scene.add(mesh);
+  blitzRib.push({pts,prev,verts,geo,mesh,phase:r/RIB_COUNT*Math.PI*2,seeded:false});
+}
+const _tipW=new THREE.Vector3(),_rHead=new THREE.Vector3(),_rDir=new THREE.Vector3(),_rView=new THREE.Vector3(),_rPerp=new THREE.Vector3();
+function updateBlitzRibbons(rdt){
+  const ready = state==='combat' && blitz>=CFG.blitzMax && playerMesh && playerMesh.userData.blitzAura;
+  if(!ready){ for(const rb of blitzRib){ rb.mesh.visible=false; rb.seeded=false; } return; }
+  playerMesh.userData.blitzAura.getWorldPosition(_tipW);
+  const t=performance.now()/1000, dt=Math.min(rdt,1/30);
+  for(const rb of blitzRib){
+    if(!rb.seeded){ for(let i=0;i<RIB_N;i++){rb.pts[i].copy(_tipW);rb.prev[i].copy(_tipW);} rb.seeded=true; rb.mesh.visible=true; }
+    const a=t*8.5+rb.phase, rr=0.3;
+    _rHead.set(_tipW.x+Math.cos(a)*rr, _tipW.y+Math.sin(a*1.7)*0.16, _tipW.z+Math.sin(a)*rr);
+    for(let i=0;i<RIB_N;i++){ const p=rb.pts[i], pr=rb.prev[i];
+      if(i===0){ pr.copy(p); p.lerp(_rHead,0.5); }
+      else{ const vx=(p.x-pr.x)*0.88,vy=(p.y-pr.y)*0.88,vz=(p.z-pr.z)*0.88; pr.copy(p);
+        p.x+=vx; p.y+=vy-0.45*dt; p.z+=vz;                      // inertia + light gravity => swirling streamer
+        const ah=rb.pts[i-1]; const dx=p.x-ah.x,dy=p.y-ah.y,dz=p.z-ah.z, d=Math.hypot(dx,dy,dz)||1e-4, k=(d-0.055)/d; p.x-=dx*k;p.y-=dy*k;p.z-=dz*k; }
+    }
+    const cam=camera.position, pos=rb.verts;
+    for(let i=0;i<RIB_N;i++){ const p=rb.pts[i], nx=rb.pts[Math.min(i+1,RIB_N-1)], pv=rb.pts[Math.max(i-1,0)];
+      _rDir.set(nx.x-pv.x,nx.y-pv.y,nx.z-pv.z); if(_rDir.lengthSq()<1e-8)_rDir.set(0,1,0); _rDir.normalize();
+      _rView.set(cam.x-p.x,cam.y-p.y,cam.z-p.z).normalize(); _rPerp.crossVectors(_rDir,_rView).normalize();
+      const w=0.07*(1-i/RIB_N)+0.008, o=i*6;
+      pos[o]=p.x+_rPerp.x*w;pos[o+1]=p.y+_rPerp.y*w;pos[o+2]=p.z+_rPerp.z*w;
+      pos[o+3]=p.x-_rPerp.x*w;pos[o+4]=p.y-_rPerp.y*w;pos[o+5]=p.z-_rPerp.z*w; }
+    rb.geo.attributes.position.needsUpdate=true;
+  }
+}
+// hero glow that flashes when Blitz activates
+let heroFlashT=0;
+const heroLight=new THREE.PointLight(0xffd76a,0,16); scene.add(heroLight);
+
 /* =========================================================================
    PLAYER — low-poly warrior with a transforming pike
    ========================================================================= */
@@ -572,12 +613,8 @@ function buildPlayer(){
   const muzzle=new THREE.Mesh(new THREE.CylinderGeometry(0.16,0.13,0.5,10),flat(0x353b48)); muzzle.position.y=1.45; muzzle.visible=false; pike.add(muzzle); g.userData.muzzle=muzzle;
   // pike materials that tint to glowing gold as the Blitz charge builds
   g.userData.pikeMats=[shaft.material, blade.material, cross.material, muzzle.material];
-  // Blitz aura: rune-magic ribbons orbiting an invisible sphere at the tip (no visible ball).
-  const aura=new THREE.Group(); aura.position.y=1.9; pike.add(aura); g.userData.blitzAura=aura;
-  const ribbons=[];
-  for(let i=0;i<3;i++){ const rb=new THREE.Mesh(new THREE.TorusGeometry(0.24,0.018,4,22,Math.PI*1.35), unlit(0xffd23a,{transparent:true,opacity:0}));
-    rb.rotation.set(i*1.15,i*0.8,i*0.5); aura.add(rb); ribbons.push(rb); }
-  g.userData.blitzRibbons=ribbons;
+  // Blitz tip anchor (invisible sphere) — physics ribbons attach here in world space when Blitz is ready.
+  const aura=new THREE.Object3D(); aura.position.y=1.9; pike.add(aura); g.userData.blitzAura=aura;
   const tipL=new THREE.PointLight(0xffd23a,0,6); tipL.position.y=1.9; pike.add(tipL); g.userData.tipLight=tipL;
   // rune ring for cast (hidden until casting)
   const rune=new THREE.Mesh(new THREE.TorusGeometry(0.32,0.03,6,20),unlit(0xc07bff)); rune.position.y=1.0; rune.rotation.x=Math.PI/2; rune.visible=false; pike.add(rune); g.userData.rune=rune;
@@ -868,7 +905,7 @@ function beginOffense(action){
   off={action, level, tier, startT:T, targets, dur, idx:0, clean:true, dmgMul:lvDmg(level)*(action==='blitz'?1.35:1)};
   if(action==='blitz'){
     staggerT=CFG.staggerTime;                          // protect the opening after this blitz
-    sfx('blitz'); shake(0.4,0.35);
+    sfx('blitz'); shake(0.5,0.4); heroFlashT=0.5;       // glow flashes on the hero
     addFloater(playerMesh.position.clone().setY(3),'BLITZ!','#ffd23a',1.2,30);
   }
   if(action==='cast') castStreak++; else castStreak=0;
@@ -1222,6 +1259,7 @@ function update(rdt){
   for(let i=particles.length-1;i>=0;i--){ const p=particles[i]; p.life+=rdt; p.v.y-=14*rdt; p.p.addScaledVector(p.v,rdt); if(p.life>=p.max)particles.splice(i,1); }
   for(let i=beamRings.length-1;i>=0;i--){ beamRings[i].life+=rdt; if(beamRings[i].life>=beamRings[i].max)beamRings.splice(i,1); }
   for(let i=goldBursts.length-1;i>=0;i--){ goldBursts[i].life+=rdt; if(goldBursts[i].life>=goldBursts[i].max)goldBursts.splice(i,1); }
+  heroFlashT=Math.max(0,heroFlashT-rdt);
   poseT+=rdt;
 
   if(state==='defeated'){ defeatedT+=rdt; if(defeatedT>1.3) proceedNext(); return; }
@@ -1285,13 +1323,10 @@ function animatePlayer(rdt){
   u.armL.rotation.x=lerp(u.armL.rotation.x,playerPose==='cast'?-1.6:(playerPose==='shoot'?-1.4:-0.3),0.3);
   u.cloak.rotation.x=Math.sin(t*3)*0.05+bodyLean*0.3;
 
-  // ---- Blitz charge: pike tints to glowing gold + rune ribbons swirl at the tip ----
+  // ---- Blitz charge: pike tints to glowing gold; ribbons (physics) are handled in updateBlitzRibbons ----
   const bf=clamp(blitz/CFG.blitzMax,0,1);
   if(u.pikeMats){ const ge=bf*0.85; for(const m of u.pikeMats){ if(m.emissive) m.emissive.setRGB(ge,ge*0.72,ge*0.12); } }
-  if(u.blitzAura){ u.blitzAura.rotation.y+=rdt*(1.4+bf*4.5); u.blitzAura.rotation.x+=rdt*0.7;
-    const op=bf*bf, sc=0.55+bf*0.8;
-    for(const rb of u.blitzRibbons){ rb.material.opacity=op*0.9; rb.scale.setScalar(sc); rb.rotation.z+=rdt*(1.5+bf*3.5); } }
-  u.tipLight.intensity = Math.max(tipInt.intensity, bf*2.0 + (bf>=1?0.6+Math.sin(t*10)*0.4:0));
+  u.tipLight.intensity = Math.max(tipInt.intensity, bf*1.6 + (bf>=1?0.8+Math.sin(t*11)*0.5:0));
 
   // ---- action bar as a ground ring around the feet (fills centre-out) ----
   if(actGrp){
@@ -1342,7 +1377,8 @@ function frame(nw){
   const rdt=Math.min((nw-last)/1000,1/30); last=nw;
   if(cw!==app.clientWidth||ch!==app.clientHeight) resize();
   try{ update(rdt); }catch(err){ console.error('update',err); }
-  try{ if(playerMesh)animatePlayer(rdt); if(enemyMesh)animateEnemy(rdt); }catch(err){ console.error('anim',err); }
+  try{ if(playerMesh)animatePlayer(rdt); if(enemyMesh)animateEnemy(rdt); updateBlitzRibbons(rdt); }catch(err){ console.error('anim',err); }
+  if(playerMesh){ heroLight.position.set(playerMesh.position.x,1.7,playerMesh.position.z); heroLight.intensity = heroFlashT>0 ? (heroFlashT/0.5)*14 : 0; }
   // camera shake
   const sx=(Math.random()-0.5)*shakeAmt*0.5, sy=(Math.random()-0.5)*shakeAmt*0.5;
   camera.position.set(CAM.pos.x+sx,CAM.pos.y+sy,CAM.pos.z); camera.lookAt(CAM.look.x+sx,CAM.look.y+sy,CAM.look.z);
@@ -1405,6 +1441,14 @@ function overlayDraw(){
     if(s.ok){ octx.save(); octx.font='800 15px Orbitron,sans-serif'; octx.textAlign='center'; octx.textBaseline='middle';
       octx.lineWidth=4; octx.strokeStyle='rgba(0,0,0,.6)'; octx.strokeText('READY',s.x,s.y); octx.fillStyle='#d6ffe8'; octx.fillText('READY',s.x,s.y); octx.restore(); }
   }
+
+  // Blitz activation: a golden glow flashes on the hero (character-anchored)
+  if(playerMesh && heroFlashT>0){ const s=toScreen(playerMesh.position.clone().setY(1.4));
+    if(s.ok){ const a=heroFlashT/0.5, R=72+(1-a)*150; octx.save();
+      const grd=octx.createRadialGradient(s.x,s.y,0,s.x,s.y,R);
+      grd.addColorStop(0,`rgba(255,226,140,${a*0.6})`); grd.addColorStop(0.55,`rgba(255,200,80,${a*0.24})`); grd.addColorStop(1,'rgba(255,200,80,0)');
+      octx.fillStyle=grd; octx.beginPath(); octx.arc(s.x,s.y,R,0,Math.PI*2); octx.fill();
+      octx.globalAlpha=a*0.85; octx.strokeStyle='#fff2b0'; octx.lineWidth=4; octx.beginPath(); octx.arc(s.x,s.y,R*0.92,0,Math.PI*2); octx.stroke(); octx.restore(); } }
 
   // level-up: golden beams firing up in a ring around the hero
   if(playerMesh){ for(const g of goldBursts){ const f=g.life/g.max; const a=Math.sin(Math.min(f,1)*Math.PI);
