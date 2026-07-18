@@ -83,6 +83,13 @@
   #tapList .tap{font:800 11px var(--disp);color:#cfe6ff;background:rgba(255,194,51,.14);border:1px solid rgba(255,194,51,.5);border-radius:999px;padding:3px 8px;}
   #tapList .tap b{color:#ff6a7a;cursor:pointer;margin-left:4px;}
   #tapNow{position:fixed;left:50%;top:38%;transform:translate(-50%,-50%);z-index:8;font:900 42px var(--disp);color:#eafcff;text-shadow:0 0 20px var(--cyan),0 0 44px var(--cyan);opacity:0;transition:opacity .04s;pointer-events:none;letter-spacing:2px;}
+  /* per-clip facing rotation (top-centre, both modes) */
+  #rotbar{top:104px;left:50%;transform:translateX(-50%);z-index:7;display:flex;gap:7px;align-items:center;padding:6px 11px;}
+  #rotbar .rl{font-weight:800;font-size:10px;letter-spacing:1.5px;color:#9fb2d8;}
+  #rotbar button{font:800 14px var(--disp);color:#eaf2ff;background:#1b2450;border:1.5px solid #3a4a90;border-radius:9px;padding:5px 10px;cursor:pointer;line-height:1;}
+  #rotbar button:active{transform:scale(.94);}
+  #rotbar input[type=range]{width:96px;}
+  #rotbar b{font-weight:800;font-size:11px;color:var(--gold);min-width:34px;text-align:right;}
 </style>
 </head>
 <body>
@@ -94,6 +101,7 @@
   <span class="cnt" id="cnt">—</span>
 </div>
 <div id="now" class="panel"><div class="nm" id="nowName">loading…</div><div class="meta" id="nowMeta"></div></div>
+<div id="rotbar" class="panel"><span class="rl">FACE</span><button id="rotL" title="rotate 90° CCW">↺</button><input id="rot" type="range" min="0" max="355" step="5" value="0"><button id="rotR" title="rotate 90° CW">↻</button><b id="rotv">0°</b></div>
 <div id="slots" class="panel"><div class="hdr">REQUIRED SLOTS · drop a clip here</div><div id="slotList"></div><button id="export">⬇ EXPORT JSON</button></div>
 <div id="defend" class="panel">
   <div class="drow"><select id="defClipSel"></select><span class="ddur" id="defDur"></span><span id="defSpd">SPD<input id="defSpeed" type="range" min="0.25" max="1" step="0.05" value="0.6"></span></div>
@@ -280,7 +288,7 @@ el('export').onclick=()=>{ const name=MODELS.find(m=>m.file===curFile)?.name||cu
     out={ model:name, kind:'hero', map:{} };
     curSlots.forEach(([k])=>{ out.map[k]=mapping[k]||null; });                                             // HERO_CLIP shape
   }
-  el('mapText').value=JSON.stringify(out,null,2); el('modal').style.display='flex'; };
+  out.rotations=rotObj(); el('mapText').value=JSON.stringify(out,null,2); el('modal').style.display='flex'; };
 el('closeBtn').onclick=()=>el('modal').style.display='none';
 el('copyBtn').onclick=async()=>{ const t=el('mapText'); t.select(); try{ await navigator.clipboard.writeText(t.value); el('copyBtn').textContent='✓ Copied'; setTimeout(()=>el('copyBtn').textContent='📋 Copy',1200); }catch(e){ document.execCommand('copy'); } };
 
@@ -292,12 +300,23 @@ addEventListener('resize',resize); resize();
 let last=performance.now();
 function frame(){ requestAnimationFrame(frame); const now=performance.now(), dt=Math.min((now-last)/1000,0.05); last=now;
   if(mixer)mixer.update(dt);
+  if(model) model.rotation.y=(rotations[curClipName()]||0)*Math.PI/180;   // per-clip facing fix-up
   flyStep(dt); renderer.render(scene,camera); }
 // ---- DEFENSE-TIMING authoring mode: scrub an attack clip, mark tap points, preview, export ----
 let mode='map', timings={}, dLastIdx=-1, dLastFile='', dLastN=-1, dPreview=false, previewSpeed=0.6;
 function loadTimings(){ try{ timings=JSON.parse(localStorage.getItem('tg_taps_'+curFile)||'{}'); }catch(e){ timings={}; } }
 function saveTimings(){ localStorage.setItem('tg_taps_'+curFile, JSON.stringify(timings)); }
 function curClipName(){ return clips[curIdx]?clips[curIdx].name:''; }
+// ---- per-clip facing rotation: rotate a clip's yaw so it faces the intended way (saved per clip, rides in the export) ----
+let rotations={};
+function loadRotations(){ try{ rotations=JSON.parse(localStorage.getItem('tg_rot_'+curFile)||'{}'); }catch(e){ rotations={}; } }
+function saveRotations(){ localStorage.setItem('tg_rot_'+curFile, JSON.stringify(rotations)); }
+function rotObj(){ const o={}; for(const k in rotations){ if(rotations[k]) o[k]=rotations[k]; } return o; }
+function syncRot(){ const r=rotations[curClipName()]||0; if(el('rot'))el('rot').value=r; if(el('rotv'))el('rotv').textContent=r+'°'; }
+function setRot(deg){ const n=curClipName(); if(!n)return; rotations[n]=((Math.round(deg)%360)+360)%360; saveRotations(); syncRot(); }
+el('rot').oninput=e=>setRot(+e.target.value);
+el('rotL').onclick=()=>setRot((rotations[curClipName()]||0)+90);   // ↺ CCW
+el('rotR').onclick=()=>setRot((rotations[curClipName()]||0)-90);   // ↻ CW
 function curTaps(){ const n=curClipName(); if(!n)return []; if(!timings[n])timings[n]=[]; return timings[n]; }
 function forceWeight(){ if(curAction){ curAction.enabled=true; curAction.setEffectiveWeight(1); } }
 // which SLOT/move label(s) a clip is mapped to in MAP mode (reverse lookup); [] if the clip isn't assigned to a move
@@ -345,12 +364,12 @@ function drawTimeline(){ const c=clips[curIdx]; if(!c)return; const a=curTaps();
   el('defTimeline').innerHTML=a.map(t=>'<div class="mk" style="left:'+(t/c.duration*100).toFixed(1)+'%"></div>').join('')+'<div class="ph" id="defPh" style="left:0%"></div>'; }
 function drawPlayhead(){ const c=clips[curIdx], ph=el('defPh'); if(ph&&c&&curAction)ph.style.left=(Math.min(curAction.time,c.duration)/c.duration*100).toFixed(1)+'%'; }
 el('defExport').onclick=()=>{ const name=MODELS.find(m=>m.file===curFile)?.name||curFile; const attacks={};
-  Object.keys(timings).forEach(k=>{ if(timings[k]&&timings[k].length){ const c=clips.find(x=>x.name===k); attacks[k]={slots:slotsForClip(k), clip:k, duration:c?+c.duration.toFixed(3):null, taps:timings[k].slice().sort((a,b)=>a-b).map(t=>+t.toFixed(3))}; } });
-  el('mapText').value=JSON.stringify({model:name, attacks},null,2); el('modal').style.display='flex'; };
+  Object.keys(timings).forEach(k=>{ if(timings[k]&&timings[k].length){ const c=clips.find(x=>x.name===k); attacks[k]={slots:slotsForClip(k), clip:k, duration:c?+c.duration.toFixed(3):null, rot:rotations[k]||0, taps:timings[k].slice().sort((a,b)=>a-b).map(t=>+t.toFixed(3))}; } });
+  el('mapText').value=JSON.stringify({model:name, rotations:rotObj(), attacks},null,2); el('modal').style.display='flex'; };
 function defendLoop(){ requestAnimationFrame(defendLoop);
   if(clips.length!==dLastN && mode==='defend'){ fillClipSel(); syncDefend(); }
-  if(curFile!==dLastFile){ dLastFile=curFile; if(mode==='defend'){ loadTimings(); fillClipSel(); syncDefend(); } }
-  if(curIdx!==dLastIdx){ dLastIdx=curIdx; if(mode==='defend') syncDefend(); }
+  if(curFile!==dLastFile){ dLastFile=curFile; loadRotations(); syncRot(); if(mode==='defend'){ loadTimings(); fillClipSel(); syncDefend(); } }
+  if(curIdx!==dLastIdx){ dLastIdx=curIdx; syncRot(); if(mode==='defend') syncDefend(); }
   if(mode!=='defend'||!curAction) return;
   drawPlayhead();
   if(dPreview){ const t=curAction.time, dur=clips[curIdx]?clips[curIdx].duration:0;
