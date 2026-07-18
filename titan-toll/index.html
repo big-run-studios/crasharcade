@@ -308,7 +308,7 @@
       <div id="dbgLog"></div>
     </div>
 
-    <div id="brand">CRASHARCADE · TITAN GUARD v0.15.12</div>
+    <div id="brand">CRASHARCADE · TITAN GUARD v0.15.13</div>
   </div>
 </div>
 
@@ -925,7 +925,10 @@ const ENEMY_TAPS=[
     'Punch_Combo':  { dur:2.467, taps:[0.646,1.404] },
     'Punch_Pose':   { dur:4.3,   taps:[2.516] },
   },
-  {},   // Gale
+  {  // Gale — 2 of the 4 unique cast clips authored so far (mage_soell_cast_4 / _6 still pending)
+    'mage_soell_cast':  { dur:2.267, taps:[0.972] },   // Attack 1 & 8
+    'mage_soell_cast_2':{ dur:3,     taps:[1.242] },   // Attack 2 & 5
+  },
   {},   // Sky Titan
 ];
 // TAP-WINDOW SPARKLE — a character-anchored twinkle on each boss's signature body part,
