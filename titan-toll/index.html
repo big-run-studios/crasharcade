@@ -308,7 +308,7 @@
       <div id="dbgLog"></div>
     </div>
 
-    <div id="brand">CRASHARCADE · TITAN GUARD v0.15.10</div>
+    <div id="brand">CRASHARCADE · TITAN GUARD v0.15.11</div>
   </div>
 </div>
 
@@ -952,7 +952,7 @@ function resolveBoneFix(model,i){
 // its BIND pose 180° about the wrist so it points the opposite way. Original + duplicate = a two-ended staff.
 const ENEMY_STAFF=[
   null,                                                            // Cliffhorn
-  { bone:'RightHand', distMin:0.35, flip:[Math.PI,0,0] },          // Gale — scythe → double-sided (tune via __game.staffTune)
+  { bone:'RightHand', distMin:0.35, flip:[Math.PI,0,0], shaftW:0.2, shaftPerp:0.14 },  // Gale — scythe → double-sided; includes the real thin shaft (tune via __game.staffTune)
   null,                                                            // Sky Titan
 ];
 function buildStaffDuplicate(model, cfg){
@@ -962,18 +962,32 @@ function buildStaffDuplicate(model, cfg){
   const binv=sm.skeleton.boneInverses[rhi];
   const rhPos=new THREE.Vector3().setFromMatrixPosition(binv.clone().invert());   // wrist bind pos (mesh-local)
   const g=sm.geometry, pos=g.attributes.position, nor=g.attributes.normal, uv=g.attributes.uv, si=g.attributes.skinIndex, sw=g.attributes.skinWeight, idx=g.index;
-  const _v=new THREE.Vector3(), isW=new Uint8Array(pos.count);
-  let dmin=1e9; const wv=[];                                       // weapon verts + their distance (for the connecting shaft)
-  for(let i=0;i<pos.count;i++){                                    // weapon vert = hand-bone weighted AND far from the wrist
+  const _v=new THREE.Vector3(), _n=new THREE.Vector3(), _r=new THREE.Vector3(), isW=new Uint8Array(pos.count), rhW=new Float32Array(pos.count);
+  let dmin=1e9; const wv=[];
+  for(let i=0;i<pos.count;i++){                                    // PASS 1: blade + HILT = strongly hand-weighted AND far from the wrist
     let w=0; const ix=[si.getX(i),si.getY(i),si.getZ(i),si.getW(i)], wx=[sw.getX(i),sw.getY(i),sw.getZ(i),sw.getW(i)];
     for(let k=0;k<4;k++) if(ix[k]===rhi) w+=wx[k];
+    rhW[i]=w;
     if(w>0.5){ _v.fromBufferAttribute(pos,i); const d=_v.distanceTo(rhPos); if(d>cfg.distMin){ isW[i]=1; wv.push({i, p:_v.clone(), d}); dmin=Math.min(dmin,d); } }
   }
-  // M = rotate flip about rhPos (in bind space): T(rhPos) · R(flip) · T(-rhPos)
+  if(!wv.length) return null;
+  const near=wv.filter(o=>o.d<=dmin+0.15);                         // hilt = near-end of the blade cluster; axis = wrist→hilt line
+  const A=new THREE.Vector3(); near.forEach(o=>A.add(o.p)); A.multiplyScalar(1/near.length);
+  const axisU=A.clone().sub(rhPos), hiltDist=axisU.length(); axisU.normalize();
+  // PASS 2: the real SHAFT that joins the hilt to the hand — thin, lying on the wrist→hilt line, but skinned
+  // only ~half to RightHand (rest to the forearm) so it fell under the >0.5 cutoff. Include the MODEL's shaft
+  // verts so the flipped duplicate carries its own real shaft (no drawn geometry).
+  for(let i=0;i<pos.count;i++){
+    if(isW[i] || rhW[i] < (cfg.shaftW||0.2)) continue;
+    _r.fromBufferAttribute(pos,i).sub(rhPos);
+    const t=_r.dot(axisU); if(t<0.16 || t>hiltDist+0.05) continue;
+    if(_r.addScaledVector(axisU,-t).length() < (cfg.shaftPerp||0.14)) isW[i]=1;   // close to the shaft line → it's the pole
+  }
+  // M = rotate flip about rhPos (bind space): T(rhPos) · R(flip) · T(-rhPos)
   const R=new THREE.Matrix4().makeRotationFromEuler(new THREE.Euler(cfg.flip[0],cfg.flip[1],cfg.flip[2]));
   const M=new THREE.Matrix4().makeTranslation(rhPos.x,rhPos.y,rhPos.z).multiply(R).multiply(new THREE.Matrix4().makeTranslation(-rhPos.x,-rhPos.y,-rhPos.z));
   const nmat=new THREE.Matrix3().getNormalMatrix(M);
-  const map=new Map(), P=[],N=[],U=[],SI=[],SW=[],ni=[], _n=new THREE.Vector3();
+  const map=new Map(), P=[],N=[],U=[],SI=[],SW=[],ni=[];
   const remap=oi=>{ if(map.has(oi))return map.get(oi); const n=P.length/3; map.set(oi,n);
     _v.fromBufferAttribute(pos,oi).applyMatrix4(M); P.push(_v.x,_v.y,_v.z);
     _n.fromBufferAttribute(nor,oi).applyMatrix3(nmat).normalize(); N.push(_n.x,_n.y,_n.z);
@@ -982,28 +996,6 @@ function buildStaffDuplicate(model, cfg){
   const arr=idx?idx.array:null, tc=idx?idx.count:pos.count;
   for(let t=0;t<tc;t+=3){ const a=idx?arr[t]:t,b=idx?arr[t+1]:t+1,c=idx?arr[t+2]:t+2; if(isW[a]&&isW[b]&&isW[c]) ni.push(remap(a),remap(b),remap(c)); }
   if(ni.length<3) return null;
-  // SHAFT-TO-HAND — the isolation cut off the pole's grip end, so each blade's shaft stops short of
-  // the hand. Extend BOTH poles collinearly along their own axis, THROUGH the wrist, so the original
-  // and the flipped duplicate meet at the grip → one continuous double-ended staff, no chord/stub.
-  if(wv.length){
-    const ds=wv.map(o=>o.d), dmn=Math.min(...ds), dmx=Math.max(...ds);
-    const near=wv.filter(o=>o.d<=dmn+0.15), farV=wv.filter(o=>o.d>=dmx-0.20);
-    const A=new THREE.Vector3(); near.forEach(o=>A.add(o.p)); A.multiplyScalar(1/near.length);       // pole near-end centre
-    const farC=new THREE.Vector3(); farV.forEach(o=>farC.add(o.p)); farC.multiplyScalar(1/farV.length);
-    const poleAxis=A.clone().sub(farC).normalize();                 // blade → near-end (points toward the hand)
-    const axis=A.clone().sub(rhPos).normalize();
-    let r=0; near.forEach(o=>{ const rel=o.p.clone().sub(rhPos); r+=rel.clone().addScaledVector(axis,-rel.dot(axis)).length(); }); r=(r/near.length)*1.15 || 0.02;  // shaft radius = perp spread
-    let uvN=[0.5,0.5]; { const s=wv.slice().sort((a,b)=>a.d-b.d); const pk=s[Math.floor(s.length*0.35)]; if(uv)uvN=[uv.getX(pk.i),uv.getY(pk.i)]; }  // mid-shaft texel (dark metal)
-    const L=A.distanceTo(rhPos)*1.7;                                // long enough to pass through the hand
-    const addShaft=(from,dir)=>{ const end=from.clone().addScaledVector(dir,L), mid=from.clone().add(end).multiplyScalar(0.5);
-      const cyl=new THREE.CylinderGeometry(r,r,from.distanceTo(end),10,1,false);
-      cyl.applyMatrix4(new THREE.Matrix4().compose(mid, new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0,1,0), end.clone().sub(from).normalize()), new THREE.Vector3(1,1,1)));
-      const cp=cyl.attributes.position, cn=cyl.attributes.normal, cidx=cyl.index, base=P.length/3;
-      for(let i=0;i<cp.count;i++){ P.push(cp.getX(i),cp.getY(i),cp.getZ(i)); N.push(cn.getX(i),cn.getY(i),cn.getZ(i)); if(uv)U.push(uvN[0],uvN[1]); SI.push(rhi,0,0,0); SW.push(1,0,0,0); }
-      if(cidx){ for(let i=0;i<cidx.count;i++) ni.push(base+cidx.getX(i)); } else { for(let i=0;i<cp.count;i++) ni.push(base+i); } };
-    addShaft(A, poleAxis);                                          // original pole → through the hand
-    addShaft(A.clone().applyMatrix4(M), poleAxis.clone().transformDirection(M));   // duplicate pole → through the hand
-  }
   const wg=new THREE.BufferGeometry();
   wg.setAttribute('position',new THREE.Float32BufferAttribute(P,3));
   wg.setAttribute('normal',new THREE.Float32BufferAttribute(N,3));
