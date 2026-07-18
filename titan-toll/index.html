@@ -62,7 +62,7 @@
     50%{box-shadow:0 4px 16px rgba(0,0,0,.45),0 0 26px rgba(94,255,168,.9),inset 0 0 0 3px rgba(255,255,255,.55);}}
 
   /* ---------- dodge shield: lower-right corner, under the action radial ---------- */
-  #dodgeShield{position:absolute;right:30px;bottom:calc(32px + env(safe-area-inset-bottom));width:98px;height:118px;z-index:26;
+  #dodgeShield{position:absolute;right:30px;bottom:calc(32px + env(safe-area-inset-bottom));width:98px;height:118px;z-index:24;
     pointer-events:auto;border:none;background:none;padding:0;cursor:pointer;display:none;
     transition:transform .06s,filter .12s;}
   #dodgeShield.show{display:block;filter:drop-shadow(0 0 8px rgba(120,200,255,.6));}
@@ -84,8 +84,8 @@
   #hpVal{position:absolute;right:10px;top:50%;transform:translateY(-50%);font-family:var(--display);font-weight:800;font-size:12px;color:#fff;text-shadow:0 1px 2px #000;z-index:2;}
 
   /* ---------- radial action menu (lower-right, shown only when selectable) ---------- */
-  #radial{position:absolute;right:0;bottom:0;width:320px;height:360px;pointer-events:none;opacity:0;transform:scale(.85);transition:opacity .16s,transform .16s;}
-  #radial.show{opacity:1;transform:scale(1);}
+  #radial{position:absolute;right:0;bottom:0;width:320px;height:360px;pointer-events:none;opacity:0;visibility:hidden;transform:scale(.85);transition:opacity .16s,transform .16s;}
+  #radial.show{opacity:1;visibility:visible;transform:scale(1);}   /* hidden radial is fully non-interactive (no descendant eats taps) */
   .rbtn{position:absolute;width:86px;height:86px;border-radius:50%;border:none;cursor:pointer;pointer-events:auto;color:#fff;
     display:flex;align-items:center;justify-content:center;
     background:radial-gradient(120% 120% at 50% 28%,rgba(30,40,74,.96),rgba(9,14,32,.97));
@@ -94,6 +94,7 @@
   .rbtn .ic{font-size:40px;line-height:1;color:currentColor;text-shadow:0 0 8px currentColor;}
   .rbtn .rlv{position:absolute;bottom:-12px;left:50%;transform:translateX(-50%);white-space:nowrap;padding:3px 10px;border-radius:999px;
     font-family:var(--display);font-weight:800;font-size:12px;letter-spacing:.5px;color:#0b1226;background:#fff;box-shadow:0 1px 5px rgba(0,0,0,.55);}
+  #radial:not(.show) .rbtn{pointer-events:none;}   /* a hidden radial must never eat taps -> tap-anywhere keeps working */
   .rbtn.strike{color:var(--strike);} .rbtn.shoot{color:var(--shoot);} .rbtn.cast{color:var(--cast);} .rbtn.blitz{color:var(--blitz);}
   .rbtn.on{opacity:1;filter:none;} .rbtn.on:active{transform:scale(.9);}
   /* cooldown: dark conic sweep + remaining-seconds countdown (level 2+) */
@@ -306,7 +307,7 @@
       <div id="dbgLog"></div>
     </div>
 
-    <div id="brand">CRASHARCADE · TITAN GUARD v0.11.0</div>
+    <div id="brand">CRASHARCADE · TITAN GUARD v0.12.0</div>
   </div>
 </div>
 
@@ -1055,7 +1056,16 @@ function commit(action){
   if(action==='blitz'){ if(blitz<CFG.blitzMax) return; } else { if(actBar<1) return; if(cooldown[action]>0) return; }  // can't pick a cooling ability
   // consume the resource now
   if(action==='blitz') blitz=0; else actBar=0;
-  // Never two timing games at once: if the enemy is mid-attack, QUEUE this action to fire after.
+  // Blitz INTERRUPTS: it cancels an in-progress enemy attack outright (panic button), then unleashes now.
+  if(action==='blitz'){
+    if(enemyState==='telegraph'||enemyState==='active'){
+      atk=null; enemyState='stagger'; enemyTimer=0;                     // kill the incoming hits, stun the enemy
+      if(enemyMesh) addFloater(enemyMesh.position.clone().setY(6),'INTERRUPT!','#ffd23a',1.0,26);
+    }
+    beginOffense('blitz');
+    return;
+  }
+  // Normal actions never overlap the dodge game: if the enemy is mid-attack, QUEUE to fire after.
   if(enemyAttacking()){ queuedAction=action; sfx('tele'); }
   else beginOffense(action);
 }
@@ -1679,7 +1689,7 @@ function overlayDraw(){
     octx.restore(); } }
 
   // "READY" on the action ring when it is full
-  if(playerMesh && state==='combat' && !off && !queuedAction && actBar>=1){
+  if(playerMesh && state==='combat' && !off && !queuedAction && actBar>=1 && !enemyAttacking()){
     const s=toScreen(playerMesh.position.clone().add(new THREE.Vector3(0.4,0.14,0.85)));
     if(s.ok){ octx.save(); octx.font='800 15px Orbitron,sans-serif'; octx.textAlign='center'; octx.textBaseline='middle';
       octx.lineWidth=4; octx.strokeStyle='rgba(0,0,0,.6)'; octx.strokeText('READY',s.x,s.y); octx.fillStyle='#d6ffe8'; octx.fillText('READY',s.x,s.y); octx.restore(); }
@@ -1762,7 +1772,7 @@ function syncHud(){
   { const sh=el('dodgeShield'), fillEl=el('shieldFill'); let inc=null;
     if(atk && (enemyState==='telegraph'||enemyState==='active')){ let bd=1e9;
       for(const h of atk.hits){ if(h.resolved) continue; const d=(atk.startT+h.at)-T; if(d<bd){bd=d;inc={dt:d,sp:h.sp};} } }
-    if(inc && inc.dt < LD(inc.sp)*1.05 && inc.dt > -dwin()*1.6){
+    if(inc && inc.dt < LD(inc.sp)*1.05 && inc.dt > -dwin()*1.6 && blitz<CFG.blitzMax){   // shield OFF when Blitz is available (Blitz owns the corner then)
       const app=LD(inc.sp), f=clamp(1-inc.dt/app,0,1), aligned=Math.abs(inc.dt)<=dwin();
       fillEl.setAttribute('transform',`translate(50 58) scale(${f.toFixed(3)}) translate(-50 -58)`);  // a shield grows to fill the shield
       const c = inc.sp==='fast'?['#fff4b0','#ffcf1e'] : inc.sp==='med'?['#ffe0b0','#ff9a2e'] : ['#ffc9c2','#ff4d4d'];
@@ -1773,7 +1783,7 @@ function syncHud(){
   { const hf=hp/CFG.playerHP, lo=el('lowhp'); const o = hf<0.5 ? clamp((0.5-hf)/0.5,0,1) : 0;
     lo.style.opacity=(o*0.9).toFixed(2); lo.classList.toggle('crit', hf>0 && hf<0.25); }
   // radial = the 3 core actions (shown when a selection is available / queued); Blitz is its own corner button
-  const canAct=!off&&!queuedAction&&actBar>=1&&state==='combat';
+  const canAct=!off&&!queuedAction&&actBar>=1&&state==='combat'&&!enemyAttacking();  // radial clears during the dodge game so you can tap anywhere to dodge
   const blitzReadyNow=!off&&!queuedAction&&blitz>=CFG.blitzMax&&state==='combat';
   el('radial').classList.toggle('show', canAct||!!queuedAction);
   const bid={strike:'btnStrike',shoot:'btnShoot',cast:'btnCast'};
