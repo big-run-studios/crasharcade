@@ -132,10 +132,15 @@ import { GLTFLoader } from './lib/GLTFLoader.js';
 
 // models to review — kind drives which slot set the game needs filled
 const MODELS = [
-  { name:'Cliffhorn Juggernaut (Obsidian Warlord)', file:'assets/boss1.glb', kind:'boss' },
-  { name:'Gale Reaper (Frostwing Archon)',          file:'assets/boss2.glb', kind:'boss' },
-  { name:'Sky Titan (Golden Sentinel)',             file:'assets/boss3.glb', kind:'boss' },
-  { name:'Hero — Nocturnal Vanguard',               file:'assets/hero.glb',  kind:'hero' },
+  // `map` = the LIVE game mapping (ENEMY_ANIM / HERO_CLIP), so the slots come pre-filled — no re-adding.
+  { name:'Cliffhorn Juggernaut (Obsidian Warlord)', file:'assets/boss1.glb', kind:'boss',
+    map:{ idle:'Angry_Ground_Stomp', hit:'Hit_Reaction', attack1:'Punch_Combo_1', attack2:'Punch_Combo_3', attack3:'Punch_Combo_4', attack4:'Punch_Combo_5', attack5:'Punch_Combo_4', attack6:'Punch_Combo_2', attack7:'Punch_Combo', attack8:'Punch_Pose' } },
+  { name:'Gale Reaper (Frostwing Archon)',          file:'assets/boss2.glb', kind:'boss',
+    map:{ idle:'Checkout_Gesture', hit:'Hit_Reaction_with_Bow', attack1:'mage_soell_cast', attack2:'mage_soell_cast_2', attack3:'mage_soell_cast_4', attack4:'mage_soell_cast_6', attack5:'mage_soell_cast_2', attack6:'mage_soell_cast_4', attack7:'mage_soell_cast_6', attack8:'mage_soell_cast' } },
+  { name:'Sky Titan (Golden Sentinel)',             file:'assets/boss3.glb', kind:'boss',
+    map:{ idle:'Combat_Stance', hit:'Hit_Reaction_1', attack1:'Shrug', attack2:'Neck_Slashing_Gesture', attack3:'Angry_Ground_Stomp_2', attack4:'Lunge_Spin_Kick', attack5:'Sweep_Kick', attack6:'Roundhouse_Kick', attack7:'Lunge_Spin_Kick', attack8:'Kung_Fu_Punch' } },
+  { name:'Hero — Nocturnal Vanguard',               file:'assets/hero.glb',  kind:'hero',
+    map:{ idle:'Idle_10', strike:'Charged_Axe_Chop', shoot:'mage_soell_cast_7', cast:'mage_soell_cast_6', blitz:'360_Power_Spin_Jump', dodge:'Roll_Dodge_4', dead:'Dead', hit:'Arise', victory:'Sword_Shout', intro:'Axe_Stance' } },
 ];
 // animation slots per character kind — must match what the game actually consumes.
 // HERO -> HERO_CLIP map (index.html).  BOSS -> ENEMY_ANIM {idle, hit, attacks:[...]}.
@@ -205,7 +210,9 @@ let mixer=null, clips=[], curAction=null, curIdx=0, playing=true, looping=true, 
 let mapping={};
 
 function mapKey(){ return 'tg_map_'+curFile; }
-function loadMapping(){ try{ mapping=JSON.parse(localStorage.getItem(mapKey())||'{}'); }catch(e){ mapping={}; } }
+function loadMapping(){ let saved={}; try{ saved=JSON.parse(localStorage.getItem(mapKey())||'{}'); }catch(e){}
+  const def=(MODELS.find(m=>m.file===curFile)||{}).map||{};   // seed from the live game map; saved edits win per-slot
+  mapping={...def, ...saved}; }
 function saveMapping(){ localStorage.setItem(mapKey(),JSON.stringify(mapping)); }
 
 function loadModel(file){
