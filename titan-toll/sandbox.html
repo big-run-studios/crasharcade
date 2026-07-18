@@ -323,11 +323,17 @@ function forceWeight(){ if(curAction){ curAction.enabled=true; curAction.setEffe
 function slotsForClip(name){ return curSlots.filter(([k])=>mapping[k]===name).map(([,label])=>label); }
 function moveLabel(name){ const s=slotsForClip(name); return s.length? s.join(' / ') : '(unmapped)'; }
 function fillClipSel(){ const s=el('defClipSel'); if(!s)return;
-  const order=curSlots.map(([,l])=>l);                                  // list by slot order (mapped moves first, unmapped last)
-  const items=clips.map((c,i)=>({i,c,slots:slotsForClip(c.name)}));
-  items.sort((a,b)=>{ const oa=a.slots.length?order.indexOf(a.slots[0]):999, ob=b.slots.length?order.indexOf(b.slots[0]):999; return oa-ob || a.c.name.localeCompare(b.c.name); });
-  s.innerHTML=items.map(({i,c,slots})=>'<option value="'+i+'">'+(slots.length?slots.join(' / '):'(unmapped)')+'  —  '+c.name+'  ('+c.duration.toFixed(1)+'s)</option>').join('');
-  s.value=curIdx; dLastN=clips.length; }
+  // DEFEND edits ONLY what's live in the slots: one option per MAPPED slot clip, in slot order (idle, hit, attacks).
+  // Unmapped animations are not listed here — map them in 🗺 MAP first.
+  const seen=new Set(), opts=[];
+  curSlots.forEach(([k,label])=>{ const nm=mapping[k]; if(!nm||seen.has(nm))return; const i=clips.findIndex(c=>c.name===nm); if(i<0)return;
+    seen.add(nm); opts.push({i, label:moveLabel(nm), name:nm, dur:clips[i].duration}); });
+  s.innerHTML = opts.length
+    ? opts.map(o=>'<option value="'+o.i+'">'+o.label+'  —  '+o.name+'  ('+o.dur.toFixed(1)+'s)</option>').join('')
+    : '<option value="-1">— no clips mapped · use 🗺 MAP first —</option>';
+  const has=opts.some(o=>o.i===curIdx);
+  if(has) s.value=curIdx; else if(opts.length){ s.value=opts[0].i; play(opts[0].i); }
+  dLastN=clips.length; }
 function setMode(m){ mode=m;
   el('slots').style.display=m==='map'?'flex':'none';        // in DEFEND, hide BOTH side panels + transport
   el('list').style.display=m==='map'?'flex':'none';         // so the character is centred & fully visible
