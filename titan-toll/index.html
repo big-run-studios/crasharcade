@@ -308,7 +308,7 @@
       <div id="dbgLog"></div>
     </div>
 
-    <div id="brand">CRASHARCADE · TITAN GUARD v0.15.4</div>
+    <div id="brand">CRASHARCADE · TITAN GUARD v0.15.5</div>
   </div>
 </div>
 
@@ -911,6 +911,17 @@ const ENEMY_SPARK=[
   { node:'Spine02',   tint:0x8fe9ff, off:[0,0,0], scale:2.4 },   // Gale — chest (ice-cyan)
   { node:'headfront', tint:0xffe14d, off:[0,0.2,0], scale:1.8 }, // Sky Titan — eyes (gold)
 ];
+// Per-boss corrective bone rotations, applied AFTER the mixer each frame (fix baked-in model quirks).
+// Gale's scythe is fused to the skinned mesh on RightHand (a leaf bone) and hangs pointing down; rotate it up.
+const ENEMY_BONEFIX=[
+  null,                                    // Cliffhorn
+  [{node:'RightHand', e:[Math.PI,0,0]}],   // Gale — 180° about hand X so the fused scythe points UP, not down (tune live via __game.boneFix)
+  null,                                    // Sky Titan
+];
+function resolveBoneFix(model,i){
+  const list=ENEMY_BONEFIX[i]; if(!list) return null;
+  return list.map(f=>({ bone:model.getObjectByName(f.node), q:new THREE.Quaternion().setFromEuler(new THREE.Euler(f.e[0],f.e[1],f.e[2])), node:f.node }));
+}
 function makeSparkTexture(){
   const c=document.createElement('canvas'); c.width=c.height=128; const x=c.getContext('2d'), C=64;
   let g=x.createRadialGradient(C,C,0,C,C,30); g.addColorStop(0,'rgba(255,255,255,1)'); g.addColorStop(0.4,'rgba(255,255,255,.55)'); g.addColorStop(1,'rgba(255,255,255,0)');
@@ -986,7 +997,7 @@ function buildEnemyGLB(i){
   const mixer=new THREE.AnimationMixer(model), clips={};
   for(const c of bossGLTF[i].animations) clips[c.name]=c;
   const spk=ENEMY_SPARK[i]; const sparkBone=spk?model.getObjectByName(spk.node):null;
-  g.userData={...g.userData, height:h, model, mixer, clips, animMap:ENEMY_ANIM[i], curClip:'', action:null, _rx:0, spark:spk, sparkBone};
+  g.userData={...g.userData, height:h, model, mixer, clips, animMap:ENEMY_ANIM[i], curClip:'', action:null, _rx:0, spark:spk, sparkBone, boneFix:resolveBoneFix(model,i)};
   playEnemyClip(g.userData, ENEMY_ANIM[i].idle, true, 0);
   return g;
 }
@@ -1763,6 +1774,7 @@ function animateEnemy(rdt){
   // rigged-model animation: drive the mixer + pick a clip by combat state (cosmetic; off the deterministic sim)
   if(u.mixer){
     u.mixer.update(rdt);
+    if(u.boneFix){ for(const f of u.boneFix){ if(f.bone) f.bone.quaternion.premultiply(f.q); } }   // corrective bone rotations on top of the animation
     const map=u.animMap; let want=map.idle, loop=true, spd=1;
     if(enemyHurtT>0 || enemyState==='stagger'){ want=map.hit; loop=false; }
     else if(atk && (enemyState==='telegraph'||enemyState==='active')){       // attack: fit the clip to the dodge-game window
@@ -2098,6 +2110,8 @@ window.__game={
     if(atk){ o.winLen=+(atk.hits[atk.hits.length-1].at+dwin()).toFixed(3); o.effDur=+(o.clipDur/o.timeScale).toFixed(3); } return o; },
   sparkTest:(v=true)=>{ sparkForce=v?1:0; return 'sparkForce='+sparkForce+(enemyMesh&&enemyMesh.userData.sparkBone?'':' (WARN: no spark bone on current enemy)'); },
   sparkTune:(dx,dy,dz,scale)=>{ const u=enemyMesh&&enemyMesh.userData; if(!u||!u.spark)return '(no spark)'; if(dx!=null)u.spark.off=[dx,dy,dz]; if(scale!=null)u.spark.scale=scale; return {node:u.spark.node, off:u.spark.off, scale:u.spark.scale, boneFound:!!u.sparkBone}; },
+  boneFix:(node,rx=0,ry=0,rz=0)=>{ const u=enemyMesh&&enemyMesh.userData; if(!u||!u.model)return '(no enemy)'; const bone=u.model.getObjectByName(node);
+    u.boneFix=[{bone, q:new THREE.Quaternion().setFromEuler(new THREE.Euler(rx,ry,rz)), node}]; return {node, found:!!bone, e:[rx,ry,rz]}; },
   pause:(v=true)=>{ paused=v; },
   setEnemyZ:(z)=>{ if(enemyMesh)enemyMesh.position.z=z; },
   setEnemyScale:(s)=>{ if(enemyMesh)enemyMesh.scale.setScalar(s); },
