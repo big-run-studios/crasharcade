@@ -308,7 +308,7 @@
       <div id="dbgLog"></div>
     </div>
 
-    <div id="brand">CRASHARCADE · TITAN GUARD v0.13.2</div>
+    <div id="brand">CRASHARCADE · TITAN GUARD v0.13.3</div>
   </div>
 </div>
 
@@ -319,6 +319,7 @@
 
 <script type="module">
 import * as THREE from './lib/three.module.js';
+import { GLTFLoader } from './lib/GLTFLoader.js';
 
 /* =========================================================================
    TITAN GUARD — 1v1 JRPG crash-combat prototype
@@ -542,7 +543,7 @@ const camera=new THREE.PerspectiveCamera(41, cw/ch, 0.1, 600);
 const CAM={pos:new THREE.Vector3(7.65,3.6,14.48), look:new THREE.Vector3(0,3.0,-4)};
 const PHOME={x:0.8, z:2.2, ry:-0.55, mirror:false};  // player home: bottom-left; pike reads in the right hand (no mirror)
 const ENEMY_Z=-11.0;
-const ENEMY_SCALE=[1.0,1.06,0.86];       // per-enemy: normalise on-screen height for the quarter frame (Titan looms largest)
+const ENEMY_SCALE=[0.66,0.848,0.86];     // per-enemy on-screen size vs v0.13.2 framing: Cliffhorn 66%, Gale 80% height, Titan unchanged (re-derive per-model when GLBs land)
 camera.position.copy(CAM.pos); camera.lookAt(CAM.look);
 
 // lights — bright daytime
@@ -729,6 +730,56 @@ function buildPlayer(){
   g.rotation.y=PHOME.ry;                  // facing the titan
   g.scale.x=PHOME.mirror?-1:1;
   return g;
+}
+
+/* =========================================================================
+   HERO MODEL — rigged GLB (Meshy "Nocturnal Vanguard") replacing the blocky body
+   ========================================================================= */
+let heroGLTF=null, heroModel=null, heroMixer=null, heroAction=null, heroCurName='', heroRightHand=null, heroDead=false;
+const heroClips={};
+const HERO_H=2.05, HERO_YAW=0;   // target height (world units) + facing offset (tuned via screenshot)
+const HERO_CLIP={ idle:'Idle_10', strike:'Double_Combo_Attack', shoot:'Male_Head_Down_Charge', cast:'Charged_Spell_Cast_1', blitz:'360_Power_Spin_Jump', dodge:'Roll_Dodge_4', dead:'Dead' };
+const _hHand=new THREE.Vector3();
+new GLTFLoader().load('assets/hero.glb', gltf=>{ heroGLTF=gltf; attachHero(); }, undefined, err=>console.error('hero load',err));
+function attachHero(){
+  if(!heroGLTF || !playerMesh || heroModel) return;
+  const hero=heroGLTF.scene;
+  hero.scale.setScalar(1); hero.rotation.y=HERO_YAW; hero.position.set(0,0,0);
+  hero.updateMatrixWorld(true);
+  const b0=new THREE.Box3().setFromObject(hero); const nat=b0.max.y-b0.min.y;
+  hero.scale.setScalar(HERO_H/(nat||1));
+  hero.updateMatrixWorld(true);
+  const b=new THREE.Box3().setFromObject(hero);
+  hero.position.set(-(b.min.x+b.max.x)/2, -b.min.y, -(b.min.z+b.max.z)/2);   // centred, feet at y=0
+  console.error('hero size natY='+nat.toFixed(3)+' scaled='+(HERO_H/(nat||1)).toFixed(3));
+  hero.traverse(o=>{ if(o.isMesh){ o.frustumCulled=false; if(o.material) o.material.side=THREE.FrontSide; } });
+  playerMesh.add(hero); heroModel=hero;
+  playerMesh.userData.body.visible=false;                                    // hide the procedural blocky body
+  heroRightHand=hero.getObjectByName('RightHand');
+  playerMesh.add(playerMesh.userData.pike);                                  // keep the pike (+blitzAura/tipLight) out of the hidden arm
+  heroMixer=new THREE.AnimationMixer(hero);
+  for(const c of heroGLTF.animations) heroClips[c.name]=c;
+  playHeroClip(HERO_CLIP.idle, true, 0);
+}
+function playHeroClip(name, loop, fade){
+  if(!heroMixer || !heroClips[name] || heroCurName===name) return;
+  const next=heroMixer.clipAction(heroClips[name]);
+  next.reset(); next.setLoop(loop?THREE.LoopRepeat:THREE.LoopOnce, loop?Infinity:1); next.clampWhenFinished=!loop;
+  next.enabled=true; next.setEffectiveWeight(1); next.fadeIn(fade); next.play();
+  if(heroAction && heroAction!==next) heroAction.fadeOut(fade);
+  heroAction=next; heroCurName=name;
+}
+function updateHero(rdt){
+  if(!heroMixer) return;
+  heroMixer.update(rdt);
+  let want;
+  if(heroDead) want=HERO_CLIP.dead;
+  else if(off) want=HERO_CLIP[off.action]||HERO_CLIP.idle;      // attacking -> action clip (loops through the combo)
+  else if(playerPose==='dodge' && poseT<0.5) want=HERO_CLIP.dodge;
+  else want=HERO_CLIP.idle;
+  playHeroClip(want, want!==HERO_CLIP.dodge && want!==HERO_CLIP.dead, 0.15);
+  if(heroRightHand){ const pike=playerMesh.userData.pike;                    // pike follows the right hand (position)
+    heroRightHand.getWorldPosition(_hHand); playerMesh.worldToLocal(_hHand); pike.position.copy(_hHand); }
 }
 
 /* =========================================================================
@@ -935,6 +986,8 @@ function startRun(sd){
   T=0; runClock=0; ragePhase=0; resolveLockT=0; castStreak=0; staggerT=0; forcedAttack=-1;
   hitLog.length=0; floaters.length=0; particles.length=0; paused=false;
   if(!playerMesh){playerMesh=buildPlayer(); scene.add(playerMesh);}
+  attachHero();                 // swap in the GLB hero once it (and the player rig) exist
+  heroDead=false; heroCurName=''; if(heroMixer)playHeroClip(HERO_CLIP.idle,true,0.1);
   playerPose='idle'; poseT=0;
   setEnemy(0);
   state='combat';
@@ -1038,7 +1091,7 @@ function cashOut(fullClear){
 }
 function die(){
   finalScore=0; resultTitle='FALLEN'; resultBreak='You fell before cashing out.\nSCORE LOST  —  0 banked';
-  playStinger(sfxLose); shake(0.9,0.6); state='result';
+  playStinger(sfxLose); shake(0.9,0.6); state='result'; heroDead=true;
   showResult(true);
 }
 function showResult(dead){
@@ -1599,7 +1652,7 @@ function frame(nw){
   const rdt=Math.min((nw-last)/1000,1/30); last=nw;
   if(cw!==app.clientWidth||ch!==app.clientHeight) resize();
   try{ update(rdt); }catch(err){ console.error('update',err); }
-  try{ if(playerMesh)animatePlayer(rdt); if(enemyMesh)animateEnemy(rdt); updateBlitzRibbons(rdt); }catch(err){ console.error('anim',err); }
+  try{ if(playerMesh)animatePlayer(rdt); if(enemyMesh)animateEnemy(rdt); updateHero(rdt); updateBlitzRibbons(rdt); }catch(err){ console.error('anim',err); }
   if(playerMesh){ heroLight.position.set(playerMesh.position.x,1.7,playerMesh.position.z); heroLight.intensity = heroFlashT>0 ? (heroFlashT/0.5)*14 : 0; }
   if(enemyMesh && ragePhase>0){ enemyMesh.userData.anchors.core.getWorldPosition(enemyRageLight.position); enemyRageLight.intensity=(ragePhase===1?1.4:2.8)*(0.8+0.2*Math.sin(performance.now()/140)); } else enemyRageLight.intensity=0;
   // camera shake
