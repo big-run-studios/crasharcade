@@ -308,7 +308,7 @@
       <div id="dbgLog"></div>
     </div>
 
-    <div id="brand">CRASHARCADE · TITAN GUARD v0.13.1</div>
+    <div id="brand">CRASHARCADE · TITAN GUARD v0.13.2</div>
   </div>
 </div>
 
@@ -1654,7 +1654,7 @@ function drawReticle(cx,cy,R0,dt,win,perfWin,app,col,Rmax,glyph,next){
 function _chevron(size){ const w=size*0.46,h=size*0.9,g=size*0.5; octx.beginPath();   // double chevron ">>"
   octx.moveTo(-g-w,-h); octx.lineTo(-g+w,0); octx.lineTo(-g-w,h);
   octx.moveTo( g-w,-h); octx.lineTo( g+w,0); octx.lineTo( g-w,h); }
-function _arrow(len){ const hw=len*0.32, hd=len*0.70; octx.beginPath(); octx.moveTo(0,0); octx.lineTo(hd,0); octx.moveTo(hd,-hw); octx.lineTo(len,0); octx.lineTo(hd,hw); } // base(tail) at origin -> pivots from the base
+function _arrow(len){ const hw=len*0.22, hd=len*0.58; octx.beginPath(); octx.moveTo(0,0); octx.lineTo(hd,0); octx.moveTo(hd,-hw); octx.lineTo(len,0); octx.lineTo(hd,hw); } // narrow+long head => sharp, acute tip; base(tail) at origin
 function _star(ro,ri){ octx.beginPath(); for(let i=0;i<10;i++){ const r=i%2?ri:ro, a=-Math.PI/2+i*Math.PI/5, x=Math.cos(a)*r, y=Math.sin(a)*r; i?octx.lineTo(x,y):octx.moveTo(x,y);} octx.closePath(); }
 function actionShape(a){ return a==='strike'?'arrow': a==='cast'?'star':'ring'; }   // normal actions: shape by action (fixes cast=star at every level)
 function shapeForKind(k){                                                            // Blitz only: shape per weapon form so it combines all three
@@ -1678,7 +1678,7 @@ function drawTiming(shape,cx,cy,R0,dt,win,perfWin,app,col,Rmax,glyph,next){
     target(()=>_chevron(S));
     mover(()=>_chevron(S), ()=>octx.translate(-off,0));          // sweeps in from the character side
     pulse();
-  } else if(shape==='arrow'){ const S=R0*1.75;
+  } else if(shape==='arrow'){ const S=R0*2.19;   // 1.25x larger
     octx.save(); octx.rotate(-Math.PI/4);                        // arrow points up-and-to-the-right (longer)
     target(()=>_arrow(S));
     mover(()=>_arrow(S), ()=>octx.translate(-off,0));            // line slides in from down-and-to-the-left
