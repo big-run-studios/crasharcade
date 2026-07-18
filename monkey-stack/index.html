@@ -182,7 +182,7 @@
     </div>
 
     <div id="dbg"></div>
-    <div class="brand" id="brand">CRASHARCADE · MONKEY STACK v0.2.0</div>
+    <div class="brand" id="brand">CRASHARCADE · MONKEY STACK v0.2.1</div>
   </div>
   <audio id="unlockAudio" loop src="data:audio/wav;base64,UklGRigAAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQQAAACAgICA"></audio>
 </div>
@@ -209,23 +209,23 @@ const CFG={
   trayY:640, trayH:22, floorY:856,
   // bricks
   brickDensity:0.0016, brickFriction:0.55, brickFrictionStatic:0.9,
-  brickRestitution:0.06, brickAirFriction:0.014,
+  brickRestitution:0, brickAirFriction:0.014,           // dead toy plastic — landings must not bounce
   // platform (monkey strength: spring in angular-accel units × tray-only inertia → absolute torque,
   // so taller/heavier towers genuinely overwhelm the same monkey)
   platDensity:0.005, platSpring:3.5, platDamp:5,
   springSoftenPerPlace:0.02, springSoftenMin:0.72,
-  pivotStiffness:0.9, maxTilt:0.46, critTilt:0.30, critGrace:1.1,
+  pivotStiffness:1, maxTilt:0.46, critTilt:0.30, critGrace:1.1,   // rigid pin: a soft pivot trampolines the tray
   // peg / socket connection
   posTolEarly:0.34, posTolLate:0.20, posTolRamp:12,   // ×U horizontal tolerance, eased over N placements
   posTolV:0.45, angTol:0.17,
-  snapMaxImpact:16, snapSettleSpeed:6.5, snapWindow:0.8,
+  snapMaxImpact:24, snapSettleSpeed:6.5, snapWindow:0.8,
   assistForce:0.000015, assistFade:8,                  // gentle magnet toward a valid column, gone by placement N
   weakStiffness:0.95, weakAngSpring:9, weakAngDamp:2.5, weakBreakAng:0.95,
   // flow
   confirmTime:0.55, confirmTimeSnap:0.35, confirmTimeWeak:0.7, settleVel:0.5, crashBelow:150,
   spawnGap:180, spawnGapGrow:6, spawnGapMax:265,
   descentBase:46, descentGrow:2.5, descentMax:88,      // auto-descent px/s, ramps per placement
-  handoffGap:24, slamSpeed:15, lockInPts:25,
+  handoffGap:24, slamSpeed:11, lockInPts:25,
   // scoring
   baseCell:12, heightPts:6, fullClickPts:45, extraPegPts:12, weakClickPts:18,
   savePts:55, saveAngle:0.05, dangerPts:65, dangerFrac:0.5, streakBonus:0.3,
@@ -325,7 +325,7 @@ const TRAY_W=CFG.platCols*U+14;
 let trayPart=null, plat=null, pivotC=null, refInertia=1, snapParts=[];
 function makePlatform(){
   trayPart=Bodies.rectangle(W/2, CFG.trayY+CFG.trayH/2, TRAY_W, CFG.trayH,
-    {density:CFG.platDensity, friction:CFG.brickFriction, restitution:0.02});
+    {density:CFG.platDensity, friction:CFG.brickFriction, restitution:0});
   plat=Body.create({parts:[trayPart], friction:CFG.brickFriction, frictionAir:0.02});
   refInertia=plat.inertia;
   pivotC=Constraint.create({pointA:{x:W/2, y:CFG.trayY+CFG.trayH/2}, bodyB:plat, pointB:{x:0,y:0},
@@ -714,11 +714,16 @@ function postStep(){
     if(plat.angle>mx){ Body.setAngle(plat,mx); if(plat.angularVelocity>0) Body.setAngularVelocity(plat,0); }
     if(plat.angle<-mx){ Body.setAngle(plat,-mx); if(plat.angularVelocity<0) Body.setAngularVelocity(plat,0); }
     if(Math.abs(plat.angularVelocity)>0.12) Body.setAngularVelocity(plat,Math.sign(plat.angularVelocity)*0.12);
-    // toy-physics safety valve: edge clips against the heavy pivoted compound can inject silly energy
+    // dead toy physics: bricks never trampoline. Kill upward launches and cap everything else —
+    // edge clips against the heavy pivoted compound can inject silly energy otherwise.
     for(const b of Composite.allBodies(world)){
       if(b.isStatic||b===plat) continue;
-      if(b.speed>26) Body.setVelocity(b,{x:b.velocity.x*26/b.speed, y:b.velocity.y*26/b.speed});
-      if(Math.abs(b.angularVelocity)>0.35) Body.setAngularVelocity(b,Math.sign(b.angularVelocity)*0.35);
+      let vx=b.velocity.x, vy=b.velocity.y, ch=false;
+      if(vy<-3.5){ vy=-3.5; ch=true; }
+      if(vy>22){ vy=22; ch=true; }
+      if(Math.abs(vx)>9){ vx=Math.sign(vx)*9; ch=true; }
+      if(ch) Body.setVelocity(b,{x:vx,y:vy});
+      if(Math.abs(b.angularVelocity)>0.22) Body.setAngularVelocity(b,Math.sign(b.angularVelocity)*0.22);
     }
   }
   if(active&&active.body) active.prevSpeed=active.body.speed;
