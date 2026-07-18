@@ -10,9 +10,10 @@
   :root{
     /* brand fonts (match the hub + other games): Orbitron display, Fredoka body */
     --display:'Orbitron',sans-serif; --epic:'Orbitron',sans-serif; --body:'Fredoka','Arial Rounded MT Bold',sans-serif;
-    --strike:#ffb648; --shoot:#5fe0ff; --cast:#c07bff; --blitz:#ffd23a;
-    --danger:#ff3b5c; --good:#7bd0ff; --perfect:#ffd23a; --crit:#ff5cc8; --dodge:#eafcff;
-    --hp:#ff5566; --ehp:#ffcf6b; --xp:#7be0a8; --cash:#5effa8;
+    /* vibrant, mobile-readable palette pulled from Beat Rush (brand-consistent) */
+    --strike:#ff5a6e; --shoot:#34e1ff; --cast:#b06bff; --blitz:#ffc233;   /* attack=red, distinct from blitz=gold */
+    --danger:#ff4f6e; --good:#8fe9ff; --perfect:#ffe14d; --crit:#ff4fd8; --dodge:#eafcff;
+    --hp:#ff5a6e; --ehp:#ffb14d; --xp:#39ffa0; --cash:#3affa4;
     --txt:#f2f7ff; --dim:#9fb2d8; --ink:#0b1226; --panel:#111a40;
   }
   *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent;-webkit-user-select:none;user-select:none;}
@@ -47,7 +48,7 @@
   #multRow{display:flex;align-items:center;gap:8px;}
   #multBadge{font-family:var(--display);font-weight:900;font-size:20px;letter-spacing:.5px;color:var(--blitz);text-shadow:0 0 14px rgba(255,210,58,.65);min-width:44px;}
   #multBar{position:relative;flex:1;height:9px;border-radius:6px;background:rgba(6,10,26,.55);border:1.5px solid rgba(255,255,255,.16);overflow:hidden;}
-  #multFill{position:absolute;inset:0;width:100%;transform-origin:left;background:linear-gradient(90deg,#ffb648,#ffe08a);}
+  #multFill{position:absolute;inset:0;width:100%;transform-origin:left;background:linear-gradient(90deg,#ffc233,#ffe89a);}
 
   /* ---------- cash out: the standard button (.bigbtn), bottom-left above the HP bar ---------- */
   #cashBtn{position:absolute;left:16px;bottom:calc(30px + env(safe-area-inset-bottom));z-index:24;
@@ -307,7 +308,7 @@
       <div id="dbgLog"></div>
     </div>
 
-    <div id="brand">CRASHARCADE · TITAN GUARD v0.12.1</div>
+    <div id="brand">CRASHARCADE · TITAN GUARD v0.13.0</div>
   </div>
 </div>
 
@@ -1060,7 +1061,7 @@ function commit(action){
   if(action==='blitz'){
     if(enemyState==='telegraph'||enemyState==='active'){
       atk=null; enemyState='stagger'; enemyTimer=0;                     // kill the incoming hits, stun the enemy
-      if(enemyMesh) addFloater(enemyMesh.position.clone().setY(6),'INTERRUPT!','#ffd23a',1.0,26);
+      if(enemyMesh) addFloater(enemyMesh.position.clone().setY(6),'INTERRUPT!','#ffc233',1.0,26);
     }
     beginOffense('blitz');
     return;
@@ -1080,7 +1081,7 @@ function beginOffense(action){
   if(action==='blitz'){
     staggerT=CFG.staggerTime;                          // protect the opening after this blitz
     sfx('blitz'); shake(0.5,0.4); heroFlashT=0.5;       // glow flashes on the hero
-    addFloater(playerMesh.position.clone().setY(3),'BLITZ!','#ffd23a',1.2,30);
+    addFloater(playerMesh.position.clone().setY(3),'BLITZ!','#ffc233',1.2,30);
   }
   if(action==='cast') castStreak++; else castStreak=0;
   if(action!=='blitz'){ const cd=abilityCd(level); cooldown[action]=cd; cooldownMax[action]=cd||1; }  // start the cooldown (L2+)
@@ -1163,10 +1164,10 @@ function resolveTarget(tg, grade, err){
   // fx + feedback
   if(dmg>0) resolveLockT=CFG.resolveLock;   // only lock cashout while real damage resolves (not a 0-dmg auto-miss)
   const anchor=off._anchorPos?off._anchorPos(tg):enemyMesh.userData.anchors.core.getWorldPosition(new THREE.Vector3());
-  if(grade==='perfect'){ sfx(crit?'crit':'perfect'); addFloater(anchor,crit?'CRITICAL':'PERFECT',crit?'#ff5cc8':'#ffd23a',crit?1.2:1.0,crit?30:24); hitPauseT=CFG.hitPause*(crit?1.6:1); shake(crit?0.5:0.28,0.28); burst(anchor,crit?'#ff5cc8':'#ffd23a',crit?18:10);}
-  else if(grade==='good'){ sfx(crit?'crit':'good'); addFloater(anchor,crit?'CRITICAL':'GOOD',crit?'#ff5cc8':'#7bd0ff',crit?1.1:0.85,crit?28:20); if(crit){hitPauseT=CFG.hitPause*1.4;shake(0.4,0.24);} burst(anchor,crit?'#ff5cc8':'#7bd0ff',crit?14:7);}
+  if(grade==='perfect'){ sfx(crit?'crit':'perfect'); addFloater(anchor,crit?'CRITICAL':'PERFECT',crit?'#ff4fd8':'#ffe14d',crit?1.2:1.0,crit?30:24); hitPauseT=CFG.hitPause*(crit?1.6:1); shake(crit?0.5:0.28,0.28); burst(anchor,crit?'#ff4fd8':'#ffe14d',crit?18:10);}
+  else if(grade==='good'){ sfx(crit?'crit':'good'); addFloater(anchor,crit?'CRITICAL':'GOOD',crit?'#ff4fd8':'#8fe9ff',crit?1.1:0.85,crit?28:20); if(crit){hitPauseT=CFG.hitPause*1.4;shake(0.4,0.24);} burst(anchor,crit?'#ff4fd8':'#8fe9ff',crit?14:7);}
   else { sfx('miss'); addFloater(anchor,'MISS','#8a99b8',0.8,18); }
-  if(dmg>0) addDmgFloater(anchor.clone().add(new THREE.Vector3(0,-0.6,0)), dmg, crit?'#ff9ad8':'#ffffff', crit);
+  if(dmg>0) addDmgFloater(anchor.clone().add(new THREE.Vector3(0,-0.6,0)), dmg, crit?'#ff9ae0':'#ffffff', crit);
   hitLog.push({t:+T.toFixed(3),kind:'atk:'+off.action,grade,err:err==null?null:+err.toFixed(3)});
   if(hitLog.length>60)hitLog.shift();
   poseT=0;
@@ -1318,7 +1319,7 @@ function landHit(hit){
   resolveLockT=CFG.resolveLock;
   hitPauseT=CFG.hitPause*1.4; shake(0.6+hit.dmg*0.01,0.4);
   sfx('hurt');
-  addFloater(playerMesh.position.clone().setY(2.6), '-'+dmg, '#ff5566', 1.05, 24);
+  addFloater(playerMesh.position.clone().setY(2.6), '-'+dmg, '#ff5a6e', 1.05, 24);
   hitLog.push({t:+T.toFixed(3),kind:'HIT',grade:'took '+dmg,err:null});
   if(hitLog.length>60)hitLog.shift();
   if(hp<=0){ die(); }
@@ -1330,8 +1331,8 @@ function landHit(hit){
 function addMult(g){
   if(mult>=CFG.multMax){ multMeter=1; return; }
   multMeter+=g;
-  while(multMeter>=1 && mult<CFG.multMax){ multMeter-=1; mult++; sfx('good'); groundBeams('#ffd23a');
-    addFloater(playerMesh.position.clone().setY(3.6),'×'+mult,'#ffd23a',0.85,22); }
+  while(multMeter>=1 && mult<CFG.multMax){ multMeter-=1; mult++; sfx('good'); groundBeams('#ffc233');
+    addFloater(playerMesh.position.clone().setY(3.6),'×'+mult,'#ffc233',0.85,22); }
   if(mult>=CFG.multMax) multMeter=Math.min(multMeter,1);
 }
 function addXP(amt, action, dmgForUse){
@@ -1374,7 +1375,7 @@ const DMG_STAGGER=0.055, DMG_REVEAL=0.16, DMG_BASEPX=26;
 function drawDmgFloater(f,s){
   const fs=DMG_BASEPX*f.sizeScale;
   octx.save(); octx.font='900 '+fs.toFixed(1)+'px Orbitron,sans-serif'; octx.textAlign='center'; octx.textBaseline='middle'; octx.lineWidth=Math.max(4,fs*0.13);
-  const digits=('-'+f.text).split('');
+  const digits=f.text.split('');   // damage numbers show no negative sign
   const widths=digits.map(d=>octx.measureText(d).width); const totalW=widths.reduce((a,b)=>a+b,0);
   const revealDone=(digits.length-1)*DMG_STAGGER+DMG_REVEAL;
   const floatUp=Math.max(0,f.life-revealDone)*46;
@@ -1728,7 +1729,7 @@ function overlayDraw(){
   // offensive timing targets (thin ring -> thick success band; only the NEXT one is "live")
   if(off){
     let firstUnres=-1; for(let i=0;i<off.targets.length;i++){ if(!off.targets[i].resolved){firstUnres=i;break;} }
-    const col= off.action==='strike'?'#ffb648': off.action==='shoot'?'#5fe0ff': off.action==='cast'?'#c07bff':'#ffd23a';
+    const col= off.action==='strike'?'#ff5a6e': off.action==='shoot'?'#34e1ff': off.action==='cast'?'#b06bff':'#ffc233';
     const drawn=[];   // already-drawn screen positions — skip overlaps (never overlap, esp. in Blitz)
     for(let i=0;i<off.targets.length;i++){
       const tg=off.targets[i]; if(tg.resolved) continue;
@@ -1823,15 +1824,15 @@ function rageCallout(word,color){
 }
 function onRageChange(rp){
   if(rp<=0) return;
-  rageCallout(rp===1?'ANGRY!':'ENRAGED!', rp===1?'#ffb648':'#ff3b5c');
+  rageCallout(rp===1?'ANGRY!':'ENRAGED!', rp===1?'#ffb14d':'#ff4f6e');
   shake(rp===1?0.7:0.95, 0.6); sfx('blitz');
-  if(enemyMesh) burst(enemyMesh.userData.anchors.core.getWorldPosition(new THREE.Vector3()), rp===1?'#ffb648':'#ff3b5c', 18);
+  if(enemyMesh) burst(enemyMesh.userData.anchors.core.getWorldPosition(new THREE.Vector3()), rp===1?'#ffb14d':'#ff4f6e', 18);
 }
 // level-up notification: text flyout + golden beams around the hero
 function levelUpFX(pick, level){
   goldBeamBurst(); groundBeams('#ffe08a');
   const milestone=(level===3||level===6||level===9);
-  if(playerMesh) addFloater(playerMesh.position.clone().setY(3.6), pick.toUpperCase()+' Lv'+level+(milestone?' ★':''), milestone?'#ffd23a':'#ffe89a', milestone?1.2:1.0, milestone?26:22);
+  if(playerMesh) addFloater(playerMesh.position.clone().setY(3.6), pick.toUpperCase()+' Lv'+level+(milestone?' ★':''), milestone?'#ffc233':'#ffe89a', milestone?1.2:1.0, milestone?26:22);
   const lt=el('levelToast'); lt.innerHTML='<div class="big">'+pick.toUpperCase()+' · LV '+level+(milestone?' ★':'')+'</div><div class="sm">'+(milestone?'NEW POWER':'LEVEL UP')+'</div>';
   lt.classList.remove('show'); void lt.offsetWidth; lt.classList.add('show');
 }
