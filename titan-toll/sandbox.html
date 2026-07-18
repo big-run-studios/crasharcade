@@ -88,19 +88,28 @@
 import * as THREE from './lib/three.module.js';
 import { GLTFLoader } from './lib/GLTFLoader.js';
 
-// models to review — add boss GLBs here as they land
+// models to review — kind drives which slot set the game needs filled
 const MODELS = [
-  { name:'Cliffhorn Juggernaut (Obsidian Warlord)', file:'assets/boss1.glb' },
-  { name:'Gale Reaper (Frostwing Archon)',          file:'assets/boss2.glb' },
-  { name:'Sky Titan (Golden Sentinel)',             file:'assets/boss3.glb' },
-  { name:'Hero — Nocturnal Vanguard',               file:'assets/hero.glb' },
+  { name:'Cliffhorn Juggernaut (Obsidian Warlord)', file:'assets/boss1.glb', kind:'boss' },
+  { name:'Gale Reaper (Frostwing Archon)',          file:'assets/boss2.glb', kind:'boss' },
+  { name:'Sky Titan (Golden Sentinel)',             file:'assets/boss3.glb', kind:'boss' },
+  { name:'Hero — Nocturnal Vanguard',               file:'assets/hero.glb',  kind:'hero' },
 ];
-// animation slots the game needs filled (drop a clip onto each)
-const SLOTS = [
+// animation slots per character kind — must match what the game actually consumes.
+// HERO -> HERO_CLIP map (index.html).  BOSS -> ENEMY_ANIM {idle, hit, attacks:[...]}.
+const HERO_SLOTS = [
   ['idle','Idle'],['strike','Strike (melee)'],['shoot','Shoot (ranged)'],['cast','Cast (magic)'],
   ['blitz','Blitz (ultimate)'],['dodge','Dodge'],['hit','Hit reaction'],['dead','Death'],
   ['victory','Victory / cash-out'],['intro','Intro / enter'],
 ];
+// boss: idle + hit + an ordered ATTACK POOL (game cycles attacks[setIdx % n]); leave unused pool slots empty
+const BOSS_SLOTS = [
+  ['idle','Idle / stance'],['hit','Hit reaction'],
+  ['attack1','Attack 1'],['attack2','Attack 2'],['attack3','Attack 3'],['attack4','Attack 4'],
+  ['attack5','Attack 5'],['attack6','Attack 6'],['attack7','Attack 7'],['attack8','Attack 8'],
+];
+const SLOT_SETS = { hero:HERO_SLOTS, boss:BOSS_SLOTS };
+let curSlots = HERO_SLOTS, curKind = 'hero';
 
 const el=id=>document.getElementById(id);
 const canvas=el('c');
@@ -140,7 +149,7 @@ function loadMapping(){ try{ mapping=JSON.parse(localStorage.getItem(mapKey())||
 function saveMapping(){ localStorage.setItem(mapKey(),JSON.stringify(mapping)); }
 
 function loadModel(file){
-  curFile=file; loadMapping();
+  curFile=file; const m=MODELS.find(x=>x.file===file); curKind=(m&&m.kind)||'hero'; curSlots=SLOT_SETS[curKind]; loadMapping();
   el('nowName').textContent='loading…'; el('nowMeta').textContent=''; el('clipList').innerHTML=''; el('err').style.display='none';
   if(model){ scene.remove(model); model=null; } mixer=null; clips=[]; curAction=null;
   loader.load(file, gltf=>{
@@ -168,7 +177,8 @@ function buildClips(){
 }
 function buildSlots(){
   const L=el('slotList'); L.innerHTML='';
-  SLOTS.forEach(([k,label])=>{ const d=document.createElement('div'); d.className='slot'; d.dataset.slot=k;
+  const hdr=el('slots').querySelector('.hdr'); if(hdr) hdr.textContent=(curKind==='boss'?'BOSS SLOTS · idle · hit · attack pool':'HERO SLOTS · one clip each')+' · drop a clip here';
+  curSlots.forEach(([k,label])=>{ const d=document.createElement('div'); d.className='slot'; d.dataset.slot=k;
     const v=mapping[k]||''; d.innerHTML='<div class="lbl">'+label+'</div><div class="val '+(v?'':'empty')+'"><span class="vn">'+(v||'— drop clip —')+'</span>'+(v?'<span class="x" title="clear">×</span>':'')+'</div>';
     // click assigned value = preview it
     d.querySelector('.val').addEventListener('click',ev=>{ if(ev.target.classList.contains('x')){ delete mapping[k]; saveMapping(); buildSlots(); refreshUsed(); return; } if(mapping[k]) play(clips.findIndex(c=>c.name===mapping[k])); });
@@ -206,9 +216,15 @@ el('loop').onclick=()=>{ looping=!looping; el('loop').classList.toggle('on',loop
 el('spin').onclick=()=>{ orbit.autospin=!orbit.autospin; el('spin').classList.toggle('on',orbit.autospin); };
 el('speed').oninput=e=>{ speed=+e.target.value; el('spdv').textContent=speed.toFixed(1)+'×'; if(curAction)curAction.timeScale=speed; };
 
-// export
-el('export').onclick=()=>{ const out={ model:MODELS.find(m=>m.file===curFile)?.name||curFile, map:{} };
-  SLOTS.forEach(([k])=>{ out.map[k]=mapping[k]||null; });
+// export — shape matches what the game consumes for this kind (paste-ready)
+el('export').onclick=()=>{ const name=MODELS.find(m=>m.file===curFile)?.name||curFile; let out;
+  if(curKind==='boss'){
+    out={ model:name, idle:mapping.idle||null, hit:mapping.hit||null,
+      attacks: curSlots.filter(([k])=>k.startsWith('attack')).map(([k])=>mapping[k]).filter(Boolean) };   // ENEMY_ANIM shape
+  } else {
+    out={ model:name, kind:'hero', map:{} };
+    curSlots.forEach(([k])=>{ out.map[k]=mapping[k]||null; });                                             // HERO_CLIP shape
+  }
   el('mapText').value=JSON.stringify(out,null,2); el('modal').style.display='flex'; };
 el('closeBtn').onclick=()=>el('modal').style.display='none';
 el('copyBtn').onclick=async()=>{ const t=el('mapText'); t.select(); try{ await navigator.clipboard.writeText(t.value); el('copyBtn').textContent='✓ Copied'; setTimeout(()=>el('copyBtn').textContent='📋 Copy',1200); }catch(e){ document.execCommand('copy'); } };
