@@ -182,7 +182,7 @@
     </div>
 
     <div id="dbg"></div>
-    <div class="brand" id="brand">CRASHARCADE · MONKEY STACK v0.2.1</div>
+    <div class="brand" id="brand">CRASHARCADE · MONKEY STACK v0.2.2</div>
   </div>
   <audio id="unlockAudio" loop src="data:audio/wav;base64,UklGRigAAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQQAAACAgICA"></audio>
 </div>
@@ -463,6 +463,7 @@ function dropActive(slam){
   tutDone('move'); tutDone('rotate'); if(slam) tutDone('drop');
   active.body=makeBrickBody(active.key, active.rot, active.x, active.y);
   active.body.label='brick';
+  Body.setAngle(active.body, plat.angle);              // sockets arrive parallel to the studs
   Composite.add(world, active.body);
   Body.setVelocity(active.body,{x:0, y:slam?CFG.slamSpeed:descentNow()/60});
   active.dropT=t; active.angAtDrop=plat.angle;
@@ -699,6 +700,11 @@ function preStep(){
   for(const w of weakList){
     const d=normAng(w.body.angle-plat.angle-w.relAng0);
     w.body.torque += (-CFG.weakAngSpring*d - CFG.weakAngDamp*(w.body.angularVelocity-plat.angularVelocity)*60)*w.body.inertia*1e-6;
+  }
+  // keep the falling brick tracking the tray's tilt until first contact — physics owns it after that
+  if(state==='falling'&&active&&active.body&&active.landT<0){
+    Body.setAngle(active.body, plat.angle);
+    Body.setAngularVelocity(active.body, 0);
   }
   // snap assist: gentle horizontal magnet toward the nearest valid column while falling
   if(state==='falling'&&active&&active.body&&!active.hardImpact&&placements<CFG.assistFade&&dbg.assist){
@@ -1040,7 +1046,7 @@ function drawBrickBody(body,brick,alpha=1){
   ctx.restore();
 }
 function drawGhostBrick(x,y){
-  const b={position:{x,y},angle:0};
+  const b={position:{x,y},angle:plat?plat.angle:0};   // descending bricks ride the tray's tilt
   drawBrickBody(b,{geom:active.geom,color:active.color},0.96);
 }
 function drawPlatform(){
