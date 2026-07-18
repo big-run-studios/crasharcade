@@ -308,7 +308,7 @@
       <div id="dbgLog"></div>
     </div>
 
-    <div id="brand">CRASHARCADE · TITAN GUARD v0.15.1</div>
+    <div id="brand">CRASHARCADE · TITAN GUARD v0.15.2</div>
   </div>
 </div>
 
@@ -901,8 +901,8 @@ const ENEMY_YAW=[_EY,_EY,_EY];                   // per-boss facing (tune live v
 // clip roles per boss (names verified against the merged-animation GLBs)
 const ENEMY_ANIM=[
   { idle:'Angry_Ground_Stomp', hit:'Hit_Reaction', attacks:['Punch_Combo_1','Punch_Combo_3','Punch_Combo_4','Punch_Combo_5','Punch_Combo_4','Punch_Combo_2','Punch_Combo','Punch_Pose'] },  // Cliffhorn (lab map)
-  { idle:'Shouting_Angrily', hit:'Hit_Reaction',  attacks:['mage_soell_cast','mage_soell_cast_2','mage_soell_cast_4','mage_soell_cast_6'] },                                              // Gale
-  { idle:'Combat_Stance',   hit:'Hit_Reaction_1', attacks:['Kung_Fu_Punch','Lunge_Spin_Kick','Roundhouse_Kick','Sweep_Kick','Angry_Ground_Stomp_2','Neck_Slashing_Gesture'] },           // Sky Titan
+  { idle:'Checkout_Gesture', hit:'Hit_Reaction_with_Bow', attacks:['mage_soell_cast','mage_soell_cast_2','mage_soell_cast_4','mage_soell_cast_6','mage_soell_cast_2','mage_soell_cast_4','mage_soell_cast_6','mage_soell_cast'] },  // Gale (lab map)
+  { idle:'Combat_Stance',   hit:'Hit_Reaction_1', attacks:['Shrug','Neck_Slashing_Gesture','Angry_Ground_Stomp_2','Lunge_Spin_Kick','Sweep_Kick','Roundhouse_Kick','Lunge_Spin_Kick','Kung_Fu_Punch'] },  // Sky Titan (lab map)
 ];
 const bossGLTF=[null,null,null];
 ENEMY_GLB.forEach((f,i)=>{ new GLTFLoader().load(f, g=>{ bossGLTF[i]=g; }, undefined, err=>console.error('boss load '+i, err)); });
