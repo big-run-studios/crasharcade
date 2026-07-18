@@ -182,11 +182,10 @@
     </div>
 
     <div id="dbg"></div>
-    <div class="brand" id="brand">CRASHARCADE · MONKEY STACK v0.2.2</div>
+    <div class="brand" id="brand">CRASHARCADE · MONKEY STACK v0.3.0</div>
   </div>
   <audio id="unlockAudio" loop src="data:audio/wav;base64,UklGRigAAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQQAAACAgICA"></audio>
 </div>
-<script src="lib/matter.min.js"></script>
 <script>
 (()=>{ 'use strict';
 /* ================================================================= helpers */
@@ -204,33 +203,27 @@ const store={ get:k=>{try{return localStorage.getItem(k);}catch(e){return null;}
 /* ================================================================= CFG — every balance number lives here */
 const CFG={
   // world
-  gravity:1.15, timeScale:1,
+  timeScale:1,
   U:36, platCols:9, platRows:18,
   trayY:640, trayH:22, floorY:856,
-  // bricks
-  brickDensity:0.0016, brickFriction:0.55, brickFrictionStatic:0.9,
-  brickRestitution:0, brickAirFriction:0.014,           // dead toy plastic — landings must not bounce
-  // platform (monkey strength: spring in angular-accel units × tray-only inertia → absolute torque,
-  // so taller/heavier towers genuinely overwhelm the same monkey)
-  platDensity:0.005, platSpring:3.5, platDamp:5,
+  // board sim — the tray is a driven pendulum: gravity torque from the grid's mass map vs the
+  // monkey's angular spring. No physics engine; the whole model is these numbers.
+  boardG:1500,                    // gravity, px/s² per unit cell mass
+  boardK:4.5e6, boardC:6.2e5,     // monkey spring / damping (torque per rad, per rad/s)
+  boardI0:175000,                 // empty-tray rotational inertia
   springSoftenPerPlace:0.02, springSoftenMin:0.72,
-  pivotStiffness:1, maxTilt:0.46, critTilt:0.30, critGrace:1.1,   // rigid pin: a soft pivot trampolines the tray
-  // peg / socket connection
-  posTolEarly:0.34, posTolLate:0.20, posTolRamp:12,   // ×U horizontal tolerance, eased over N placements
-  posTolV:0.45, angTol:0.17,
-  snapMaxImpact:24, snapSettleSpeed:6.5, snapWindow:0.8,
-  assistForce:0.000015, assistFade:8,                  // gentle magnet toward a valid column, gone by placement N
-  weakStiffness:0.95, weakAngSpring:9, weakAngDamp:2.5, weakBreakAng:0.95,
+  maxTilt:0.46, critTilt:0.30, critGrace:1.1,
+  impactKick:0.045,               // landing dip: fraction of the brick's own torque as an angV kick
   // flow
-  confirmTime:0.55, confirmTimeSnap:0.35, confirmTimeWeak:0.7, settleVel:0.5, crashBelow:150,
+  crashBelow:150,
   spawnGap:180, spawnGapGrow:6, spawnGapMax:265,
   descentBase:46, descentGrow:2.5, descentMax:88,      // auto-descent px/s, ramps per placement
-  handoffGap:24, slamSpeed:11, lockInPts:25,
+  slamSpeed:900, snapLerp:0.09, tumbleG:1800,
   // scoring
   baseCell:12, heightPts:6, fullClickPts:45, extraPegPts:12, weakClickPts:18,
-  savePts:55, saveAngle:0.05, dangerPts:65, dangerFrac:0.5, streakBonus:0.3,
+  savePts:55, saveAngle:0.03, dangerPts:65, dangerFrac:0.5, streakBonus:0.3,
   // multiplier
-  multBase:0.10, multPerPlace:0.015, multWeak:0.05, multLoose:0.07,
+  multBase:0.10, multPerPlace:0.015, multWeak:0.05,
   multOffset:0.06, multHeight:0.012, multDanger:0.18, multHard:0.03,
   // camera
   camMinZoom:0.55, camEase:3, camTopPad:150,
@@ -311,44 +304,44 @@ const muteBtn=$('muteBtn');
 function applyMute(){ muteBtn.textContent=muted?'🔇':'🔊'; if(master) master.gain.value=muted?0:0.8; }
 muteBtn.addEventListener('click',e=>{ e.stopPropagation(); muted=!muted; store.set('ms_mute',muted?'1':'0'); applyMute(); });
 applyMute();
-/* ================================================================= physics world */
-const {Engine, Bodies, Body, Composite, Constraint, Events, Vector}=Matter;
+/* ================================================================= board sim */
 const W=430, H=932, U=CFG.U, HALF=(CFG.platCols-1)/2;      // grid columns -HALF..HALF
-const engine=Engine.create({enableSleeping:false, positionIterations:10, velocityIterations:8});
-engine.gravity.y=CFG.gravity;
-const world=engine.world;
-const ground=Bodies.rectangle(W/2, CFG.floorY+42, W*4, 84, {isStatic:true, friction:0.8, label:'ground'});
-Composite.add(world, ground);
-
-// platform tray — the compound body every secure brick merges into
 const TRAY_W=CFG.platCols*U+14;
-let trayPart=null, plat=null, pivotC=null, refInertia=1, snapParts=[];
-function makePlatform(){
-  trayPart=Bodies.rectangle(W/2, CFG.trayY+CFG.trayH/2, TRAY_W, CFG.trayH,
-    {density:CFG.platDensity, friction:CFG.brickFriction, restitution:0});
-  plat=Body.create({parts:[trayPart], friction:CFG.brickFriction, frictionAir:0.02});
-  refInertia=plat.inertia;
-  pivotC=Constraint.create({pointA:{x:W/2, y:CFG.trayY+CFG.trayH/2}, bodyB:plat, pointB:{x:0,y:0},
-    length:0, stiffness:CFG.pivotStiffness, damping:0.08});
-  Composite.add(world,[plat,pivotC]);
-  snapParts=[];
+const PIVOT={x:W/2, y:CFG.trayY+CFG.trayH/2};              // where the monkey's hands hold the tray
+const board={angle:0, angV:0};
+let sumM=0, sumMx=0, sumMh=0, sumMr2=0;                    // mass-map moments in tray frame (x right, h up)
+function boardReset(){ board.angle=0; board.angV=0; sumM=0; sumMx=0; sumMh=0; sumMr2=0; }
+function addCellMass(i,j,m){
+  const x=i*U, h=(j+0.5)*U+CFG.trayH/2;
+  sumM+=m; sumMx+=m*x; sumMh+=m*h; sumMr2+=m*(x*x+h*h);
 }
-// plat.position moves to the new COM on every setParts — preserve every anchor attached to it
-function withPlatAnchors(fn){
-  const cons=[{c:pivotC,side:'B'}, ...weakList.map(w=>({c:w.con,side:'A'}))];
-  const worlds=cons.map(e=>vAdd(plat.position, vRot(e.side==='B'?e.c.pointB:e.c.pointA, plat.angle)));
-  fn();
-  cons.forEach((e,i)=>{ const l=vRot(vSub(worlds[i], plat.position), -plat.angle);
-    if(e.side==='B') e.c.pointB=l; else e.c.pointA=l; });
+function springNow(){ return CFG.boardK*Math.max(CFG.springSoftenMin, 1-placements*CFG.springSoftenPerPlace); }
+function boardEq(dMx=0,dMh=0){ // small-angle equilibrium tilt for the (optionally hypothetical) mass map
+  const den=springNow()-CFG.boardG*(sumMh+dMh);
+  return den>1e4 ? CFG.boardG*(sumMx+dMx)/den : Math.sign(sumMx+dMx)*CFG.maxTilt;
+}
+function boardStep(dt){
+  const c=Math.cos(board.angle), s=Math.sin(board.angle);
+  const grav=CFG.boardG*(sumMx*c + sumMh*s);               // θ>0 = right side dips; tall towers amplify
+  if(state==='crashing'){                                  // keel over freely, no monkey resistance
+    board.angV+=grav/(CFG.boardI0+sumMr2)*dt + Math.sign(board.angle||1)*0.6*dt;
+    board.angle=clamp(board.angle+board.angV*dt,-2.2,2.2);
+    return;
+  }
+  const I=CFG.boardI0+sumMr2;
+  const acc=(grav - springNow()*board.angle - CFG.boardC*board.angV)/I;
+  board.angV+=acc*dt;
+  board.angle+=board.angV*dt;
+  if(board.angle>CFG.maxTilt){ board.angle=CFG.maxTilt; if(board.angV>0) board.angV=0; }
+  if(board.angle<-CFG.maxTilt){ board.angle=-CFG.maxTilt; if(board.angV<0) board.angV=0; }
 }
 
 /* ================================================================= grid (tray-local, y up) */
 let occ=new Map();        // "i,j" -> {rec, pegUp}
-let placed=[];            // snapped bricks: {type:'snap', shapeKey, color, cells:[{i,j,pegUp}], wedge, squash}
-let weakList=[];          // weak-connected: {body, con, brick, relAng0}
-let looseList=[];         // confirmed loose placements: {body, brick}
+let placed=[];            // clicked bricks: {shapeKey, color, cells:[{i,j,pegUp}], wedge, squash}
+let rubble=[];            // canned crash debris: {x,y,ang,vx,vy,vr,geom,color,rest,bounced}
 let maxRow=0;
-function gridFrame(){ const a=plat.angle; return {o:vAdd(trayPart.position, vRot({x:0,y:-CFG.trayH/2},a)), a}; }
+function gridFrame(){ const a=board.angle; return {o:vAdd(PIVOT, vRot({x:0,y:-CFG.trayH/2},a)), a}; }
 function gridToWorld(i,j,f=gridFrame()){ return vAdd(f.o, vRot({x:i*U, y:-(j+0.5)*U}, f.a)); }
 function worldToGrid(p,f=gridFrame()){ const d=vRot(vSub(p,f.o), -f.a); return {gx:d.x/U, gy:-d.y/U-0.5}; }
 function pegAt(i,j){ const e=occ.get(i+','+j); return !!(e&&e.pegUp&&!occ.has(i+','+(j+1))); }
@@ -381,38 +374,25 @@ function buildGeom(key,r){
   }
   geomCache[ck]=out; return out;
 }
-function brickBodyOpts(sh){ return {density:CFG.brickDensity*sh.weight, friction:CFG.brickFriction,
-  frictionStatic:CFG.brickFrictionStatic, restitution:CFG.brickRestitution, frictionAir:CFG.brickAirFriction}; }
-function makeBrickBody(key,r,x,y){
-  const g=buildGeom(key,r), sh=SHAPES[key], opts=brickBodyOpts(sh);
-  let body;
-  if(g.wedge){ body=Bodies.fromVertices(0,0,[g.wedgeVerts.map(p=>({x:p.x,y:p.y}))],opts); }
-  else{
-    const parts=g.cells.map(c=>Bodies.rectangle(c.off.x, c.off.y, U, U, opts));
-    body=parts.length===1?parts[0]:Body.create({parts, ...opts});
-  }
-  Body.setPosition(body,{x,y});
-  return body;
+// a rec's cells as render offsets around the brick's centre — used for crash rubble
+function recGeom(rec){
+  const ci=rec.cells.reduce((s,c)=>s+c.i,0)/rec.cells.length;
+  const cj=rec.cells.reduce((s,c)=>s+c.j,0)/rec.cells.length;
+  return { cells:rec.cells.map(c=>({off:{x:(c.i-ci)*U, y:-(c.j-cj)*U}, peg:c.pegUp?{x:0,y:-1}:null})),
+    wedge:false, centre:{ci,cj} };
 }
 
 /* ================================================================= run state */
-let state='menu';       // menu | descend | falling | settling | crashing | banked
+let state='menu';       // menu | descend | snapping | tumbling | crashing | banked
 let t=0, score=0, mult=1, bank=0, streak=0, placements=0;
-let active=null;        // {key, rot, color, geom, x, body?, dropT, angAtDrop, impactSpeed, prevSpeed, landT, hardImpact, settleT, kind}
+let active=null;        // {key, rot, color, geom, x, y, slam, snapT, tumble:{vx,vy,vr}}
 let seq=[], bag=[], forceKey=null, lastColor=-1;
 let critT=0, danger=0, dangerSide=0, camZ=1, camZT=1, camShake=0;
 let crashReason='', crashLostScore=0, monkeyMood='play', crashT=0, bankT=0;
-let aimCand=null;       // ghost highlight while aiming
+let aimCand=null;       // ghost/landing prediction while descending
 const particles=[];
 
-function posTolNow(){ return U*lerp(CFG.posTolEarly, CFG.posTolLate, clamp(placements/CFG.posTolRamp,0,1)); }
-function springNow(){ return CFG.platSpring*Math.max(CFG.springSoftenMin, 1-placements*CFG.springSoftenPerPlace); }
-function towerTopY(){
-  let top=CFG.trayY - maxRow*U;
-  for(const l of looseList) top=Math.min(top, l.body.bounds.min.y);
-  for(const w of weakList) top=Math.min(top, w.body.bounds.min.y);
-  return top;
-}
+function towerTopY(){ return CFG.trayY - maxRow*U; }
 function spawnYNow(){ return towerTopY() - Math.min(CFG.spawnGap+placements*CFG.spawnGapGrow, CFG.spawnGapMax); }
 
 /* controlled bag: tier pool by progress, never 3 awkward shapes in a row */
@@ -434,8 +414,7 @@ function descentNow(){ return Math.min(CFG.descentBase+placements*CFG.descentGro
 function spawnBrick(){
   const key=drawShape();
   let ci; do{ ci=Math.floor(Math.random()*COLORS.length); }while(ci===lastColor); lastColor=ci;
-  active={ key, rot:0, color:ci, geom:buildGeom(key,0), x:W/2, y:spawnYNow(), body:null,
-    dropT:0, angAtDrop:0, impactSpeed:0, prevSpeed:0, landT:-1, hardImpact:false, settleT:0, kind:null };
+  active={ key, rot:0, color:ci, geom:buildGeom(key,0), x:W/2, y:spawnYNow(), slam:false, snapT:0, tumble:null };
   state='descend';
   setCtl();
   tutShow('move');
@@ -443,198 +422,85 @@ function spawnBrick(){
 function rotateActive(){
   if(!active||state!=='descend') return;
   active.rot=(active.rot+1)%4; active.geom=buildGeom(active.key,active.rot);
+  active.x=clampAim(active.x);
   sfx.rotate(); tutDone('move'); tutDone('rotate');
 }
 function activeHalfW(){ const xs=active.geom.cells.map(c=>c.off.x); return (Math.max(...xs)-Math.min(...xs))/2+U/2; }
 function activeHalfH(){ return Math.max(...active.geom.cells.map(c=>c.off.y))+U/2; }
-function clampAim(x){ const hw=activeHalfW(); return clamp(x, W/2-(HALF+1.5)*U+hw, W/2+(HALF+1.5)*U-hw); }
-function supportTopY(){
-  // highest thing under the descending brick: grid stack plus any weak/loose bodies in its column range
-  const hw=activeHalfW();
-  let top=aimCand?aimCand.restY:CFG.trayY;
-  for(const L of [weakList,looseList]) for(const e of L){
-    const b=e.body;
-    if(b.bounds.max.x>active.x-hw && b.bounds.min.x<active.x+hw) top=Math.min(top,b.bounds.min.y);
-  }
-  return top;
-}
-function dropActive(slam){
-  if(!active||state!=='descend') return;
-  tutDone('move'); tutDone('rotate'); if(slam) tutDone('drop');
-  active.body=makeBrickBody(active.key, active.rot, active.x, active.y);
-  active.body.label='brick';
-  Body.setAngle(active.body, plat.angle);              // sockets arrive parallel to the studs
-  Composite.add(world, active.body);
-  Body.setVelocity(active.body,{x:0, y:slam?CFG.slamSpeed:descentNow()/60});
-  active.dropT=t; active.angAtDrop=plat.angle;
-  state='falling'; setCtl(); if(slam) sfx.drop();
+function clampAim(x){ const hw=activeHalfW(); return clamp(x, W/2-(HALF+0.5)*U+hw, W/2+(HALF+0.5)*U-hw); }
+function dropActive(){                      // SLAM = fast-forward the descent; the click itself is the landing
+  if(!active||state!=='descend'||active.slam) return;
+  active.slam=true;
+  tutDone('move'); tutDone('rotate'); tutDone('drop');
+  sfx.drop();
 }
 
-/* ================================================================= snap evaluation */
-function evalSnap(body,geom,shapeKey){
-  const f=gridFrame(), sh=SHAPES[shapeKey];
-  const rel=normAng(body.angle-plat.angle);
-  const q=Math.round(rel/HPI), angErr=Math.abs(rel-q*HPI);
-  if(angErr>CFG.angTol) return null;
-  if(sh.wedge && ((geom.rot+q)%4+4)%4!==0) return null;   // roof piece connects flat-side-down only
-  const cellsG=[]; let errX=0, errY=0;
-  for(const c of geom.cells){
-    const wp=vAdd(body.position, vRot(c.off, body.angle));
-    const g=worldToGrid(wp,f);
-    const i=Math.round(g.gx), j=Math.round(g.gy);
-    errX=Math.max(errX,Math.abs(g.gx-i)); errY=Math.max(errY,Math.abs(g.gy-j));
-    if(i<-HALF||i>HALF||j<0||j>=CFG.platRows) return null;
-    if(occ.has(i+','+j)) return null;
-    let pegUp=false, pegDown=false;
-    if(c.peg){ const d=vRot(vRot(c.peg, body.angle), -plat.angle); pegUp=d.y<-0.7; pegDown=d.y>0.7; }
-    cellsG.push({i,j,pegUp,pegDown});
-  }
-  if(errX>posTolNow()||errY>U*CFG.posTolV) return null;
-  const set=new Set(cellsG.map(c=>c.i+','+c.j)); if(set.size!==cellsG.length) return null;
-  // pegs offered by grid-aligned weak/loose bricks — lets one brick bridge several supports,
-  // locking them into the structure when it connects
-  const supPegs=new Map(), supports=new Set();
-  for(const L of [weakList,looseList]) for(const e of L){
-    if(e.body===body) continue;
-    const sc=alignedCells(e.body,e.brick);
-    if(sc&&!sc.some(c2=>set.has(c2.i+','+c2.j))){
-      const sup={entry:e, list:L, cells:sc};                     // ONE object per support → Set dedupes
-      for(const c2 of sc) if(c2.pegUp) supPegs.set(c2.i+','+(c2.j+1), sup);
-    }
-  }
-  const matches=[];
-  for(const c of cellsG){
-    if(set.has(c.i+','+(c.j-1))) continue;               // not a bottom-exposed face of this shape
-    if(c.pegDown) continue;                              // downward stud blocks the socket
-    if(c.j===0) matches.push(c);                         // tray peg row
-    else if(pegAt(c.i,c.j-1)) matches.push(c);
-    else if(supPegs.has(c.i+','+c.j)){ matches.push(c); supports.add(supPegs.get(c.i+','+c.j)); }
-  }
-  if(!matches.length) return null;
-  return {cellsG, matches, supports:[...supports], errX, errY, angErr, q};
+/* ================================================================= landing resolution (pure grid) */
+function beginSnap(cand){
+  active.cand=cand; active.snapT=0;
+  state='snapping'; setCtl();
 }
-/* can this free body pass as grid-aligned right now? (used to lend its pegs to bridges) */
-function alignedCells(body,brick){
-  if(brick.geom.wedge) return null;
-  const f=gridFrame();
-  const rel=normAng(body.angle-plat.angle), q=Math.round(rel/HPI);
-  if(Math.abs(rel-q*HPI)>CFG.angTol) return null;
-  const cells=[];
-  for(const c of brick.geom.cells){
-    const wp=vAdd(body.position, vRot(c.off, body.angle));
-    const g=worldToGrid(wp,f);
-    const i=Math.round(g.gx), j=Math.round(g.gy);
-    if(Math.abs(g.gx-i)*U>posTolNow()*1.2||Math.abs(g.gy-j)*U>U*CFG.posTolV) return null;
-    if(i<-HALF||i>HALF||j<0||j>=CFG.platRows||occ.has(i+','+j)) return null;
-    let pegUp=false;
-    if(c.peg){ const d=vRot(vRot(c.peg, body.angle), -plat.angle); pegUp=d.y<-0.7; }
-    cells.push({i,j,pegUp});
-  }
-  return cells;
+function beginTumble(){
+  const side=active.x>=W/2?1:-1;
+  active.tumble={vx:side*rnd(50,110), vy:Math.max(120,active.slam?CFG.slamSpeed*0.4:descentNow()), vr:side*rnd(1.5,3.5)};
+  active.ang=board.angle;
+  state='tumbling'; setCtl();
+  popTxt(active.x,active.y-U,'no pegs!','#ff8fa0');
+  sfx.clack(1);
 }
-/* merge a supporting free brick into the platform compound at its aligned grid pose */
-function lockInSupport(s){
-  const e=s.entry, f=gridFrame();
-  if(e.con) Composite.remove(world,e.con);
-  Composite.remove(world,e.body);
-  const idx=s.list.indexOf(e); if(idx>=0) s.list.splice(idx,1);
-  const parts=s.cells.map(c=>{ const wc=gridToWorld(c.i,c.j,f);
-    return Bodies.rectangle(wc.x,wc.y,U,U,{...brickBodyOpts(SHAPES[e.brick.key]),angle:plat.angle}); });
-  withPlatAnchors(()=>{ snapParts.push(...parts); Body.setParts(plat,[trayPart,...snapParts],false); });
-  const rec={type:'snap', shapeKey:e.brick.key, color:e.brick.color, squash:0.4,
-    cells:s.cells.map(c=>({...c})), wedge:null};
-  placed.push(rec);
-  for(const c of rec.cells){ occ.set(c.i+','+c.j,{rec,pegUp:c.pegUp}); maxRow=Math.max(maxRow,c.j+1); }
-  score+=CFG.lockInPts;
-  popTxt(e.body.position.x,e.body.position.y-U,'LOCKED IN +'+CFG.lockInPts,'#7df0ff');
-}
-
-function connectSecure(cand){
-  const br=active, f=gridFrame();
-  Composite.remove(world, br.body);
-  const opts={...brickBodyOpts(SHAPES[br.key]), angle:plat.angle};
-  let parts;
-  if(SHAPES[br.key].wedge){
-    const i0=Math.min(cand.cellsG[0].i,cand.cellsG[1].i), j=cand.cellsG[0].j;
-    const base0=gridToWorld(i0,j,f), v=[{x:-U/2,y:U/2},{x:1.5*U,y:U/2},{x:U/2,y:-U/2}];
-    const wv=v.map(p=>vAdd(base0, vRot(p,f.a)));
-    const c={x:(wv[0].x+wv[1].x+wv[2].x)/3, y:(wv[0].y+wv[1].y+wv[2].y)/3};
-    parts=[Bodies.fromVertices(c.x,c.y,[wv],opts)];
-  }else{
-    parts=cand.cellsG.map(c=>{ const wc=gridToWorld(c.i,c.j,f); return Bodies.rectangle(wc.x,wc.y,U,U,opts); });
-  }
-  withPlatAnchors(()=>{ snapParts.push(...parts); Body.setParts(plat,[trayPart,...snapParts],false); });
-  const rec={type:'snap', shapeKey:br.key, color:br.color, squash:0,
+function place(cand){
+  const br=active, sh=SHAPES[br.key], pegN=cand.matches.length;
+  const rec={shapeKey:br.key, color:br.color, squash:0,
     cells:cand.cellsG.map(c=>({i:c.i,j:c.j,pegUp:c.pegUp})),
-    wedge:SHAPES[br.key].wedge?{i0:Math.min(...cand.cellsG.map(c=>c.i)), j:cand.cellsG[0].j}:null};
+    wedge:sh.wedge?{i0:Math.min(...cand.cellsG.map(c=>c.i)), j:cand.cellsG[0].j}:null};
+  const eqBefore=boardEq();                 // equilibrium tilt before/after → save & danger bonuses
   placed.push(rec);
-  for(const c of rec.cells){ occ.set(c.i+','+c.j,{rec,pegUp:c.pegUp}); maxRow=Math.max(maxRow,c.j+1); }
-  // impact dip: a touch of angular velocity toward the landing side, so the tray visibly takes the weight
-  const off=cand.cellsG.reduce((s,c)=>s+c.i,0)/cand.cellsG.length;
-  Body.setAngularVelocity(plat, plat.angularVelocity+off*0.002*SHAPES[br.key].weight);
-  for(const m of cand.matches){ const p=gridToWorld(m.i,m.j-0.6,f); burst(p.x,p.y,'spark',COLORS[br.color][1],6); }
-  sfx.click(); sfx.uh();
-  active.kind={type:'snap', pegN:cand.matches.length};
-  state='settling'; active.settleT=0; setCtl();
-  tutDoneShow('click','Clicked! Secure bricks lock in.');
-}
-function connectWeak(cand){
-  const br=active, f=gridFrame(), m=cand.matches[0];
-  const P=vAdd(f.o, vRot({x:m.i*U, y:-m.j*U}, f.a));      // peg tip = boundary between the two cells
-  const idx=cand.cellsG.indexOf(m);
-  const cellOff=br.geom.cells[idx].off;
-  const sockLocal={x:cellOff.x, y:cellOff.y+U/2};          // bottom-centre of the socket cell (body-local)
-  const S=vAdd(br.body.position, vRot(sockLocal, br.body.angle));
-  Body.setPosition(br.body, vAdd(br.body.position, vSub(P,S)));
-  Body.setVelocity(br.body,{x:br.body.velocity.x*0.3, y:br.body.velocity.y*0.3});
-  const con=Constraint.create({bodyA:plat, pointA:vRot(vSub(P,plat.position),-plat.angle),
-    bodyB:br.body, pointB:sockLocal, length:0, stiffness:CFG.weakStiffness, damping:0.1});
-  Composite.add(world, con);
-  weakList.push({body:br.body, con, brick:{key:br.key, rot:br.rot, color:br.color, geom:br.geom}, relAng0:normAng(br.body.angle-plat.angle)});
-  burst(P.x,P.y,'spark',COLORS[br.color][1],4);
-  sfx.weak();
-  active.kind={type:'weak', pegN:1};
-  state='settling'; active.settleT=0; setCtl();
-  tutDoneShow('click','One peg only — it can swing!');
+  let offSum=0;
+  for(const c of rec.cells){ occ.set(c.i+','+c.j,{rec,pegUp:c.pegUp}); maxRow=Math.max(maxRow,c.j+1);
+    addCellMass(c.i,c.j, sh.weight); offSum+=c.i; }
+  const eqAfter=boardEq();
+  const offX=offSum/rec.cells.length*U;
+  // landing dip toward the brick's side
+  board.angV += CFG.boardG*sh.weight*rec.cells.length*offX/(CFG.boardI0+sumMr2)*CFG.impactKick*4;
+  const f=gridFrame();
+  for(const m of cand.matches){ const p=vAdd(f.o,vRot({x:m.i*U,y:-m.j*U},f.a)); burst(p.x,p.y,'spark',COLORS[br.color][1],6); }
+  if(sh.cells.length>=4) camShake=Math.max(camShake,0.18);
+  if(pegN>=2) sfx.click(); else sfx.weak();
+  sfx.uh();
+  scorePlacement(rec, pegN, eqBefore, eqAfter, offX);
+  active=null;
+  spawnBrick();                             // continuous flow: the next brick starts falling immediately
 }
 
 /* ================================================================= scoring + flow */
-function confirmPlacement(){
-  const br=active, sh=SHAPES[br.key], kind=br.kind||{type:'loose',pegN:0};
+function scorePlacement(rec,pegN,eqBefore,eqAfter,offX){
+  const sh=SHAPES[rec.shapeKey];
   placements++;
-  const gy=kind.type==='snap' ? placed[placed.length-1].cells[0].j : Math.max(0,Math.round((CFG.trayY-br.body.position.y)/U));
+  const gy=Math.max(...rec.cells.map(c=>c.j));
   let pts=sh.cells.length*CFG.baseCell + sh.bonus + gy*CFG.heightPts;
-  let label='', col='#fff';
   const prevStreak=streak;
-  if(kind.type==='snap'){ let b=CFG.fullClickPts+(kind.pegN-2)*CFG.extraPegPts; b*=1+CFG.streakBonus*prevStreak;
-    pts+=b; streak++; label='CLICK!'; col=COLORS[br.color][1]; }
-  else if(kind.type==='weak'){ let b=CFG.weakClickPts*(1+CFG.streakBonus*prevStreak);
-    pts+=b; streak++; label='weak click'; col='#ffd84d'; }
-  else{ streak=0; label='loose…'; col='#ffb391'; tutDoneShow('loose','Loose bricks can slide off!'); }
-  const angNow=Math.abs(plat.angle), angBefore=Math.abs(br.angAtDrop);
-  if(angNow<angBefore-CFG.saveAngle){ pts+=CFG.savePts; popTxt(W/2, CFG.trayY-40,'BALANCE SAVE +'+CFG.savePts,'#3ecb6c'); }
-  if(angBefore>CFG.critTilt*CFG.dangerFrac){ pts+=CFG.dangerPts; popTxt(W/2, CFG.trayY-70,'DANGER +'+CFG.dangerPts,'#ff5a5a'); }
+  let label='', col='#fff';
+  if(pegN>=2){ pts+=(CFG.fullClickPts+(pegN-2)*CFG.extraPegPts)*(1+CFG.streakBonus*prevStreak);
+    streak++; label='CLICK!'; col=COLORS[rec.color][1];
+    tutDoneShow('click','Clicked! Multi-peg landings grow your streak.'); }
+  else{ pts+=CFG.weakClickPts*(1+CFG.streakBonus*prevStreak);
+    label='one peg'; col='#ffd76a';                        // streak holds but does not grow
+    tutDoneShow('weak','One peg only — find two or more for the big bonus.'); }
+  if(Math.abs(eqAfter)<Math.abs(eqBefore)-CFG.saveAngle){ pts+=CFG.savePts; popTxt(W/2,CFG.trayY-40,'BALANCE SAVE +'+CFG.savePts,'#7dffb4'); }
+  if(Math.abs(board.angle)>CFG.critTilt*CFG.dangerFrac){ pts+=CFG.dangerPts; popTxt(W/2,CFG.trayY-70,'DANGER +'+CFG.dangerPts,'#ff8fa0'); }
   score+=Math.round(pts);
-  // multiplier grows with the risk just taken
-  const offN=kind.type==='snap' ? Math.abs(placed[placed.length-1].cells.reduce((s,c)=>s+c.i,0)/placed[placed.length-1].cells.length)/HALF
-                                : Math.abs(br.body.position.x-W/2)/(HALF*U);
-  let gain=CFG.multBase + placements*CFG.multPerPlace + offN*CFG.multOffset + gy*CFG.multHeight
-         + danger*CFG.multDanger + sh.hard*CFG.multHard;
-  if(kind.type==='weak') gain+=CFG.multWeak;
-  if(kind.type==='loose') gain+=CFG.multLoose;
+  let gain=CFG.multBase + placements*CFG.multPerPlace + Math.abs(offX)/(HALF*U)*CFG.multOffset
+         + gy*CFG.multHeight + danger*CFG.multDanger + sh.hard*CFG.multHard;
+  if(pegN<2) gain+=CFG.multWeak;
   mult+=gain;
   bank=Math.floor(score*mult);
-  const bp=kind.type==='snap'?gridToWorld(placed[placed.length-1].cells[0].i,placed[placed.length-1].cells[0].j):br.body.position;
-  popTxt(bp.x, bp.y-U, '+'+Math.round(pts)+' '+label, col);
-  if(kind.type!=='snap'&&kind.type!=='weak'&&br.body){ /* keep body reference */ }
-  if(kind.type==='loose') looseList.push({body:br.body, brick:{key:br.key, rot:br.rot, color:br.color, geom:br.geom}});
-  active=null;
+  const p=gridToWorld(rec.cells[0].i, rec.cells[0].j);
+  popTxt(p.x,p.y-U,'+'+Math.round(pts)+' '+label,col);
   sfx.confirm();
   tutDoneShow('bank','Cash out any time — or keep stacking!');
-  spawnBrick();                          // continuous flow: the next brick starts descending immediately
 }
 function bankNow(){
-  if(state!=='descend'&&state!=='falling'&&state!=='settling') return;
+  if(state!=='descend'&&state!=='snapping') return;
   if(bank<=0) return;
   bankT=t; monkeyMood='bank'; state='banked'; setCtl();
   sfx.bank();
@@ -649,35 +515,31 @@ function doCrash(reason){
   crashReason=reason; crashLostScore=bank||Math.floor(score*mult);
   state='crashing'; crashT=t; monkeyMood='crash'; camShake=1; setCtl();
   sfx.crash();
-  if(active&&active.body&&active.kind?.type!=='snap') looseList.push({body:active.body, brick:{key:active.key,rot:active.rot,color:active.color,geom:active.geom}});
-  active=null;
-  // break the tower back into free bodies so it tumbles
-  const f=gridFrame();
-  withPlatAnchors(()=>{ snapParts=[]; Body.setParts(plat,[trayPart],false); });
-  Composite.remove(world, pivotC);
+  // canned tumble: every placed brick becomes kinematic debris, the tray keels over freely
+  const f=gridFrame(), side=Math.sign(board.angle)||1;
   for(const rec of placed){
-    if(rec.wedge){ const b=makeBrickBody(rec.shapeKey,0,0,0); const c=gridToWorld(rec.wedge.i0+0.5,rec.wedge.j,f);
-      Body.setPosition(b,{x:c.x,y:c.y-U*0.17}); Body.setAngle(b,plat.angle); rec.body=b; }
-    else{ const cx=rec.cells.reduce((s,c)=>s+c.i,0)/rec.cells.length, cy=rec.cells.reduce((s,c)=>s+c.j,0)/rec.cells.length;
-      const b=makeBrickBody(rec.shapeKey,0,0,0); // geometry may not match multi-rot shapes exactly, but close enough for rubble
-      const c=gridToWorld(cx,cy,f); Body.setPosition(b,{x:c.x,y:c.y}); Body.setAngle(b,plat.angle); rec.body=b; }
-    Composite.add(world, rec.body);
-    Body.setVelocity(rec.body,{x:rnd(-4,4), y:rnd(-6,-1)});
-    Body.setAngularVelocity(rec.body, rnd(-0.2,0.2));
+    const g=recGeom(rec);
+    const c=gridToWorld(g.centre.ci, g.centre.cj, f);
+    rubble.push({x:c.x,y:c.y,ang:f.a,vx:rnd(-60,60)+side*rnd(30,120),vy:rnd(-320,-60),vr:rnd(-4,4),
+      geom:{cells:g.cells,wedge:false}, color:rec.color, rest:false, bounced:false});
   }
-  for(const w of weakList) Composite.remove(world, w.con);
-  Body.setAngularVelocity(plat, plat.angle>0?0.12:-0.12);
+  if(active){
+    rubble.push({x:active.x,y:active.y,ang:active.ang||board.angle,
+      vx:active.tumble?active.tumble.vx:rnd(-60,60), vy:active.tumble?active.tumble.vy:0,
+      vr:active.tumble?active.tumble.vr:rnd(-3,3), geom:active.geom, color:active.color, rest:false, bounced:false});
+    active=null;
+  }
+  placed=[]; occ=new Map(); maxRow=0;
+  sumM=0; sumMx=0; sumMh=0; sumMr2=0;
+  board.angV=side*0.9;
   $('crashWhy').textContent=reason;
   $('crashLost').textContent=fmt(crashLostScore);
   setTimeout(()=>{ if(state==='crashing') overCrash.classList.remove('hide'); }, 1600);
 }
 function resetRun(){
-  // wipe the world back to tray-only and start aiming within a second
-  Composite.clear(world, false);
-  Composite.add(world, ground);
-  occ=new Map(); placed=[]; weakList=[]; looseList=[]; snapParts=[]; maxRow=0;
+  boardReset();
+  occ=new Map(); placed=[]; rubble=[]; maxRow=0;
   active=null; particles.length=0; aimCand=null;
-  makePlatform();
   score=0; mult=1; bank=0; streak=0; placements=0; critT=0; danger=0; camZ=1; camZT=1;
   monkeyMood='play'; crashT=0; bankT=0; hardRun=0; bag=[]; crashReason='';
   overCrash.classList.add('hide'); overBank.classList.add('hide'); menuEl.classList.add('hide');
@@ -688,133 +550,63 @@ function resetRun(){
 function toMenu(){ state='menu'; hudEl.classList.remove('on'); setCtl(); menuEl.classList.remove('hide'); }
 
 /* ================================================================= per-frame update */
-let acc=0;
-function preStep(){
-  if(!plat) return;
-  // monkey strength: absolute torque from tray-only reference inertia — towers out-mass him over time.
-  // Matter integrates ω+=(T/I)·dt² with dt in ms, and ω is rad/step: real-unit springs need ≈1e-6 torque
-  // scale and a ×60 step→seconds velocity conversion.
-  const k=springNow();
-  plat.torque += (-k*plat.angle - CFG.platDamp*plat.angularVelocity*60)*refInertia*1e-6;
-  // weak connections: soft angular spring toward their snapped-in orientation
-  for(const w of weakList){
-    const d=normAng(w.body.angle-plat.angle-w.relAng0);
-    w.body.torque += (-CFG.weakAngSpring*d - CFG.weakAngDamp*(w.body.angularVelocity-plat.angularVelocity)*60)*w.body.inertia*1e-6;
-  }
-  // keep the falling brick tracking the tray's tilt until first contact — physics owns it after that
-  if(state==='falling'&&active&&active.body&&active.landT<0){
-    Body.setAngle(active.body, plat.angle);
-    Body.setAngularVelocity(active.body, 0);
-  }
-  // snap assist: gentle horizontal magnet toward the nearest valid column while falling
-  if(state==='falling'&&active&&active.body&&!active.hardImpact&&placements<CFG.assistFade&&dbg.assist){
-    const c=aimCandidate(active.body.position.x, active.rot);
-    if(c&&c.matches.length&&Math.abs(c.fracErr)<0.9)
-      active.body.force.x += -c.fracErr*U*CFG.assistForce*active.body.mass*(1-placements/CFG.assistFade);
-  }
-}
-function postStep(){
-  if(!plat) return;
-  if(state!=='crashing'){
-    const mx=CFG.maxTilt;
-    if(plat.angle>mx){ Body.setAngle(plat,mx); if(plat.angularVelocity>0) Body.setAngularVelocity(plat,0); }
-    if(plat.angle<-mx){ Body.setAngle(plat,-mx); if(plat.angularVelocity<0) Body.setAngularVelocity(plat,0); }
-    if(Math.abs(plat.angularVelocity)>0.12) Body.setAngularVelocity(plat,Math.sign(plat.angularVelocity)*0.12);
-    // dead toy physics: bricks never trampoline. Kill upward launches and cap everything else —
-    // edge clips against the heavy pivoted compound can inject silly energy otherwise.
-    for(const b of Composite.allBodies(world)){
-      if(b.isStatic||b===plat) continue;
-      let vx=b.velocity.x, vy=b.velocity.y, ch=false;
-      if(vy<-3.5){ vy=-3.5; ch=true; }
-      if(vy>22){ vy=22; ch=true; }
-      if(Math.abs(vx)>9){ vx=Math.sign(vx)*9; ch=true; }
-      if(ch) Body.setVelocity(b,{x:vx,y:vy});
-      if(Math.abs(b.angularVelocity)>0.22) Body.setAngularVelocity(b,Math.sign(b.angularVelocity)*0.22);
-    }
-  }
-  if(active&&active.body) active.prevSpeed=active.body.speed;
-}
-function stepEngine(dt){
-  acc+=dt; let n=0;
-  while(acc>=1/60&&n<5){ preStep(); Engine.update(engine,1000/60*CFG.timeScale); postStep(); acc-=1/60; n++; }
-}
-
 function tick(dt){
   t+=dt;
   if(state==='menu'){ camShake=Math.max(0,camShake-dt*2); return; }
-  stepEngine(dt);
+  const sdt=dt*CFG.timeScale;
+  boardStep(sdt);
 
-  // danger metric drives monkey, gauge, warning audio
-  const a=plat.angle;
-  danger=clamp(Math.abs(a)/CFG.critTilt + Math.abs(plat.angularVelocity)*9, 0, 1.35);
+  const a=board.angle;
+  danger=clamp(Math.abs(a)/CFG.critTilt + Math.abs(board.angV)*0.15, 0, 1.35);
   dangerSide=Math.sign(a);
   if(danger>0.75&&state!=='crashing'&&state!=='banked') sfx.warn(clamp(danger-0.6,0,1));
-  if(Math.abs(plat.angularVelocity)>0.01) sfx.creak(clamp(Math.abs(plat.angularVelocity)*24,0,1));
-  if(danger>0.62) sfx.uh();
+  if(Math.abs(board.angV)>0.5) sfx.creak(clamp(Math.abs(board.angV)*0.5,0,1));
+  if(danger>0.62&&state!=='crashing'&&state!=='banked') sfx.uh();
   if(danger>0.5) tutDoneShow('balance','Keep the platform balanced!');
 
-  if(state==='falling'&&active&&active.body){
-    const b=active.body;
-    if(active.landT<0){ /* waiting for first contact — handled by collision event */ }
-    else if(!active.hardImpact && t-active.landT<=CFG.snapWindow && b.speed<CFG.snapSettleSpeed){
-      const cand=evalSnap(b,active.geom,active.key);
-      if(cand){ cand.supports.forEach(lockInSupport);
-        if(cand.matches.length>=2) connectSecure(cand); else connectWeak(cand); }
-    }
-    if(active&&active.landT>=0&&t-active.landT>CFG.snapWindow&&state==='falling'){ // window over → loose path
-      active.kind={type:'loose',pegN:0}; state='settling'; active.settleT=0;
-    }
-    if(active&&b.position.y>CFG.trayY+CFG.crashBelow) doCrash('The brick missed the platform!');
+  if(state==='descend'&&active){
+    aimCand=aimCandidate(active.x,active.rot);
+    if(aimCand&&!aimCand.matches.length) tutDoneShow('miss','No pegs there — it would fall!');
+    active.y+=(active.slam?CFG.slamSpeed:descentNow())*sdt;
+    if(aimCand){
+      // contact: cell 0 reaches its target cell centre (brick rides the tray tilt, so one cell suffices)
+      const f=gridFrame();
+      const tgt=gridToWorld(aimCand.cellsG[0].i, aimCand.cellsG[0].j, f);
+      const cur=vAdd({x:active.x,y:active.y}, vRot(active.geom.cells[0].off, f.a));
+      if(cur.y>=tgt.y-2){ if(aimCand.matches.length) beginSnap(aimCand); else beginTumble(); }
+    } else if(active.y>CFG.trayY+40) beginTumble();
   }
-  else if(state==='settling'&&active){
-    const k=active.kind.type;
-    if(k==='snap'){ active.settleT+=dt; if(active.settleT>=CFG.confirmTimeSnap) confirmPlacement(); }
-    else if(k==='weak'){ // pinned to a peg — it can swing but not fall, so confirm on a timer
-      active.settleT+=dt;
-      if(active.body.position.y>CFG.trayY+CFG.crashBelow) doCrash('It swung right off!');
-      else if(active.settleT>=CFG.confirmTimeWeak) confirmPlacement();
-    }
-    else{
-      const b=active.body;
-      // "supported" = not moving relative to the platform surface (the tray itself may still sway)
-      const r=vSub(b.position,plat.position);
-      const pv={x:plat.velocity.x-plat.angularVelocity*r.y, y:plat.velocity.y+plat.angularVelocity*r.x};
-      const rel=Math.hypot(b.velocity.x-pv.x, b.velocity.y-pv.y);
-      const slow=rel<CFG.settleVel&&Math.abs(b.angularVelocity-plat.angularVelocity)<0.02;
-      active.settleT=slow?active.settleT+dt:0;
-      // a brick that wiggles into alignment while settling still gets its click
-      if(rel<2.5){ const cand=evalSnap(b,active.geom,active.key);
-        if(cand){ cand.supports.forEach(lockInSupport);
-          if(cand.matches.length>=2) connectSecure(cand); else connectWeak(cand); return; } }
-      if(b.position.y>CFG.trayY+CFG.crashBelow) doCrash('The brick slid off!');
-      else if(active.settleT>=CFG.confirmTime) confirmPlacement();
-    }
+  else if(state==='snapping'&&active){
+    active.snapT+=sdt;
+    const k=Math.min(1,active.snapT/CFG.snapLerp);
+    const f=gridFrame(), cand=active.cand;
+    const tgt=gridToWorld(cand.cellsG[0].i,cand.cellsG[0].j,f);
+    const tgtC=vSub(tgt, vRot(active.geom.cells[0].off, f.a));
+    active.x=lerp(active.x,tgtC.x,k); active.y=lerp(active.y,tgtC.y,k);
+    if(k>=1) place(cand);
+  }
+  else if(state==='tumbling'&&active){
+    const tb=active.tumble;
+    tb.vy+=CFG.tumbleG*sdt;
+    active.x+=tb.vx*sdt; active.y+=tb.vy*sdt; active.ang=(active.ang||0)+tb.vr*sdt;
+    if(active.y>CFG.trayY+CFG.crashBelow) doCrash('No pegs — the brick tumbled off!');
   }
 
-  if(state!=='crashing'&&state!=='banked'&&state!=='menu'){
-    // critical-tilt grace period
+  if(state!=='crashing'&&state!=='banked'){
     if(Math.abs(a)>CFG.critTilt){ critT+=dt; if(critT>CFG.critGrace) doCrash('The monkey lost his grip!'); }
     else critT=Math.max(0,critT-dt*2);
-    // any confirmed brick leaving the platform area = crash
-    for(const l of looseList) if(l.body.position.y>CFG.trayY+CFG.crashBelow||Math.abs(l.body.position.x-W/2)>W*0.7){ doCrash('A brick fell off!'); break; }
-    if(state!=='crashing') for(const w of weakList){
-      if(w.body.position.y>CFG.trayY+CFG.crashBelow){ doCrash('A brick dropped loose!'); break; }
-      if(Math.abs(normAng(w.body.angle-plat.angle-w.relAng0))>CFG.weakBreakAng){    // hinge over-rotated → breaks loose
-        Composite.remove(world,w.con); looseList.push({body:w.body, brick:w.brick});
-        weakList.splice(weakList.indexOf(w),1);
-        sfx.clack(1); popTxt(w.body.position.x,w.body.position.y-U,'broke loose!','#ffb391');
-        break;
-      }
-    }
   }
   if(state==='crashing'&&t-crashT>2.6&&overCrash.classList.contains('hide')) overCrash.classList.remove('hide');
 
-  // steering ghost + guide, then the slow auto-descent toward the physics handoff point
-  aimCand=(state==='descend'&&active)?aimCandidate(active.x,active.rot):null;
-  if(state==='descend'&&active){
-    active.y+=descentNow()*dt;
-    const bottom=active.y+activeHalfH();
-    if(bottom>=supportTopY()-CFG.handoffGap || bottom>CFG.trayY+40) dropActive(false);
+  // crash debris — canned kinematics, one clack per brick on first floor hit
+  for(const r of rubble){
+    if(r.rest) continue;
+    r.vy+=CFG.tumbleG*sdt; r.x+=r.vx*sdt; r.y+=r.vy*sdt; r.ang+=r.vr*sdt;
+    if(r.y>CFG.floorY-10&&r.vy>0){
+      r.y=CFG.floorY-10; r.vy*=-0.25; r.vx*=0.7; r.vr*=0.6;
+      if(!r.bounced){ r.bounced=true; sfx.clack(0.6); }
+      if(Math.abs(r.vy)<50){ r.rest=true; r.vy=0; }
+    }
   }
 
   // camera: zoom out just enough to keep spawn + monkey framed
@@ -838,23 +630,6 @@ function tick(dt){
   updateHud();
 }
 
-/* collision: open the landing window on the active brick's first contact */
-Events.on(engine,'collisionStart',ev=>{
-  if(!active||!active.body||state!=='falling') return;
-  for(const pr of ev.pairs){
-    const A=pr.bodyA.parent||pr.bodyA, B=pr.bodyB.parent||pr.bodyB;
-    if(A!==active.body&&B!==active.body) continue;
-    if(active.landT<0){
-      active.landT=t; active.impactSpeed=Math.max(active.prevSpeed,active.body.speed);
-      if(active.impactSpeed>CFG.snapMaxImpact) active.hardImpact=true;
-      sfx.clack(clamp(active.impactSpeed/10,0.3,1));
-      const b=active.body;
-      burst(b.position.x, b.bounds.max.y,'dust','#e8cdaa',5);
-      if(active.impactSpeed>7) camShake=Math.max(camShake,0.25);
-    }
-  }
-});
-
 /* straight-drop grid prediction for the aiming ghost (a hint — never guarantees the physics) */
 function aimCandidate(x,rot){
   const g=buildGeom(active.key,rot), f=gridFrame();
@@ -870,7 +645,7 @@ function aimCandidate(x,rot){
   if(cellsG.some(c=>c.j>=CFG.platRows||occ.has(c.i+','+c.j))) return null;
   const set=new Set(cellsG.map(c=>c.i+','+c.j));
   const matches=[];
-  if(Math.abs(fracErr)*U<posTolNow()*1.25 && !(SHAPES[active.key].wedge&&rot!==0)){
+  if(!(SHAPES[active.key].wedge&&rot!==0)){
     for(const c of cellsG){
       if(set.has(c.i+','+(c.j-1))) continue;
       if(c.pegDown) continue;
@@ -925,15 +700,15 @@ function updateHud(force){
   streakEl.classList.toggle('on',streak>0);
   setHud(bankValEl,fmt(bank));
   const d=clamp(danger,0,1);
-  lvlBub.style.left=(50+clamp(plat?plat.angle/CFG.critTilt:0,-1,1)*38)+'%';
+  lvlBub.style.left=(50+clamp(board.angle/CFG.critTilt,-1,1)*38)+'%';
   lvlBub.className=d>0.85?'crit':(d>0.5?'warn':'');
   lvlBox.className=d>0.85?'crit':(d>0.5?'warn':'');
 }
 function setCtl(){
-  const run=state==='descend'||state==='falling'||state==='settling';
+  const run=state==='descend'||state==='snapping'||state==='tumbling';
   rotBtn.classList.toggle('on',run);
   dropBtn.classList.toggle('on',run);
-  cashBtn.classList.toggle('on',run);        // cash-out is always present during a run
+  cashBtn.classList.toggle('on',state==='descend'||state==='snapping');   // cash-out live until a brick is lost
 }
 
 /* ================================================================= rendering */
@@ -1046,12 +821,12 @@ function drawBrickBody(body,brick,alpha=1){
   ctx.restore();
 }
 function drawGhostBrick(x,y){
-  const b={position:{x,y},angle:plat?plat.angle:0};   // descending bricks ride the tray's tilt
+  const b={position:{x,y},angle:board.angle};   // descending bricks ride the tray's tilt
   drawBrickBody(b,{geom:active.geom,color:active.color},0.96);
 }
 function drawPlatform(){
-  const f=gridFrame(), cols=['#233266','#6fd8ff','#0d1330'];
-  ctx.save(); ctx.translate(trayPart.position.x,trayPart.position.y); ctx.rotate(plat.angle);
+  const cols=['#233266','#6fd8ff','#0d1330'];
+  ctx.save(); ctx.translate(PIVOT.x,PIVOT.y); ctx.rotate(board.angle);
   // padded underside
   ctx.fillStyle='#141b3f'; roundRect(-TRAY_W/2,-CFG.trayH/2+6,TRAY_W,CFG.trayH+4,9); ctx.fill();
   ctx.setLineDash([5,5]); ctx.strokeStyle='rgba(111,216,255,.35)'; ctx.lineWidth=1.5;
@@ -1061,8 +836,8 @@ function drawPlatform(){
   ctx.fillStyle='rgba(255,255,255,.14)'; ctx.fillRect(-TRAY_W/2+6,-CFG.trayH/2+2,TRAY_W-12,4);
   ctx.strokeStyle='#34e1ff'; ctx.lineWidth=2; ctx.shadowColor='#34e1ff'; ctx.shadowBlur=8;
   roundRect(-TRAY_W/2,-CFG.trayH/2,TRAY_W,CFG.trayH,7); ctx.stroke(); ctx.shadowBlur=0;
-  // pegs on free columns
-  for(let i=-HALF;i<=HALF;i++) if(!occ.has(i+',0')) drawPeg(i*U,0,{x:0,y:-1},cols);
+  // pegs on free columns (base rect sits U/2 above the pass-in point, so anchor them to the tray top)
+  for(let i=-HALF;i<=HALF;i++) if(!occ.has(i+',0')) drawPeg(i*U,U/2-CFG.trayH/2,{x:0,y:-1},cols);
   // monkey hands gripping the tray
   ctx.fillStyle='#f4dcb8';
   ctx.beginPath(); ctx.arc(-26,CFG.trayH/2+7,10,0,TAU); ctx.fill();
@@ -1075,7 +850,6 @@ function drawPlatform(){
 function drawPlaced(){
   const f=gridFrame();
   for(const rec of placed){
-    if(rec.body){ drawBrickBody(rec.body,{geom:buildGeom(rec.shapeKey,0),color:rec.color}); continue; }  // crash rubble
     const cols=COLORS[rec.color];
     ctx.save(); ctx.translate(f.o.x,f.o.y); ctx.rotate(f.a);
     // squash-and-rebound around the brick's bottom edge on fresh clicks
@@ -1101,14 +875,21 @@ function drawAim(){
   if(!active) return;
   const y=active.y;
   const halfH=activeHalfH();
-  // drop guide
+  const ok=aimCand&&aimCand.matches.length;
+  // drop guide — red when this spot has no pegs (the brick would tumble off)
   const endY=aimCand?aimCand.restY:CFG.trayY;
-  ctx.strokeStyle='rgba(52,225,255,.35)'; ctx.lineWidth=2; ctx.setLineDash([6,9]);
+  ctx.strokeStyle=ok?'rgba(52,225,255,.35)':'rgba(255,90,110,.55)'; ctx.lineWidth=2; ctx.setLineDash([6,9]);
   ctx.beginPath(); ctx.moveTo(active.x,y+halfH+6); ctx.lineTo(active.x,endY-4); ctx.stroke(); ctx.setLineDash([]);
   // contact shadow at predicted rest height
   ctx.fillStyle='rgba(0,0,0,.45)';
   const wHalf=Math.max(...active.geom.cells.map(c=>Math.abs(c.off.x)))+U/2;
   ctx.beginPath(); ctx.ellipse(active.x,endY,wHalf*0.9,5,0,0,TAU); ctx.fill();
+  if(!ok){ // no-connection warning at the landing point
+    const pul=0.6+0.3*Math.sin(t*9);
+    ctx.strokeStyle='rgba(255,90,110,'+pul+')'; ctx.lineWidth=3.5; ctx.lineCap='round';
+    ctx.beginPath(); ctx.moveTo(active.x-9,endY-24); ctx.lineTo(active.x+9,endY-6);
+    ctx.moveTo(active.x+9,endY-24); ctx.lineTo(active.x-9,endY-6); ctx.stroke();
+  }
   // compatible peg highlight (pulsing)
   if(aimCand&&aimCand.matches.length){
     const f=gridFrame(), pul=0.45+0.35*Math.sin(t*9);
@@ -1133,7 +914,7 @@ function drawDangerGlow(){
 /* ---------------- the monkey ---------------- */
 const FUR='#c68a4a', FURD='#9a6633', CREAM='#f4dcb8';
 function drawMonkey(){
-  const d=clamp(danger,0,1), a=plat?plat.angle:0, side=Math.sign(a)||1;
+  const d=clamp(danger,0,1), a=board.angle, side=Math.sign(a)||1;
   const e=monkeyMood==='crash'?t-crashT:0;
   let mx=W/2, my=0, mrot=0, hidden=false;
   const tremble=(d>0.65&&monkeyMood==='play')?Math.sin(t*70)*(d-0.65)*5:0;
@@ -1206,9 +987,9 @@ function drawMonkey(){
 
   // arms up to the tray grips (drawn in world space so hands land exactly on the platform)
   ctx.restore();
-  if(!hidden&&plat){
-    const gripL=vAdd(trayPart.position,vRot({x:-26,y:CFG.trayH/2+7},plat.angle));
-    const gripR=vAdd(trayPart.position,vRot({x:26,y:CFG.trayH/2+7},plat.angle));
+  if(!hidden){
+    const gripL=vAdd(PIVOT,vRot({x:-26,y:CFG.trayH/2+7},board.angle));
+    const gripR=vAdd(PIVOT,vRot({x:26,y:CFG.trayH/2+7},board.angle));
     ctx.strokeStyle=FUR; ctx.lineWidth=12; ctx.lineCap='round';
     const shLx=mx-22, shRx=mx+22, shy=CFG.floorY+my+shY;
     const bendL=8+Math.max(0,-a)*90*(0.4+d), bendR=8+Math.max(0,a)*90*(0.4+d);
@@ -1227,7 +1008,7 @@ function drawMonkeyHead(hx,hy,hr,d,popped,e){
   ctx.beginPath(); ctx.ellipse(0,-6,15,11,0,0,TAU); ctx.fill();
   // eyes: follow the active brick, widen with danger
   let lx=0, ly=0;
-  if(active&&(state==='descend'||state==='falling')){ const p=active.body?active.body.position:{x:active.x,y:active.y};
+  if(active&&(state==='descend'||state==='snapping')){ const p={x:active.x,y:active.y};
     lx=clamp((p.x-W/2)/70,-2.6,2.6); ly=clamp((p.y-500)/160,-2.4,1.2); }
   else if(d>0.4){ lx=(dangerSide||1)*2.2; }
   if(d>0.9&&Math.sin(t*4)>0.4){ lx=0; ly=1.8; }               // panicked glance at the player
@@ -1250,7 +1031,7 @@ function drawMonkeyHead(hx,hy,hr,d,popped,e){
   else{ ctx.fillStyle='#6b3a20'; ctx.beginPath(); ctx.ellipse(0,11,5,6.5,0,0,TAU); ctx.fill(); }
   // sweat
   if(d>0.6&&monkeyMood==='play'&&Math.random()<0.06)
-    particles.push({type:'sweat',x:W/2-plat.angle*46+rnd(-16,16),y:CFG.floorY-186,vx:rnd(-30,30),vy:-60,life:0.7,max:0.7,color:'#7ec8ff',sz:3});
+    particles.push({type:'sweat',x:W/2-board.angle*46+rnd(-16,16),y:CFG.floorY-186,vx:rnd(-30,30),vy:-60,life:0.7,max:0.7,color:'#7ec8ff',sz:3});
   ctx.restore();
 }
 
@@ -1282,23 +1063,23 @@ function drawDebugOverlay(){
     for(const [k,e] of occ){ const [i,j]=k.split(',').map(Number);
       if(e.pegUp&&!occ.has(i+','+(j+1))){ const p=gridToWorld(i,j+0.5,f); ctx.fillRect(p.x-2,p.y-2,4,4); } }
   }
-  if(dbg.com&&plat){
+  if(dbg.com&&sumM>0){
+    const com=vAdd(PIVOT, vRot({x:sumMx/sumM, y:-sumMh/sumM}, board.angle));
     ctx.strokeStyle='#ff5a5a'; ctx.lineWidth=2;
-    ctx.beginPath(); ctx.moveTo(plat.position.x-8,plat.position.y); ctx.lineTo(plat.position.x+8,plat.position.y);
-    ctx.moveTo(plat.position.x,plat.position.y-8); ctx.lineTo(plat.position.x,plat.position.y+8); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(com.x-8,com.y); ctx.lineTo(com.x+8,com.y);
+    ctx.moveTo(com.x,com.y-8); ctx.lineTo(com.x,com.y+8); ctx.stroke();
   }
-  if(dbg.cand&&state==='falling'&&active&&active.body){
-    const c=evalSnap(active.body,active.geom,active.key);
-    if(c){ ctx.strokeStyle='#ffd84d'; ctx.lineWidth=2;
-      for(const cc of c.cellsG){ const p=gridToWorld(cc.i,cc.j,f); ctx.strokeRect(p.x-U/2,p.y-U/2,U,U); } }
+  if(dbg.cand&&aimCand){
+    ctx.strokeStyle='#ffd84d'; ctx.lineWidth=2;
+    for(const cc of aimCand.cellsG){ const p=gridToWorld(cc.i,cc.j,f); ctx.strokeRect(p.x-U/2,p.y-U/2,U,U); }
   }
 }
 function torqueLR(){
   let L=0,R=0;
-  const addB=(m,x)=>{ const d=(x-W/2)*m; if(d<0) L-=d; else R+=d; };
-  if(plat) for(const pt of plat.parts.slice(1)) addB(pt.mass||1,pt.position.x);
-  for(const w of weakList) addB(w.body.mass,w.body.position.x);
-  for(const l of looseList) addB(l.body.mass,l.body.position.x);
+  for(const [k,e] of occ){
+    const i=+k.split(',')[0], d=i*U*SHAPES[e.rec.shapeKey].weight;
+    if(d<0) L-=d; else R+=d;
+  }
   return {L:Math.round(L),R:Math.round(R)};
 }
 
@@ -1312,18 +1093,18 @@ function render(){
   if(state!=='menu'){
     drawDangerGlow();
     drawMonkey();
-    if(plat){ drawPlatform(); drawPlaced(); }
-    for(const w of weakList) drawBrickBody(w.body,w.brick);
-    for(const l of looseList) drawBrickBody(l.body,l.brick);
+    drawPlatform(); drawPlaced();
+    for(const r of rubble) drawBrickBody({position:{x:r.x,y:r.y},angle:r.ang},{geom:r.geom,color:r.color});
     if(active&&state==='descend') drawAim();
-    if(active&&active.body&&(state==='falling'||state==='settling')) drawBrickBody(active.body,{geom:active.geom,color:active.color});
+    if(active&&(state==='snapping'||state==='tumbling'))
+      drawBrickBody({position:{x:active.x,y:active.y},angle:state==='tumbling'?(active.ang||0):board.angle},{geom:active.geom,color:active.color});
     drawParticles();
     if(dbg.pegs||dbg.com||dbg.cand) drawDebugOverlay();
-  }else{ drawMonkey(); if(plat){ drawPlatform(); } }
+  }else{ drawMonkey(); drawPlatform(); }
   ctx.restore();
-  if(dbg.torque&&plat){ const tq=torqueLR();
+  if(dbg.torque){ const tq=torqueLR();
     ctx.font='600 12px Fredoka'; ctx.textAlign='center'; ctx.fillStyle='#8fb8dc';
-    ctx.fillText('⟲ '+tq.L+'   tilt '+(plat.angle*57.3).toFixed(1)+'°   '+tq.R+' ⟳',W/2,112); }
+    ctx.fillText('⟲ '+tq.L+'   tilt '+(board.angle*57.3).toFixed(1)+'°   '+tq.R+' ⟳',W/2,112); }
 }
 
 /* ================================================================= input */
@@ -1346,14 +1127,14 @@ app.addEventListener('pointerup',e=>{
   if(!was||state!=='descend') return;
   const p=evXY(e);
   if(moved<8&&t-downT<0.4) rotateActive();                       // a tap = rotate
-  else if(p.y-downY>60&&t-downT<0.45) dropActive(true);          // quick downward swipe = slam
+  else if(p.y-downY>60&&t-downT<0.45) dropActive();              // quick downward swipe = slam
 });
 app.addEventListener('pointercancel',()=>{ dragging=false; });
 rotBtn.addEventListener('pointerdown',e=>e.stopPropagation());
 dropBtn.addEventListener('pointerdown',e=>e.stopPropagation());
 cashBtn.addEventListener('pointerdown',e=>e.stopPropagation());
 rotBtn.addEventListener('click',e=>{ e.stopPropagation(); rotateActive(); });
-dropBtn.addEventListener('click',e=>{ e.stopPropagation(); dropActive(true); });
+dropBtn.addEventListener('click',e=>{ e.stopPropagation(); dropActive(); });
 cashBtn.addEventListener('click',e=>{ e.stopPropagation(); bankNow(); });
 $('playBtn').addEventListener('click',()=>{ unlockAudio(); resetRun(); });
 $('retryBtn').addEventListener('click',()=>resetRun());
@@ -1364,14 +1145,14 @@ window.addEventListener('keydown',e=>{
     if(e.key==='ArrowLeft'||e.key==='a') active.x=clampAim(active.x-U/2);
     if(e.key==='ArrowRight'||e.key==='d') active.x=clampAim(active.x+U/2);
     if(e.key==='ArrowUp'||e.key==='r'||e.key==='w') rotateActive();
-    if(e.key===' '||e.key==='ArrowDown'||e.key==='s') dropActive(true);
+    if(e.key===' '||e.key==='ArrowDown'||e.key==='s') dropActive();
   }
   if(e.key==='b') bankNow();
   if(state==='menu'&&(e.key===' '||e.key==='Enter')) resetRun();
 });
 
 /* ================================================================= debug panel */
-const dbg={pegs:false, com:false, torque:false, cand:false, assist:true};
+const dbg={pegs:false, com:false, torque:false, cand:false};
 function buildDbg(){
   dbgEl.innerHTML='';
   const row=cls=>{ const d=document.createElement('div'); d.className='row'; dbgEl.appendChild(d); return d; };
@@ -1380,23 +1161,21 @@ function buildDbg(){
   Object.keys(SHAPES).forEach(k=>{ const b=document.createElement('button'); b.textContent=k;
     b.onclick=()=>{ forceKey=k; }; shapes.appendChild(b); });
   const toggles=row();
-  [['pegs','pegs'],['com','COM'],['torque','torque'],['cand','candidates'],['assist','snap assist']].forEach(([k,lb])=>{
+  [['pegs','pegs'],['com','COM'],['torque','torque'],['cand','candidates']].forEach(([k,lb])=>{
     const b=document.createElement('button'); b.textContent=lb; b.className=dbg[k]?'sel':'';
     b.onclick=()=>{ dbg[k]=!dbg[k]; b.className=dbg[k]?'sel':''; }; toggles.appendChild(b); });
-  [['platSpring',5,60,1],['platDamp',1,20,0.5],['brickFriction',0.1,1,0.05],['gravity',0.5,2,0.05],['timeScale',0.1,1,0.05]].forEach(([k,mn,mx,st])=>{
+  [['boardK',1e6,9e6,1e5],['boardC',1e5,2e6,25000],['boardG',500,3000,50],['timeScale',0.1,1,0.05]].forEach(([k,mn,mx,st])=>{
     const r=row(); r.innerHTML='<span style="width:66px">'+k+'</span>';
     const inp=document.createElement('input'); inp.type='range'; inp.min=mn; inp.max=mx; inp.step=st;
-    inp.value=k==='gravity'?engine.gravity.y:CFG[k];
+    inp.value=CFG[k];
     const val=document.createElement('span'); val.className='val'; val.textContent=inp.value;
-    inp.oninput=()=>{ const v=+inp.value; val.textContent=v;
-      if(k==='gravity') engine.gravity.y=v; else CFG[k]=v;
-      if(k==='brickFriction'){ for(const b of Composite.allBodies(world)) if(b.label==='brick') b.friction=v; } };
+    inp.oninput=()=>{ const v=+inp.value; val.textContent=v; CFG[k]=v; };
     r.appendChild(inp); r.appendChild(val); });
   const acts=row();
   [['force crash',()=>doCrash('debug crash')],['reset tower',()=>resetRun()],['bank',()=>bankNow()]].forEach(([lb,fn])=>{
     const b=document.createElement('button'); b.textContent=lb; b.onclick=fn; acts.appendChild(b); });
   setInterval(()=>{ if(!dbgEl.classList.contains('on')) return;
-    info.textContent=state+' · tilt '+(plat?(plat.angle*57.3).toFixed(1):'0')+'° · danger '+danger.toFixed(2)
+    info.textContent=state+' · tilt '+(board.angle*57.3).toFixed(1)+'° · danger '+danger.toFixed(2)
       +(danger>1?' CRITICAL':danger>0.75?' dangerous':danger>0.4?' wobbly':' stable')
       +' · placed '+placements+' · streak '+streak; },200);
 }
@@ -1427,29 +1206,27 @@ function frame(nw){
   ctx.setTransform(scale*dpr,0,0,scale*dpr,offX*dpr,offY*dpr);
   try{ render(); }catch(err){ console.error('render',err); }
 }
-makePlatform();
+boardReset();
 requestAnimationFrame(frame);
 
 /* ================================================================= debug hook */
 window.__game={
   get s(){ return { state, score, mult:+mult.toFixed(3), bank, streak, placements,
-    tilt:plat?+(plat.angle*57.3).toFixed(2):0, angVel:plat?+plat.angularVelocity.toFixed(4):0,
+    tilt:+(board.angle*57.3).toFixed(2), angV:+board.angV.toFixed(3),
     danger:+danger.toFixed(2), critT:+critT.toFixed(2),
-    placedSnap:placed.length, weak:weakList.length, loose:looseList.length, maxRow,
+    placedSnap:placed.length, rubble:rubble.length, maxRow,
     occ:occ.size, camZ:+camZ.toFixed(2), t:+t.toFixed(2), crashReason,
-    active:active?{key:active.key,rot:active.rot,x:Math.round(active.x),
-      body:active.body?{x:Math.round(active.body.position.x),y:Math.round(active.body.position.y),
-        ang:+active.body.angle.toFixed(3),spd:+active.body.speed.toFixed(2)}:null,
-      landT:active.landT,kind:active.kind}:null }; },
+    eq:+(boardEq()*57.3).toFixed(2),
+    active:active?{key:active.key,rot:active.rot,x:Math.round(active.x),y:Math.round(active.y),slam:active.slam}:null }; },
   step:d=>{ try{tick(d);}catch(e){console.error(e);} },
   startRun:resetRun, restart:resetRun, toMenu,
   bankNow, crashNow:()=>doCrash('debug'),
   spawn:k=>{ forceKey=k; if(state==='menu') resetRun(); },
   setSeq:a=>{ seq=a.slice(); },
   setX:x=>{ if(active&&state==='descend') active.x=clampAim(x); },
-  rot:rotateActive, drop:()=>dropActive(true),
-  cand:()=>aimCand, evalNow:()=>active&&active.body?evalSnap(active.body,active.geom,active.key):null,
-  torque:torqueLR, plat:()=>plat, occMap:()=>[...occ.keys()], cfg:CFG, dbg,
+  rot:rotateActive, drop:dropActive,
+  cand:()=>aimCand,
+  torque:torqueLR, board:()=>board, occMap:()=>[...occ.keys()], cfg:CFG, dbg,
   tut:()=>{ tutFlags={}; store.set('ms_tut','{}'); },
 };
 toMenu();
