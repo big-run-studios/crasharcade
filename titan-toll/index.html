@@ -308,7 +308,7 @@
       <div id="dbgLog"></div>
     </div>
 
-    <div id="brand">CRASHARCADE · TITAN GUARD v0.15.8</div>
+    <div id="brand">CRASHARCADE · TITAN GUARD v0.15.9</div>
   </div>
 </div>
 
@@ -911,6 +911,15 @@ const ENEMY_ROT=[
   {},                    // Gale
   {},                    // Sky Titan
 ];
+// ANIMATION-DRIVEN DODGE TIMING (Animation Lab DEFEND export). Per boss: clip -> { taps:[sec…] }.
+// When an attack's mapped clip has authored taps, the dodge hits land at those tap moments and the clip
+// plays at NATURAL speed so the swing lines up with the tap; damage/speed are borrowed from the attack set.
+// Clips without an entry keep the original abstract-set timing (stretched clip). See startAttack.
+const ENEMY_TAPS=[
+  { 'Punch_Combo_1':{ dur:2.233, taps:[1.34] } },   // Cliffhorn · Attack 1 (lab)
+  {},                                               // Gale
+  {},                                               // Sky Titan
+];
 // TAP-WINDOW SPARKLE — a character-anchored twinkle on each boss's signature body part,
 // lit only while the dodge tap window is open (brightest at the perfect-tap instant).
 const ENEMY_SPARK=[
@@ -965,22 +974,27 @@ function buildStaffDuplicate(model, cfg){
   const arr=idx?idx.array:null, tc=idx?idx.count:pos.count;
   for(let t=0;t<tc;t+=3){ const a=idx?arr[t]:t,b=idx?arr[t+1]:t+1,c=idx?arr[t+2]:t+2; if(isW[a]&&isW[b]&&isW[c]) ni.push(remap(a),remap(b),remap(c)); }
   if(ni.length<3) return null;
-  // CONNECTING SHAFT — bridge the gap between the original weapon's near-end (A) and the flipped
-  // duplicate's near-end (M·A) so the two blades read as ONE continuous double-ended staff.
+  // SHAFT-TO-HAND — the isolation cut off the pole's grip end, so each blade's shaft stops short of
+  // the hand. Extend BOTH poles collinearly along their own axis, THROUGH the wrist, so the original
+  // and the flipped duplicate meet at the grip → one continuous double-ended staff, no chord/stub.
   if(wv.length){
-    const near=wv.filter(o=>o.d<=dmin+0.15);
-    const A=new THREE.Vector3(); near.forEach(o=>A.add(o.p)); A.multiplyScalar(1/near.length);   // shaft near-end centre
+    const ds=wv.map(o=>o.d), dmn=Math.min(...ds), dmx=Math.max(...ds);
+    const near=wv.filter(o=>o.d<=dmn+0.15), farV=wv.filter(o=>o.d>=dmx-0.20);
+    const A=new THREE.Vector3(); near.forEach(o=>A.add(o.p)); A.multiplyScalar(1/near.length);       // pole near-end centre
+    const farC=new THREE.Vector3(); farV.forEach(o=>farC.add(o.p)); farC.multiplyScalar(1/farV.length);
+    const poleAxis=A.clone().sub(farC).normalize();                 // blade → near-end (points toward the hand)
     const axis=A.clone().sub(rhPos).normalize();
     let r=0; near.forEach(o=>{ const rel=o.p.clone().sub(rhPos); r+=rel.clone().addScaledVector(axis,-rel.dot(axis)).length(); }); r=(r/near.length)*1.15 || 0.02;  // shaft radius = perp spread
-    let uvN=[0.5,0.5]; if(uv && wv.length){ const s=wv.slice().sort((a,b)=>a.d-b.d); const pk=s[Math.floor(s.length*0.35)]; uvN=[uv.getX(pk.i),uv.getY(pk.i)]; }  // mid-shaft texel (dark metal), not the near-end (brown grip)
-    const B=A.clone().applyMatrix4(M);                              // duplicate's near-end
-    const mid=A.clone().add(B).multiplyScalar(0.5), dir=B.clone().sub(A);
-    const len=dir.length()*1.24;                                    // +overlap into both weapons so no seam
-    const cyl=new THREE.CylinderGeometry(r,r,len,10,1,false);
-    cyl.applyMatrix4(new THREE.Matrix4().compose(mid, new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0,1,0), dir.clone().normalize()), new THREE.Vector3(1,1,1)));
-    const cp=cyl.attributes.position, cn=cyl.attributes.normal, cidx=cyl.index, base=P.length/3;
-    for(let i=0;i<cp.count;i++){ P.push(cp.getX(i),cp.getY(i),cp.getZ(i)); N.push(cn.getX(i),cn.getY(i),cn.getZ(i)); if(uv)U.push(uvN[0],uvN[1]); SI.push(rhi,0,0,0); SW.push(1,0,0,0); }
-    if(cidx){ for(let i=0;i<cidx.count;i++) ni.push(base+cidx.getX(i)); } else { for(let i=0;i<cp.count;i++) ni.push(base+i); }
+    let uvN=[0.5,0.5]; { const s=wv.slice().sort((a,b)=>a.d-b.d); const pk=s[Math.floor(s.length*0.35)]; if(uv)uvN=[uv.getX(pk.i),uv.getY(pk.i)]; }  // mid-shaft texel (dark metal)
+    const L=A.distanceTo(rhPos)*1.7;                                // long enough to pass through the hand
+    const addShaft=(from,dir)=>{ const end=from.clone().addScaledVector(dir,L), mid=from.clone().add(end).multiplyScalar(0.5);
+      const cyl=new THREE.CylinderGeometry(r,r,from.distanceTo(end),10,1,false);
+      cyl.applyMatrix4(new THREE.Matrix4().compose(mid, new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0,1,0), end.clone().sub(from).normalize()), new THREE.Vector3(1,1,1)));
+      const cp=cyl.attributes.position, cn=cyl.attributes.normal, cidx=cyl.index, base=P.length/3;
+      for(let i=0;i<cp.count;i++){ P.push(cp.getX(i),cp.getY(i),cp.getZ(i)); N.push(cn.getX(i),cn.getY(i),cn.getZ(i)); if(uv)U.push(uvN[0],uvN[1]); SI.push(rhi,0,0,0); SW.push(1,0,0,0); }
+      if(cidx){ for(let i=0;i<cidx.count;i++) ni.push(base+cidx.getX(i)); } else { for(let i=0;i<cp.count;i++) ni.push(base+i); } };
+    addShaft(A, poleAxis);                                          // original pole → through the hand
+    addShaft(A.clone().applyMatrix4(M), poleAxis.clone().transformDirection(M));   // duplicate pole → through the hand
   }
   const wg=new THREE.BufferGeometry();
   wg.setAttribute('position',new THREE.Float32BufferAttribute(P,3));
@@ -1521,7 +1535,19 @@ function chooseAttack(){
 }
 function startAttack(idx){
   const s=enemy.sets[idx];
-  atk={setIdx:idx, set:s, startT:T, hits:s.hits.map(h=>({...h, at:h.at*CFG.timeScale, dmg:h.dmg, resolved:false, dodged:false, tele:false}))};
+  // if this attack's mapped clip has authored tap points, drive the dodge hits from them (clip plays natural
+  // speed so the swing aligns); damage/speed are borrowed from the set's hits, cycled to the tap count.
+  const map=ENEMY_ANIM[enemyIdx];
+  const clip = map&&map.attacks ? map.attacks[idx%map.attacks.length] : null;
+  const td = clip && ENEMY_TAPS[enemyIdx] ? ENEMY_TAPS[enemyIdx][clip] : null;
+  let hits, animTimed=false;
+  if(td && td.taps && td.taps.length){
+    animTimed=true;
+    hits = td.taps.map((t,j)=>{ const src=s.hits[j%s.hits.length]; return {sp:src.sp, dmg:src.dmg, at:t, resolved:false, dodged:false, tele:false}; });
+  } else {
+    hits = s.hits.map(h=>({...h, at:h.at*CFG.timeScale, dmg:h.dmg, resolved:false, dodged:false, tele:false}));
+  }
+  atk={setIdx:idx, set:s, startT:T, animTimed, hits};
   last2Atk=lastAtk; lastAtk=idx;
   recentFast = isFast(s) ? recentFast+1 : 0;
   enemyState='telegraph'; enemyTimer=0;
@@ -1856,9 +1882,10 @@ function animateEnemy(rdt){
     if(enemyHurtT>0 || enemyState==='stagger'){ want=map.hit; loop=false; }
     else if(atk && (enemyState==='telegraph'||enemyState==='active')){       // attack: fit the clip to the dodge-game window
       want=map.attacks[(atk.setIdx||0)%map.attacks.length]; loop=false;
-      const clip=u.clips[want];
-      if(clip){ const winLen=Math.max(0.35, atk.hits[atk.hits.length-1].at + dwin());   // attack start -> last dodge window closes
-        spd=clamp(clip.duration/winLen, 0.25, 4); }                          // stretch/squeeze so one play == the window
+      if(atk.animTimed){ spd=1; }                                            // animation-driven: play natural so the swing aligns with the taps
+      else { const clip=u.clips[want];
+        if(clip){ const winLen=Math.max(0.35, atk.hits[atk.hits.length-1].at + dwin());   // attack start -> last dodge window closes
+          spd=clamp(clip.duration/winLen, 0.25, 4); } }                      // stretch/squeeze so one play == the window
     }
     playEnemyClip(u, want, loop, 0.14, spd);
   }
