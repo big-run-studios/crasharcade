@@ -153,8 +153,8 @@
         <div class="sub">Stack the bricks. Keep the balance.<br>Cash out before it all comes down!</div>
         <div class="howto">
           <span><b>↔️</b>drag to steer</span>
-          <span><b>👆</b>tap to rotate</span>
-          <span><b>⬇️</b>swipe to slam</span>
+          <span><b>🔄</b>button rotates</span>
+          <span><b>✊</b>hold to drop fast</span>
         </div>
         <button class="btn" id="playBtn">PLAY</button>
       </div>
@@ -182,7 +182,7 @@
     </div>
 
     <div id="dbg"></div>
-    <div class="brand" id="brand">CRASHARCADE · MONKEY STACK v0.4.0</div>
+    <div class="brand" id="brand">CRASHARCADE · MONKEY STACK v0.5.0</div>
   </div>
   <audio id="unlockAudio" loop src="data:audio/wav;base64,UklGRigAAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQQAAACAgICA"></audio>
 </div>
@@ -220,6 +220,7 @@ const CFG={
   spawnGap:300, spawnGapGrow:4, spawnGapMax:430,       // bricks enter from high above the tower
   descentStart:40, descentStartGrow:2.5, descentStartMax:90,
   descentAccel:110, descentCap:460,                    // falls accelerate as they go
+  holdSpeed:520, holdDelay:0.22,                       // press-and-hold (without dragging) = soft drop
   slamSpeed:900, snapLerp:0.09, tumbleG:1800,
   // scoring
   baseCell:12, heightPts:6, fullClickPts:45, extraPegPts:12, weakClickPts:18,
@@ -396,7 +397,7 @@ let aimCand=null;       // ghost/landing prediction while descending
 const particles=[];
 
 function towerTopY(){ return CFG.trayY - maxRow*U; }
-function spawnYNow(){ return towerTopY() - Math.min(CFG.spawnGap+placements*CFG.spawnGapGrow, CFG.spawnGapMax); }
+function spawnYNow(){ return (vy0-CAM_AY)/camZ+CAM_AY - 30; }   // just above the visible screen top
 
 /* controlled bag: tier pool by progress, never 3 awkward shapes in a row */
 let hardRun=0;
@@ -417,7 +418,7 @@ function descentStart(){ return Math.min(CFG.descentStart+placements*CFG.descent
 function spawnBrick(){
   const key=drawShape();
   let ci; do{ ci=Math.floor(Math.random()*COLORS.length); }while(ci===lastColor); lastColor=ci;
-  active={ key, rot:0, color:ci, geom:buildGeom(key,0), x:W/2, y:spawnYNow(), vy:descentStart(),
+  active={ key, rot:0, color:ci, geom:buildGeom(key,0), x:W/2, y:spawnYNow(), vy:descentStart(), vyB:descentStart(),
     slam:false, snapT:0, tumble:null };
   state='descend';
   setCtl();
@@ -472,6 +473,7 @@ function place(cand){
   if(pegN>=2) sfx.click(); else sfx.weak();
   sfx.uh();
   scorePlacement(rec, pegN, eqBefore, eqAfter, offX);
+  tutDone('move'); tutDone('rotate'); tutDone('drop');   // first landing retires the control prompts
   active=null;
   spawnBrick();                             // continuous flow: the next brick starts falling immediately
 }
@@ -571,7 +573,10 @@ function tick(dt){
   if(state==='descend'&&active){
     aimCand=aimCandidate(active.x,active.rot);
     if(aimCand&&!aimCand.matches.length) tutDoneShow('miss','No pegs there — it would fall!');
-    if(!active.slam) active.vy=Math.min(active.vy+CFG.descentAccel*sdt, CFG.descentCap);   // gravity feel
+    active.vyB=Math.min(active.vyB+CFG.descentAccel*sdt, CFG.descentCap);                  // gravity feel
+    // press-and-hold (finger resting, not dragging) = soft drop
+    const holding=forceHold||(dragging&&t-downT>CFG.holdDelay&&t-lastMoveT>0.18);
+    active.vy=active.slam?CFG.slamSpeed:(holding?Math.max(active.vyB,CFG.holdSpeed):active.vyB);
     active.y+=active.vy*sdt;
     if(aimCand){
       // contact: cell 0 reaches its target cell centre (brick rides the tray tilt, so one cell suffices)
@@ -614,8 +619,8 @@ function tick(dt){
     }
   }
 
-  // camera: a gentle notch out per stacked row, and never tighter than what frames spawn + monkey
-  const reqTop=spawnYNow()-2*U, ax=900;
+  // camera: a gentle notch out per stacked row, and never tighter than what frames the tower top
+  const reqTop=towerTopY()-2.5*U, ax=900;
   camZT=clamp(Math.min((ax-CFG.camTopPad)/Math.max(1,ax-reqTop), 1-maxRow*CFG.camPerRow), CFG.camMinZoom, 1);
   camZ+=(camZT-camZ)*Math.min(1,dt*CFG.camEase);
   camShake=Math.max(0,camShake-dt*1.6);
@@ -672,7 +677,7 @@ function burst(x,y,type,color,n){
 function popTxt(x,y,txt,color){ particles.push({type:'txt',x,y,vx:0,vy:-46,life:1.15,max:1.15,txt,color,sz:16}); }
 
 /* ================================================================= tutorial prompts */
-const TUT={ move:'◄ drag to steer ►', rotate:'tap the brick to rotate ⟳', drop:'swipe down ⬇ to slam it in',
+const TUT={ move:'◄ drag to steer ►', rotate:'the ⟳ button rotates the brick', drop:'hold still to speed the drop',
   click:'', loose:'', balance:'', bank:'' };
 let tutFlags={}; try{ tutFlags=JSON.parse(store.get('ms_tut')||'{}'); }catch(e){}
 let tutCur=null, tutT=0;
@@ -1127,26 +1132,27 @@ function render(){
 }
 
 /* ================================================================= input */
-let dragging=false, downX=0, downY=0, downT=0, brickX0=0, moved=0;
+let dragging=false, downX=0, downY=0, downT=0, brickX0=0, moved=0, lastMoveT=-1, forceHold=false;
 function evXY(e){ const r=app.getBoundingClientRect(); return {x:(e.clientX-r.left-offX)/scale, y:(e.clientY-r.top-offY)/scale}; }
 app.addEventListener('pointerdown',e=>{
   unlockAudio();
   if(e.target.closest('button,a,#dbg')) return;
   const p=evXY(e);
-  if(state==='descend'){ dragging=true; downX=p.x; downY=p.y; downT=t; brickX0=active.x; moved=0; }
+  if(state==='descend'){ dragging=true; downX=p.x; downY=p.y; downT=t; brickX0=active.x; moved=0; lastMoveT=t; }
 });
 app.addEventListener('pointermove',e=>{
   if(!dragging||state!=='descend') return;
   const p=evXY(e), dx=(p.x-downX)/camZ;
-  moved=Math.max(moved,Math.abs(p.x-downX),Math.abs(p.y-downY));
+  const mv=Math.max(Math.abs(p.x-downX),Math.abs(p.y-downY));
+  if(mv>moved+2) lastMoveT=t;                                    // actively steering pauses the soft drop
+  moved=Math.max(moved,mv);
   active.x=clampAim(brickX0+dx*1.15);
 });
 app.addEventListener('pointerup',e=>{
   const was=dragging; dragging=false;
   if(!was||state!=='descend') return;
   const p=evXY(e);
-  if(moved<8&&t-downT<0.4) rotateActive();                       // a tap = rotate
-  else if(p.y-downY>60&&t-downT<0.45) dropActive();              // quick downward swipe = slam
+  if(p.y-downY>60&&t-downT<0.45) dropActive();                   // quick downward swipe = slam
 });
 app.addEventListener('pointercancel',()=>{ dragging=false; });
 rotBtn.addEventListener('pointerdown',e=>e.stopPropagation());
@@ -1236,14 +1242,15 @@ window.__game={
     placedSnap:placed.length, rubble:rubble.length, maxRow,
     occ:occ.size, camZ:+camZ.toFixed(2), t:+t.toFixed(2), crashReason,
     eq:+(boardEq()*57.3).toFixed(2),
-    active:active?{key:active.key,rot:active.rot,x:Math.round(active.x),y:Math.round(active.y),slam:active.slam}:null }; },
+    active:active?{key:active.key,rot:active.rot,x:Math.round(active.x),y:Math.round(active.y),
+      vy:Math.round(active.vy),slam:active.slam}:null }; },
   step:d=>{ try{tick(d);}catch(e){console.error(e);} },
   startRun:resetRun, restart:resetRun, toMenu,
   bankNow, crashNow:()=>doCrash('debug'),
   spawn:k=>{ forceKey=k; if(state==='menu') resetRun(); },
   setSeq:a=>{ seq=a.slice(); },
   setX:x=>{ if(active&&state==='descend') active.x=clampAim(x); },
-  rot:rotateActive, drop:dropActive,
+  rot:rotateActive, drop:dropActive, hold:v=>{ forceHold=v!==false; },
   cand:()=>aimCand,
   torque:torqueLR, board:()=>board, occMap:()=>[...occ.keys()], cfg:CFG, dbg,
   tut:()=>{ tutFlags={}; store.set('ms_tut','{}'); },
