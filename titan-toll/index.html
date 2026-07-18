@@ -308,7 +308,7 @@
       <div id="dbgLog"></div>
     </div>
 
-    <div id="brand">CRASHARCADE · TITAN GUARD v0.15.9</div>
+    <div id="brand">CRASHARCADE · TITAN GUARD v0.15.10</div>
   </div>
 </div>
 
@@ -916,9 +916,17 @@ const ENEMY_ROT=[
 // plays at NATURAL speed so the swing lines up with the tap; damage/speed are borrowed from the attack set.
 // Clips without an entry keep the original abstract-set timing (stretched clip). See startAttack.
 const ENEMY_TAPS=[
-  { 'Punch_Combo_1':{ dur:2.233, taps:[1.34] } },   // Cliffhorn · Attack 1 (lab)
-  {},                                               // Gale
-  {},                                               // Sky Titan
+  {  // Cliffhorn — all 8 attack slots authored in the lab (7 unique clips; Punch_Combo_4 backs Attack 3 & 5)
+    'Punch_Combo_1':{ dur:2.233, taps:[1.34] },
+    'Punch_Combo_3':{ dur:3.267, taps:[2.094] },
+    'Punch_Combo_4':{ dur:3.8,   taps:[1.771] },
+    'Punch_Combo_5':{ dur:3.833, taps:[0.943,2.568] },
+    'Punch_Combo_2':{ dur:5,     taps:[1.405,3.075,3.69] },
+    'Punch_Combo':  { dur:2.467, taps:[0.646,1.404] },
+    'Punch_Pose':   { dur:4.3,   taps:[2.516] },
+  },
+  {},   // Gale
+  {},   // Sky Titan
 ];
 // TAP-WINDOW SPARKLE — a character-anchored twinkle on each boss's signature body part,
 // lit only while the dodge tap window is open (brightest at the perfect-tap instant).
