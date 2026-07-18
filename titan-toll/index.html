@@ -308,7 +308,7 @@
       <div id="dbgLog"></div>
     </div>
 
-    <div id="brand">CRASHARCADE · TITAN GUARD v0.15.3</div>
+    <div id="brand">CRASHARCADE · TITAN GUARD v0.15.4</div>
   </div>
 </div>
 
@@ -904,6 +904,44 @@ const ENEMY_ANIM=[
   { idle:'Checkout_Gesture', hit:'Hit_Reaction_with_Bow', attacks:['mage_soell_cast','mage_soell_cast_2','mage_soell_cast_4','mage_soell_cast_6','mage_soell_cast_2','mage_soell_cast_4','mage_soell_cast_6','mage_soell_cast'] },  // Gale (lab map)
   { idle:'Combat_Stance',   hit:'Hit_Reaction_1', attacks:['Shrug','Neck_Slashing_Gesture','Angry_Ground_Stomp_2','Lunge_Spin_Kick','Sweep_Kick','Roundhouse_Kick','Lunge_Spin_Kick','Kung_Fu_Punch'] },  // Sky Titan (lab map)
 ];
+// TAP-WINDOW SPARKLE — a character-anchored twinkle on each boss's signature body part,
+// lit only while the dodge tap window is open (brightest at the perfect-tap instant).
+const ENEMY_SPARK=[
+  { node:'RightHand', tint:0xffd23a, off:[0,0,0], scale:2.4 },   // Cliffhorn — right fist (amber)
+  { node:'Spine02',   tint:0x8fe9ff, off:[0,0,0], scale:2.4 },   // Gale — chest (ice-cyan)
+  { node:'headfront', tint:0xffe14d, off:[0,0.2,0], scale:1.8 }, // Sky Titan — eyes (gold)
+];
+function makeSparkTexture(){
+  const c=document.createElement('canvas'); c.width=c.height=128; const x=c.getContext('2d'), C=64;
+  let g=x.createRadialGradient(C,C,0,C,C,30); g.addColorStop(0,'rgba(255,255,255,1)'); g.addColorStop(0.4,'rgba(255,255,255,.55)'); g.addColorStop(1,'rgba(255,255,255,0)');
+  x.fillStyle=g; x.beginPath(); x.arc(C,C,30,0,7); x.fill();
+  x.globalCompositeOperation='lighter';
+  const spike=(ang,len,w)=>{ x.save(); x.translate(C,C); x.rotate(ang); const gg=x.createLinearGradient(0,0,0,-len); gg.addColorStop(0,'rgba(255,255,255,.95)'); gg.addColorStop(1,'rgba(255,255,255,0)'); x.fillStyle=gg; x.beginPath(); x.moveTo(-w,0); x.lineTo(0,-len); x.lineTo(w,0); x.closePath(); x.fill(); x.restore(); };
+  for(let k=0;k<4;k++) spike(k*Math.PI/2, 62, 5);            // long cross flare
+  for(let k=0;k<4;k++) spike(Math.PI/4+k*Math.PI/2, 30, 3); // short diagonal glints
+  const t=new THREE.CanvasTexture(c); t.needsUpdate=true; return t;
+}
+const enemySpark=new THREE.Sprite(new THREE.SpriteMaterial({ map:makeSparkTexture(), color:0xffffff, transparent:true, opacity:0, depthTest:false, depthWrite:false, blending:THREE.AdditiveBlending }));
+enemySpark.renderOrder=999; enemySpark.visible=false; enemySpark.scale.setScalar(0.001); scene.add(enemySpark);
+const _spkV=new THREE.Vector3(); let sparkForce=0;   // sparkForce = harness override for placement testing
+function updateEnemySpark(){
+  const u=enemyMesh&&enemyMesh.userData, spk=u&&u.spark, bone=u&&u.sparkBone;
+  let amt=0;
+  if(atk && (enemyState==='telegraph'||enemyState==='active')){      // brighten toward each unresolved hit's impact, within its tap window
+    const rel=T-atk.startT, w=dwin();
+    for(const h of atk.hits){ if(h.resolved) continue; const d=Math.abs(rel-h.at); if(d<=w) amt=Math.max(amt, 1-d/w); }
+  }
+  if(sparkForce) amt=1;
+  if(amt<=0 || !bone){ enemySpark.visible=false; return; }
+  bone.getWorldPosition(_spkV); if(spk.off){ _spkV.x+=spk.off[0]; _spkV.y+=spk.off[1]; _spkV.z+=spk.off[2]; }
+  enemySpark.position.copy(_spkV);
+  const t=performance.now()/1000, twk=0.8+0.2*Math.sin(t*24);        // fast twinkle
+  enemySpark.scale.setScalar((spk.scale||2)*amt*twk);
+  enemySpark.material.color.setHex(spk.tint||0xffe14d);
+  enemySpark.material.opacity=Math.min(1, amt*1.25)*twk;
+  enemySpark.material.rotation=t*2.5;
+  enemySpark.visible=true;
+}
 const bossGLTF=[null,null,null];
 ENEMY_GLB.forEach((f,i)=>{ new GLTFLoader().load(f, g=>{ bossGLTF[i]=g; }, undefined, err=>console.error('boss load '+i, err)); });
 
@@ -947,7 +985,8 @@ function buildEnemyGLB(i){
   g.add(model); addAnchors(g,h);
   const mixer=new THREE.AnimationMixer(model), clips={};
   for(const c of bossGLTF[i].animations) clips[c.name]=c;
-  g.userData={...g.userData, height:h, model, mixer, clips, animMap:ENEMY_ANIM[i], curClip:'', action:null, _rx:0};
+  const spk=ENEMY_SPARK[i]; const sparkBone=spk?model.getObjectByName(spk.node):null;
+  g.userData={...g.userData, height:h, model, mixer, clips, animMap:ENEMY_ANIM[i], curClip:'', action:null, _rx:0, spark:spk, sparkBone};
   playEnemyClip(g.userData, ENEMY_ANIM[i].idle, true, 0);
   return g;
 }
@@ -1742,7 +1781,7 @@ function frame(nw){
   const rdt=Math.min((nw-last)/1000,1/30); last=nw;
   if(cw!==app.clientWidth||ch!==app.clientHeight) resize();
   try{ update(rdt); }catch(err){ console.error('update',err); }
-  try{ if(playerMesh)animatePlayer(rdt); if(enemyMesh)animateEnemy(rdt); updateHero(rdt); updateBlitzRibbons(rdt); }catch(err){ console.error('anim',err); }
+  try{ if(playerMesh)animatePlayer(rdt); if(enemyMesh)animateEnemy(rdt); updateHero(rdt); updateBlitzRibbons(rdt); updateEnemySpark(); }catch(err){ console.error('anim',err); }
   if(playerMesh){ heroLight.position.set(playerMesh.position.x,1.7,playerMesh.position.z); heroLight.intensity = heroFlashT>0 ? (heroFlashT/0.5)*14 : 0; }
   if(enemyMesh && ragePhase>0){ enemyMesh.userData.anchors.core.getWorldPosition(enemyRageLight.position); enemyRageLight.intensity=(ragePhase===1?1.4:2.8)*(0.8+0.2*Math.sin(performance.now()/140)); } else enemyRageLight.intensity=0;
   // camera shake
@@ -2057,6 +2096,8 @@ window.__game={
   enemyAnimDbg:()=>{ const u=enemyMesh&&enemyMesh.userData; if(!u||!u.action)return '(no rigged enemy)';
     const o={ clip:u.curClip, timeScale:+u.action.timeScale.toFixed(3), clipDur:+u.action.getClip().duration.toFixed(3), state:enemyState };
     if(atk){ o.winLen=+(atk.hits[atk.hits.length-1].at+dwin()).toFixed(3); o.effDur=+(o.clipDur/o.timeScale).toFixed(3); } return o; },
+  sparkTest:(v=true)=>{ sparkForce=v?1:0; return 'sparkForce='+sparkForce+(enemyMesh&&enemyMesh.userData.sparkBone?'':' (WARN: no spark bone on current enemy)'); },
+  sparkTune:(dx,dy,dz,scale)=>{ const u=enemyMesh&&enemyMesh.userData; if(!u||!u.spark)return '(no spark)'; if(dx!=null)u.spark.off=[dx,dy,dz]; if(scale!=null)u.spark.scale=scale; return {node:u.spark.node, off:u.spark.off, scale:u.spark.scale, boneFound:!!u.sparkBone}; },
   pause:(v=true)=>{ paused=v; },
   setEnemyZ:(z)=>{ if(enemyMesh)enemyMesh.position.z=z; },
   setEnemyScale:(s)=>{ if(enemyMesh)enemyMesh.scale.setScalar(s); },
