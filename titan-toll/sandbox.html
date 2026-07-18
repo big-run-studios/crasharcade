@@ -175,7 +175,8 @@ canvas.addEventListener('touchend',()=>pinch=0);
 
 // state
 const loader=new GLTFLoader();
-let mixer=null, clips=[], curAction=null, curIdx=0, playing=true, looping=true, speed=1, model=null, curFile='';
+let mixer=null, clips=[], curAction=null, curIdx=0, playing=true, looping=true, speed=1, model=null, curFile='', rootBone=null;
+const _pin=new THREE.Vector3();
 let mapping={};
 
 function mapKey(){ return 'tg_map_'+curFile; }
@@ -194,7 +195,11 @@ function loadModel(file){
     model.position.set(-(b.min.x+b.max.x)/2, -b.min.y, -(b.min.z+b.max.z)/2);
     model.traverse(o=>{ if(o.isMesh) o.frustumCulled=false; });
     scene.add(model);
-    const sz=(b.max.y-b.min.y); orbit.target.set(0,sz*0.5,0); orbit.r=sz*2.4;
+    // find the root/hips bone so we can keep the character planted on the pad (strip horizontal root motion)
+    rootBone=null;
+    model.traverse(o=>{ if(o.isBone && !rootBone && /hips|pelvis/i.test(o.name)) rootBone=o; });
+    if(!rootBone) model.traverse(o=>{ if(o.isSkinnedMesh && !rootBone && o.skeleton && o.skeleton.bones.length) rootBone=o.skeleton.bones[0]; });
+    const sz=(b.max.y-b.min.y); orbit.target.set(0,sz*0.46,0); orbit.r=sz*2.4;
     mixer=new THREE.AnimationMixer(model);
     clips=gltf.animations.slice().sort((a,b)=>a.name.localeCompare(b.name));
     el('cnt').textContent=clips.length+' CLIPS';
@@ -270,7 +275,10 @@ function resize(){ const w=innerWidth,h=innerHeight; renderer.setSize(w,h,false)
 addEventListener('resize',resize); resize();
 let last=performance.now();
 function frame(){ requestAnimationFrame(frame); const now=performance.now(), dt=Math.min((now-last)/1000,0.05); last=now;
-  if(mixer)mixer.update(dt); if(orbit.autospin)orbit.theta+=dt*0.5; applyCam(); renderer.render(scene,camera); }
+  if(mixer)mixer.update(dt);
+  // keep the character centred on the pad: cancel the root bone's horizontal drift each frame
+  if(model&&rootBone){ rootBone.getWorldPosition(_pin); model.position.x-=_pin.x; model.position.z-=_pin.z; }
+  if(orbit.autospin)orbit.theta+=dt*0.5; applyCam(); renderer.render(scene,camera); }
 // ---- DEFENSE-TIMING authoring mode: scrub an attack clip, mark tap points, preview, export ----
 let mode='map', timings={}, dLastIdx=-1, dLastFile='', dLastN=-1, dPreview=false, previewSpeed=0.6;
 function loadTimings(){ try{ timings=JSON.parse(localStorage.getItem('tg_taps_'+curFile)||'{}'); }catch(e){ timings={}; } }
