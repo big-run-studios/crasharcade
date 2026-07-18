@@ -50,24 +50,29 @@
   #multFill{position:absolute;inset:0;width:100%;transform-origin:left;background:linear-gradient(90deg,#ffb648,#ffe08a);}
 
   /* ---------- cash out: the standard button (.bigbtn), bottom-left above the HP bar ---------- */
-  #cashBtn{position:absolute;left:10px;bottom:calc(32px + env(safe-area-inset-bottom));z-index:24;
-    font-size:16px;padding:12px 26px;animation:cashpulse 1.6s ease-in-out infinite;}
+  #cashBtn{position:absolute;left:16px;bottom:calc(30px + env(safe-area-inset-bottom));z-index:24;
+    width:78px;height:78px;border-radius:50%;border:none;cursor:pointer;display:flex;flex-direction:column;align-items:center;justify-content:center;line-height:1.02;
+    color:#06231a;background:radial-gradient(120% 120% at 50% 26%,#8affc4,#2fd67a 58%,#16ad5e);
+    box-shadow:0 4px 16px rgba(0,0,0,.45),0 0 20px rgba(94,255,168,.5),inset 0 0 0 2.5px rgba(255,255,255,.45);
+    font-family:var(--display);font-weight:900;letter-spacing:1px;transition:transform .08s,opacity .15s,filter .15s;animation:cashpulse 1.7s ease-in-out infinite;}
+  #cashBtn .ct{font-size:15px;} #cashBtn .cb{font-size:15px;}
+  #cashBtn:active{transform:scale(.93);}
   #cashBtn.lock{opacity:.4;filter:grayscale(.6);animation:none;}
-  @keyframes cashpulse{0%,100%{box-shadow:0 6px 22px rgba(47,214,137,.5),0 0 14px rgba(94,255,168,.35);}
-    50%{box-shadow:0 6px 22px rgba(47,214,137,.5),0 0 28px rgba(94,255,168,.9);}}
+  @keyframes cashpulse{0%,100%{box-shadow:0 4px 16px rgba(0,0,0,.45),0 0 14px rgba(94,255,168,.4),inset 0 0 0 2.5px rgba(255,255,255,.45);}
+    50%{box-shadow:0 4px 16px rgba(0,0,0,.45),0 0 26px rgba(94,255,168,.9),inset 0 0 0 3px rgba(255,255,255,.55);}}
 
   /* ---------- dodge shield: lower-right corner, under the action radial ---------- */
-  #dodgeShield{position:absolute;right:46px;bottom:calc(64px + env(safe-area-inset-bottom));width:98px;height:118px;z-index:24;
-    pointer-events:auto;border:none;background:none;padding:0;cursor:pointer;opacity:.5;
-    transition:opacity .15s,transform .06s,filter .12s;}
+  #dodgeShield{position:absolute;right:30px;bottom:calc(32px + env(safe-area-inset-bottom));width:98px;height:118px;z-index:26;
+    pointer-events:auto;border:none;background:none;padding:0;cursor:pointer;display:none;
+    transition:transform .06s,filter .12s;}
+  #dodgeShield.show{display:block;filter:drop-shadow(0 0 8px rgba(120,200,255,.6));}
   #dodgeShield svg{width:100%;height:100%;display:block;overflow:visible;}
   #dodgeShield .shBase{fill:rgba(10,16,36,.55);}
   #dodgeShield .shFill{fill:url(#shGrad);}
   #dodgeShield .shOutline{fill:none;stroke:#cfe6ff;stroke-width:5;stroke-linejoin:round;}
-  #dodgeShield .shLab{position:absolute;left:0;right:0;top:37%;text-align:center;font-family:var(--display);font-weight:800;
+  #dodgeShield .shLab{position:absolute;left:0;right:0;top:20%;text-align:center;font-family:var(--display);font-weight:800;
     font-size:13px;letter-spacing:1.5px;color:#fff;text-shadow:0 1px 3px rgba(0,0,0,.75);pointer-events:none;}
-  #dodgeShield.live{opacity:1;filter:drop-shadow(0 0 7px rgba(120,200,255,.6));}
-  #dodgeShield.full{filter:drop-shadow(0 0 14px #eafcff);}
+  #dodgeShield.full{filter:drop-shadow(0 0 15px #eafcff);}
   #dodgeShield.full .shOutline{stroke:#ffffff;stroke-width:6;}
   #dodgeShield:active{transform:scale(.93);}
 
@@ -81,14 +86,14 @@
   /* ---------- radial action menu (lower-right, shown only when selectable) ---------- */
   #radial{position:absolute;right:0;bottom:0;width:320px;height:360px;pointer-events:none;opacity:0;transform:scale(.85);transition:opacity .16s,transform .16s;}
   #radial.show{opacity:1;transform:scale(1);}
-  .rbtn{position:absolute;width:74px;height:74px;border-radius:50%;border:none;cursor:pointer;pointer-events:auto;color:#fff;
+  .rbtn{position:absolute;width:86px;height:86px;border-radius:50%;border:none;cursor:pointer;pointer-events:auto;color:#fff;
     display:flex;align-items:center;justify-content:center;
     background:radial-gradient(120% 120% at 50% 28%,rgba(30,40,74,.96),rgba(9,14,32,.97));
     box-shadow:0 3px 12px rgba(0,0,0,.5),inset 0 0 0 2px rgba(255,255,255,.12);
     opacity:.38;filter:grayscale(.6);transition:transform .08s,opacity .12s,filter .12s;}
-  .rbtn .ic{font-size:33px;line-height:1;color:currentColor;text-shadow:0 0 8px currentColor;}
-  .rbtn .rlv{position:absolute;bottom:-12px;left:50%;transform:translateX(-50%);white-space:nowrap;padding:3px 9px;border-radius:999px;
-    font-family:var(--display);font-weight:800;font-size:11px;letter-spacing:.5px;color:#0b1226;background:#fff;box-shadow:0 1px 5px rgba(0,0,0,.55);}
+  .rbtn .ic{font-size:40px;line-height:1;color:currentColor;text-shadow:0 0 8px currentColor;}
+  .rbtn .rlv{position:absolute;bottom:-12px;left:50%;transform:translateX(-50%);white-space:nowrap;padding:3px 10px;border-radius:999px;
+    font-family:var(--display);font-weight:800;font-size:12px;letter-spacing:.5px;color:#0b1226;background:#fff;box-shadow:0 1px 5px rgba(0,0,0,.55);}
   .rbtn.strike{color:var(--strike);} .rbtn.shoot{color:var(--shoot);} .rbtn.cast{color:var(--cast);} .rbtn.blitz{color:var(--blitz);}
   .rbtn.on{opacity:1;filter:none;} .rbtn.on:active{transform:scale(.9);}
   /* cooldown: dark conic sweep + remaining-seconds countdown (level 2+) */
@@ -110,6 +115,29 @@
   .rbtn.queued::after{content:'▶ QUEUED';position:absolute;top:-16px;left:50%;transform:translateX(-50%);white-space:nowrap;
     font-family:var(--display);font-weight:800;font-size:8px;letter-spacing:1px;color:#0b1226;background:#fff;padding:2px 6px;border-radius:6px;}
   @keyframes queuedPulse{0%,100%{box-shadow:0 3px 12px rgba(0,0,0,.5),inset 0 0 0 2px rgba(255,255,255,.6);}50%{box-shadow:0 3px 18px rgba(255,255,255,.6),inset 0 0 0 3px #fff;}}
+
+  /* ---------- dedicated Blitz button: cool golden emblem, lower-right corner (shown only when charged) ---------- */
+  #blitzBtn{position:absolute;right:30px;bottom:calc(40px + env(safe-area-inset-bottom));width:96px;height:96px;border-radius:50%;
+    z-index:25;pointer-events:auto;border:none;cursor:pointer;display:none;flex-direction:column;align-items:center;justify-content:center;gap:1px;
+    background:radial-gradient(120% 120% at 50% 26%,#fff2b0,#ffce33 46%,#e0951a);
+    box-shadow:0 4px 18px rgba(0,0,0,.55),0 0 26px rgba(255,206,51,.6),inset 0 0 0 3px rgba(255,255,255,.5);transition:transform .08s;}
+  #blitzBtn.show{display:flex;animation:blitzGlow 1s ease-in-out infinite;}
+  #blitzBtn:active{transform:scale(.93);}
+  #blitzBtn .bic{font-size:42px;line-height:1;color:#5a3a00;text-shadow:0 0 10px rgba(255,245,200,.9);}
+  #blitzBtn .blab{font-family:var(--display);font-weight:900;font-size:12px;letter-spacing:2px;color:#4a2f00;margin-top:-2px;}
+  #blitzBtn .bring{position:absolute;inset:-7px;border-radius:50%;border:2px dashed rgba(255,244,190,.75);animation:blitzRing 3.4s linear infinite;}
+  #blitzBtn .rlv{position:absolute;bottom:-12px;left:50%;transform:translateX(-50%);white-space:nowrap;padding:3px 10px;border-radius:999px;
+    font-family:var(--display);font-weight:800;font-size:12px;color:#3a2600;background:#fff2b0;box-shadow:0 1px 5px rgba(0,0,0,.55);}
+  #blitzBtn.queued{animation:none;filter:brightness(1.12);}
+  @keyframes blitzGlow{0%,100%{box-shadow:0 4px 18px rgba(0,0,0,.55),0 0 20px rgba(255,206,51,.5),inset 0 0 0 3px rgba(255,255,255,.5);}
+    50%{box-shadow:0 4px 18px rgba(0,0,0,.55),0 0 36px rgba(255,224,120,.95),inset 0 0 0 4px #fff6d0;}}
+  @keyframes blitzRing{to{transform:rotate(360deg);}}
+
+  /* ---------- low-HP red bleed vignette (past half health) ---------- */
+  #lowhp{position:fixed;inset:0;pointer-events:none;z-index:8;opacity:0;transition:opacity .3s;
+    background:radial-gradient(ellipse at center, transparent 40%, rgba(200,12,32,.55) 80%, rgba(150,0,20,.9) 100%);}
+  #lowhp.crit{animation:bleedPulse 1.05s ease-in-out infinite;}
+  @keyframes bleedPulse{0%,100%{filter:brightness(.85);}50%{filter:brightness(1.3);}}
 
   /* ---------- level-up flyout ---------- */
   #levelToast{position:absolute;left:50%;top:40%;transform:translate(-50%,-50%);opacity:0;pointer-events:none;text-align:center;z-index:15;}
@@ -182,6 +210,7 @@
   <canvas id="gl"></canvas>
   <div id="tap"></div>
   <canvas id="ov"></canvas>
+  <div id="lowhp"></div>
 
   <div class="ui" id="ui">
     <div id="topbar">
@@ -196,19 +225,21 @@
       <div id="multRow"><span id="multBadge">×1</span><div id="multBar"><div id="multFill"></div></div></div>
     </div>
 
-    <!-- bottom-left: cash out (standard button), above the HP bar -->
-    <button id="cashBtn" class="bigbtn">CASH OUT</button>
+    <!-- bottom-left: cash out (circle button), above the HP bar -->
+    <button id="cashBtn"><span class="ct">CASH</span><span class="cb">OUT</span></button>
 
     <!-- bottom: HP -->
     <div id="hpBottom"><div id="hpFill"></div><span id="hpLab">HP</span><span id="hpVal">100</span></div>
 
-    <!-- lower-right radial: appears only when a selection is available -->
+    <!-- lower-right radial: the 3 core actions, appears only when a selection is available -->
     <div id="radial">
       <button class="rbtn strike" id="btnStrike"><span class="ic">⚔</span><span class="rlv" id="btnStrikeLv">1</span><span class="rcd" id="btnStrikeCd"></span></button>
       <button class="rbtn shoot"  id="btnShoot"><span class="ic">◎</span><span class="rlv" id="btnShootLv">1</span><span class="rcd" id="btnShootCd"></span></button>
       <button class="rbtn cast"   id="btnCast"><span class="ic">✦</span><span class="rlv" id="btnCastLv">1</span><span class="rcd" id="btnCastCd"></span></button>
-      <button class="rbtn blitz"  id="btnBlitz"><span class="ic">✹</span><span class="rlv" id="btnBlitzLv">1</span></button>
     </div>
+
+    <!-- dedicated Blitz button: lower-right corner (interrupts enemy attacks); shows only when charged -->
+    <button id="blitzBtn"><span class="bring"></span><span class="bic">✹</span><span class="blab">BLITZ</span><span class="rlv" id="btnBlitzLv">1</span></button>
 
     <!-- lower-right: dodge shield — a shield fills the shield as the hit nears; tap anywhere to dodge -->
     <button id="dodgeShield" aria-label="Dodge">
@@ -275,7 +306,7 @@
       <div id="dbgLog"></div>
     </div>
 
-    <div id="brand">CRASHARCADE · TITAN GUARD v0.10.2</div>
+    <div id="brand">CRASHARCADE · TITAN GUARD v0.11.0</div>
   </div>
 </div>
 
@@ -1374,14 +1405,14 @@ document.getElementById('dodgeShield').addEventListener('pointerdown',e=>{e.prev
 document.getElementById('btnStrike').addEventListener('pointerdown',e=>{e.preventDefault();commit('strike');});
 document.getElementById('btnShoot').addEventListener('pointerdown',e=>{e.preventDefault();commit('shoot');});
 document.getElementById('btnCast').addEventListener('pointerdown',e=>{e.preventDefault();commit('cast');});
-document.getElementById('btnBlitz').addEventListener('pointerdown',e=>{e.preventDefault();commit('blitz');});
+document.getElementById('blitzBtn').addEventListener('pointerdown',e=>{e.preventDefault();e.stopPropagation();commit('blitz');});
 document.getElementById('cashBtn').addEventListener('pointerdown',e=>{e.preventDefault();cashOut(false);});
 // lay the 4 radial buttons on a 90° arc in the lower-right (pivot near the bottom-right corner)
 (function layoutRadial(){
-  const pivotR=16, pivotB=56, R=214, D2R=Math.PI/180;   // px from corner; arc radius (spread out so buttons never overlap)
-  const arc=[['btnStrike',80],['btnShoot',58],['btnCast',36],['btnBlitz',14]]; // [id, angle: 90=left/low .. 0=up/right]
+  const pivotR=16, pivotB=56, R=230, D2R=Math.PI/180;   // px from corner; arc radius (3 buttons, clear of the Blitz/shield corner)
+  const arc=[['btnStrike',72],['btnShoot',45],['btnCast',18]]; // [id, angle: 90=left/low .. 0=up/right]
   for(const [id,a] of arc){ const b=document.getElementById(id);
-    const right=pivotR+R*Math.sin(a*D2R)-37, bottom=pivotB+R*Math.cos(a*D2R)-37;
+    const right=pivotR+R*Math.sin(a*D2R)-43, bottom=pivotB+R*Math.cos(a*D2R)-43;
     b.style.right=right+'px'; b.style.bottom=bottom+'px'; }
 })();
 
@@ -1683,8 +1714,10 @@ function overlayDraw(){
     const drawn=[];   // already-drawn screen positions — skip overlaps (never overlap, esp. in Blitz)
     for(let i=0;i<off.targets.length;i++){
       const tg=off.targets[i]; if(tg.resolved) continue;
+      if(off.action==='blitz' && i!==firstUnres) continue;   // Blitz: show only the live symbol, not the faded queue
       const wp=offAnchor(tg); if(tg.mv==='drift'){ wp.x+=Math.sin((T-off.startT+i)*4)*1.4; }
       const s=toScreen(wp); if(!s.ok)continue;
+      s.x-=26; s.y+=42;                                        // nudge down-and-left so targets sit more centred on the enemy
       const R0=tg.fin?42:32;
       // the live target is reached first (earlier ones are resolved), so it always wins; later ones that would overlap are skipped
       if(i!==firstUnres && drawn.some(d=>Math.hypot(d.x-s.x,d.y-s.y) < (d.R0+R0)*0.95)) continue;
@@ -1712,7 +1745,7 @@ const el=id=>document.getElementById(id);
 let _lastHud={};
 function syncHud(){
   document.getElementById('ui').classList.toggle('menumode', state==='menu');
-  if(state==='menu'){ return; }
+  if(state==='menu'){ el('dodgeShield').classList.remove('show','full'); el('blitzBtn').classList.remove('show'); el('lowhp').style.opacity=0; el('lowhp').classList.remove('crit'); return; }
   // enemy
   const ef=enemy?clamp(enemy.hp/enemy.maxHp,0,1):0;
   el('ehpFill').style.transform=`scaleX(${ef})`;
@@ -1734,22 +1767,27 @@ function syncHud(){
       fillEl.setAttribute('transform',`translate(50 58) scale(${f.toFixed(3)}) translate(-50 -58)`);  // a shield grows to fill the shield
       const c = inc.sp==='fast'?['#fff4b0','#ffcf1e'] : inc.sp==='med'?['#ffe0b0','#ff9a2e'] : ['#ffc9c2','#ff4d4d'];
       el('shGrad0').setAttribute('stop-color',c[0]); el('shGrad1').setAttribute('stop-color',c[1]);
-      sh.classList.add('live'); sh.classList.toggle('full',aligned);
-    } else { fillEl.setAttribute('transform','translate(50 58) scale(0) translate(-50 -58)'); sh.classList.remove('live','full'); } }
-  // radial: shown only when a selection is available (or one is queued)
+      sh.classList.add('show'); sh.classList.toggle('full',aligned);   // shield appears ONLY during the dodge game
+    } else { fillEl.setAttribute('transform','translate(50 58) scale(0) translate(-50 -58)'); sh.classList.remove('show','full'); } }
+  // low-HP red bleed vignette (past half health)
+  { const hf=hp/CFG.playerHP, lo=el('lowhp'); const o = hf<0.5 ? clamp((0.5-hf)/0.5,0,1) : 0;
+    lo.style.opacity=(o*0.9).toFixed(2); lo.classList.toggle('crit', hf>0 && hf<0.25); }
+  // radial = the 3 core actions (shown when a selection is available / queued); Blitz is its own corner button
   const canAct=!off&&!queuedAction&&actBar>=1&&state==='combat';
   const blitzReadyNow=!off&&!queuedAction&&blitz>=CFG.blitzMax&&state==='combat';
-  el('radial').classList.toggle('show', canAct||blitzReadyNow||!!queuedAction);
-  const bid={strike:'btnStrike',shoot:'btnShoot',cast:'btnCast',blitz:'btnBlitz'};
+  el('radial').classList.toggle('show', canAct||!!queuedAction);
+  const bid={strike:'btnStrike',shoot:'btnShoot',cast:'btnCast'};
   for(const a in bid){ const b=el(bid[a]);
-    const cd = a!=='blitz' ? cooldown[a] : 0;
-    const cooling = cd>0.01;
+    const cd = cooldown[a], cooling = cd>0.01;
     b.classList.toggle('cooling', cooling);
     if(cooling){ b.style.setProperty('--cd', clamp(cd/(cooldownMax[a]||1),0,1).toFixed(3)); el(bid[a]+'Cd').textContent=Math.ceil(cd); }
-    b.classList.toggle('on', ((a==='blitz'?blitzReadyNow:(canAct&&!cooling)) || queuedAction===a));
+    b.classList.toggle('on', ((canAct&&!cooling) || queuedAction===a));
     b.classList.toggle('queued', queuedAction===a);
     const t=tierOf(lv[a]); b.classList.toggle('t0',t===0); b.classList.toggle('t1',t===1); b.classList.toggle('t2',t===2); b.classList.toggle('t3',t===3);
   }
+  // dedicated Blitz button (corner)
+  const bb=el('blitzBtn'); bb.classList.toggle('show', blitzReadyNow||queuedAction==='blitz'); bb.classList.toggle('queued', queuedAction==='blitz');
+  { const t=tierOf(lv.blitz); bb.classList.toggle('t3',t===3); }
 }
 function updateHudStatic(){
   el('enemyName').textContent=enemy?enemy.name:'—';
