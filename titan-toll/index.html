@@ -309,7 +309,7 @@
       <div id="dbgLog"></div>
     </div>
 
-    <div id="brand">CRASHARCADE · TITAN GUARD v0.19.2</div>
+    <div id="brand">CRASHARCADE · TITAN GUARD v0.20.0</div>
   </div>
 </div>
 
@@ -2100,7 +2100,7 @@ function drawTiming(shape,cx,cy,R0,dt,win,perfWin,app,col,Rmax,glyph,next){
    hero EXACTLY at its impact moment. Flight time = that hit's telegraph lead (LD: fast flies fast,
    slow lumbers in, rage shortens it), so the approach itself tells the player when to dodge. ---- */
 const enemyFx=[]; let _fxStartT=-1;
-const FX_TAIL={ wave:0.3, lightning:0.22, windbeam:0.18, beam:0.16, meteor:0.32, slash:0.22, crack:0.35 };
+const FX_TAIL={ wave:0.35, lightning:0.3, windbeam:0.28, beam:0.28, meteor:0.42, slash:0.3, crack:0.42 };   // post-impact time = the explosion's lifetime
 const _fxA=new THREE.Vector3(), _fxB=new THREE.Vector3(), _fxP=new THREE.Vector3(), _METEOR=new THREE.Vector3(1.2,16,-6);
 function fxJag(x0,y0,x1,y1,segs,amp,col,w,alpha,seed){   // jagged polyline; stable jitter if seed given, flicker if not
   octx.save(); octx.globalAlpha=alpha; octx.strokeStyle=col; octx.lineWidth=w; octx.lineJoin='round'; octx.lineCap='round';
@@ -2161,7 +2161,7 @@ function drawEnemyFx(){
     const a=(0.55+0.3*flash)*fade, phB=Math.max(0,ph-0.16);   // softer body + same-color glow = neon pop
     octx.save();
     octx.shadowColor=col; octx.shadowBlur=16; octx.shadowOffsetY=0;
-    switch(fx.type){
+    if(dImp<0) switch(fx.type){   // body only in flight — at impact it hands off to the explosion
       case 'lightning':{ const b=at(phB);
         fxJag(b.x,b.y,p.x,p.y,7,28,'#eafcff',10,a);                             // crackling head w/ jittering tail
         fxJag(b.x,b.y,p.x,p.y,7,38,'#4fd2ff',6,a*0.8);
@@ -2191,7 +2191,61 @@ function drawEnemyFx(){
     // unified arrival pop at the hero: ring expands right at the tap moment (all types)
     if(flash>0 && tgt.ok){ octx.save(); octx.shadowColor=col; octx.shadowBlur=16; octx.globalAlpha=flash*0.8*fade; octx.strokeStyle='#fff'; octx.lineWidth=5;
       octx.beginPath(); octx.arc(tgt.x,tgt.y,14+(1-flash)*40,0,7); octx.stroke(); octx.restore(); }
+    // termination explosion in the projectile's own style — the flight resolves instead of fading mid-air
+    if(dImp>=0 && tgt.ok) drawFxImpact(tgt, fx.type, col, clamp(dImp/tail,0,1), fx.seed);
   }
+}
+// per-type impact burst at the arrival point; q = 0 (impact) -> 1 (gone)
+function drawFxImpact(s,type,col,q,seed){
+  const E=1-q, ease=1-E*E, A=E*0.85; if(A<=0.01) return;
+  octx.save(); octx.shadowColor=col; octx.shadowBlur=18; octx.shadowOffsetY=0; octx.lineCap='round'; octx.lineJoin='round';
+  const R=18+ease*54;
+  switch(type){
+    case 'wave':                                   // golden shockwave: expanding double ring + arc shards
+      octx.strokeStyle=col; octx.globalAlpha=A; octx.lineWidth=8*E+2;
+      octx.beginPath(); octx.arc(s.x,s.y,R,0,7); octx.stroke();
+      octx.globalAlpha=A*0.7; octx.beginPath(); octx.arc(s.x,s.y,R*0.62,0,7); octx.stroke();
+      for(let k=0;k<4;k++){ const an=seed+k*1.57+ease*0.5; octx.globalAlpha=A*0.85; octx.lineWidth=5;
+        octx.beginPath(); octx.arc(s.x,s.y,R*1.25,an,an+0.55); octx.stroke(); }
+      break;
+    case 'lightning': case 'windbeam':{            // electric/gust burst: jagged bolts radiating from a hot core
+      for(let k=0;k<6;k++){ const an=seed+k/3*Math.PI;
+        fxJag(s.x+Math.cos(an)*6, s.y+Math.sin(an)*6, s.x+Math.cos(an)*(10+R*1.2), s.y+Math.sin(an)*(10+R*1.2), 4, 7, col, 4*E+1, A, seed+k); }
+      octx.globalAlpha=A; octx.fillStyle='#fff'; octx.beginPath(); octx.arc(s.x,s.y,6+E*10,0,7); octx.fill();
+      octx.globalAlpha=A*0.8; octx.strokeStyle=col; octx.lineWidth=3; octx.beginPath(); octx.arc(s.x,s.y,R*0.8,0,7); octx.stroke();
+      break; }
+    case 'beam':                                   // violet flare: straight rays + hot core
+      octx.strokeStyle=col;
+      for(let k=0;k<8;k++){ const an=seed+k/4*Math.PI+ease*0.3, r0=8+ease*10, r1=r0+R;
+        octx.globalAlpha=A*0.9; octx.lineWidth=4*E+1;
+        octx.beginPath(); octx.moveTo(s.x+Math.cos(an)*r0,s.y+Math.sin(an)*r0); octx.lineTo(s.x+Math.cos(an)*r1,s.y+Math.sin(an)*r1); octx.stroke(); }
+      octx.globalAlpha=A; octx.fillStyle='#f0e0ff'; octx.beginPath(); octx.arc(s.x,s.y,7+E*11,0,7); octx.fill();
+      break;
+    case 'meteor':{                                // fireball: filled blast + flying embers + flattened ground ring
+      octx.globalAlpha=A; octx.fillStyle=q<0.25?'#fff':'#ffcf8a'; octx.beginPath(); octx.arc(s.x,s.y,14+ease*26,0,7); octx.fill();
+      octx.globalAlpha=A*0.8; octx.fillStyle=col;
+      for(let k=0;k<8;k++){ let r=Math.sin((seed+k)*12.9898)*43758.5453; r-=Math.floor(r);
+        const an=seed+k/4*Math.PI, d=(16+r*30)*ease+10;
+        octx.beginPath(); octx.arc(s.x+Math.cos(an)*d, s.y+Math.sin(an)*d*0.6, 4+E*4, 0,7); octx.fill(); }
+      octx.globalAlpha=A*0.8; octx.strokeStyle='#ffedcf'; octx.lineWidth=5*E+1;
+      octx.beginPath(); octx.ellipse(s.x,s.y+8,R*1.3,R*0.5,0,0,7); octx.stroke();
+      break; }
+    case 'slash':                                  // red cross-slash flash (X)
+      for(const rot of [0.5,2.1]){ octx.save(); octx.translate(s.x,s.y); octx.rotate(rot);
+        octx.globalAlpha=A; octx.strokeStyle=col; octx.lineWidth=9*E+2;
+        octx.beginPath(); octx.moveTo(-R*1.1,0); octx.lineTo(R*1.1,0); octx.stroke();
+        octx.globalAlpha=A*0.9; octx.strokeStyle='#fff'; octx.lineWidth=3*E+1;
+        octx.beginPath(); octx.moveTo(-R*0.8,0); octx.lineTo(R*0.8,0); octx.stroke(); octx.restore(); }
+      break;
+    case 'crack':                                  // ground rupture: jagged cracks radiating flat along the ground
+      for(let k=0;k<5;k++){ const an=seed+k/2.5*Math.PI;
+        fxJag(s.x,s.y, s.x+Math.cos(an)*R*1.5, s.y+Math.sin(an)*R*0.55, 5, 8, col, 5*E+1, A, seed+k);
+        fxJag(s.x,s.y, s.x+Math.cos(an)*R*1.2, s.y+Math.sin(an)*R*0.45, 5, 8, '#ffd06a', 2, A*0.8, seed+k); }
+      octx.globalAlpha=A*0.7; octx.strokeStyle=col; octx.lineWidth=3;
+      octx.beginPath(); octx.ellipse(s.x,s.y,R,R*0.38,0,0,7); octx.stroke();
+      break;
+  }
+  octx.restore();
 }
 function overlayDraw(){
   octx.clearRect(0,0,cw,ch);
