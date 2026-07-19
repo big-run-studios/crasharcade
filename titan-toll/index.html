@@ -309,7 +309,7 @@
       <div id="dbgLog"></div>
     </div>
 
-    <div id="brand">CRASHARCADE · TITAN GUARD v0.16.2</div>
+    <div id="brand">CRASHARCADE · TITAN GUARD v0.16.3</div>
   </div>
 </div>
 
@@ -608,7 +608,7 @@ const GROUND_REPEAT=32;   // tiles across the 340u plane => ~10.6u per tile; rai
   const W=360, H=W/2;                                       // art is 2:1 (1774x887)
   const m=new THREE.Mesh(new THREE.PlaneGeometry(W,H),
     new THREE.MeshBasicMaterial({map:tex, fog:false, toneMapped:false}));  // painting carries its own light + haze — keep game fog/ACES off it
-  m.position.set(0, H/2-4, -142);                           // bottom tucked below the (fogged) far terrain rise, which reads as one more hazy ridge
+  m.position.set(0, H/2-70, -142);                          // shifted down so the painting's mountain band + sky sit in the portrait view (its low foreground hides below the terrain)
   scene.add(m);
 })();
 
