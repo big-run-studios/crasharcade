@@ -309,7 +309,7 @@
       <div id="dbgLog"></div>
     </div>
 
-    <div id="brand">CRASHARCADE · TITAN GUARD v0.23.0</div>
+    <div id="brand">CRASHARCADE · TITAN GUARD v0.24.0</div>
   </div>
 </div>
 
@@ -803,9 +803,19 @@ function attachHero(){
   }
   playHeroClip(HERO_CLIP.idle, true, 0, 0.5);
 }
+// Two actions per clip (original + clone) so a clip can crossfade into ITSELF — chained
+// dodge rolls and attack re-cues used to hard-reset the live action (a visible pop/chop).
+const heroClipAB={};
+function heroFreshAction(name){
+  const c0=heroClips[name]; if(!c0||!heroMixer) return null;
+  let ab=heroClipAB[name];
+  if(!ab){ const c1=c0.clone(); ab=heroClipAB[name]=[c0,c1]; }
+  const clip=(heroAction && heroAction.getClip()===ab[0]) ? ab[1] : ab[0];
+  return heroMixer.clipAction(clip);
+}
 function playHeroClip(name, loop, fade, ts){
   if(!heroMixer || !heroClips[name] || heroCurName===name) return;
-  const next=heroMixer.clipAction(heroClips[name]);
+  const next=heroFreshAction(name);
   next.reset(); next.setLoop(loop?THREE.LoopRepeat:THREE.LoopOnce, loop?Infinity:1); next.clampWhenFinished=!loop;
   next.timeScale=ts||1;
   next.enabled=true; next.setEffectiveWeight(1); next.fadeIn(fade); next.play();
@@ -827,16 +837,18 @@ function heroAttackCue(action, lead){
   lead=Math.max(0.15, lead);
   const I=spec.imp*c.duration;                       // impact time within the clip (s)
   const ts=clamp(I/lead, 0.45, 2.2);                 // rate so impact hits in `lead` seconds…
-  const a=heroMixer.clipAction(c);
+  const a=heroFreshAction(spec.clip); if(!a) return;
   a.reset(); a.setLoop(THREE.LoopOnce,1); a.clampWhenFinished=true;
   a.timeScale=ts; a.time=Math.max(0, I-ts*lead);     // …too-short gaps start mid-wind-up instead
-  a.enabled=true; a.setEffectiveWeight(1); a.fadeIn(0.1); a.play();
-  if(heroAction && heroAction!==a) heroAction.fadeOut(0.1);
+  a.enabled=true; a.setEffectiveWeight(1); a.fadeIn(0.16); a.play();
+  if(heroAction && heroAction!==a) heroAction.fadeOut(0.16);
   heroAction=a; heroCurName=spec.clip;
 }
 const HERO_LOOP=[HERO_CLIP.idle,HERO_CLIP.blitz];   // clips that loop
-// dodge = the FULL roll clip, time-scaled to fit the gap before the next incoming hit; chained
-// dodges mid-roll restart it rotated another 90° CCW so the hero rolls AROUND, not a repeated lean.
+// dodge roll: play at (near-)NATURAL speed — it used to be compressed up to ~7x to fit the
+// gap before the next hit, which read as a choppy blur. Now it never runs faster than 2x;
+// if the gap is shorter than the (sped) clip, the roll crossfades out mid-motion instead.
+// Chained dodges mid-roll crossfade into a fresh copy rotated another 90° CCW (rolls AROUND).
 function heroDodgeRoll(){
   let avail=0.9;
   if(atk){ let bd=1e9; for(const h of atk.hits){ if(h.resolved) continue; const d=(atk.startT+h.at)-T; if(d>0.05 && d<bd) bd=d; } if(bd<1e9) avail=bd; }
@@ -844,10 +856,11 @@ function heroDodgeRoll(){
   heroRollYawOff = heroRollT>0 ? heroRollYawOff+Math.PI/2 : 0;
   const c=heroClips[HERO_CLIP.dodge];
   if(heroMixer && c){
-    const a=heroMixer.clipAction(c);
-    a.reset(); a.setLoop(THREE.LoopOnce,1); a.clampWhenFinished=true; a.timeScale=c.duration/avail;
-    a.enabled=true; a.setEffectiveWeight(1); a.fadeIn(0.05); a.play();
-    if(heroAction && heroAction!==a) heroAction.fadeOut(0.05);
+    const a=heroFreshAction(HERO_CLIP.dodge);
+    a.reset(); a.setLoop(THREE.LoopOnce,1); a.clampWhenFinished=true;
+    a.timeScale=clamp(c.duration/avail, 1.0, 2.0);
+    a.enabled=true; a.setEffectiveWeight(1); a.fadeIn(0.16); a.play();
+    if(heroAction && heroAction!==a) heroAction.fadeOut(0.16);
     heroAction=a; heroCurName=HERO_CLIP.dodge;
   }
   heroRollT=avail;
@@ -865,7 +878,7 @@ function updateHero(rdt){
   else if(introT>0) want=HERO_CLIP.intro;                       // pre-battle stance (sim-gated, plays fully)
   else if(heroOneShotT>0) want=heroOneShot;                     // hit flinch
   else want=HERO_CLIP.idle;
-  playHeroClip(want, HERO_LOOP.includes(want), 0.15, want===HERO_CLIP.blitz?0.75: want===HERO_CLIP.idle?0.5:1);   // idle at half speed (calmer stance)
+  playHeroClip(want, HERO_LOOP.includes(want), 0.22, want===HERO_CLIP.blitz?0.75: want===HERO_CLIP.idle?0.5:1);   // idle at half speed (calmer stance); 0.22 crossfade tween between states
   // chained-roll facing: spin to the accumulated CCW offset while rolling, ease home after
   if(heroModel){
     const ty = heroRollT>0 ? HERO_YAW+heroRollYawOff : HERO_YAW;
@@ -1050,7 +1063,7 @@ const ENEMY_ANIM=[
 const ENEMY_ROT=[
   { Hit_Reaction:80 },   // Cliffhorn — hit reaction faces ~80° off; rotate it back to face the player
   {},                    // Gale
-  { Roundhouse_Kick:70, Kung_Fu_Punch:120, Lunge_Spin_Kick:320, Sweep_Kick:315 },   // Sky Titan — kick/punch clips are authored facing off; rotate back (lab FACE export)
+  { Roundhouse_Kick:80, Kung_Fu_Punch:105, Lunge_Spin_Kick:335, Sweep_Kick:320 },   // Sky Titan — kick/punch clips are authored facing off; rotate back (lab FACE export 2026-07-19)
 ];
 // ANIMATION-DRIVEN DODGE TIMING (Animation Lab DEFEND export). Per boss: clip -> { taps:[sec…] }.
 // Each authored tap marks the clip's IMPACT FRAME. The dodge timing game ENDS there: the window close
@@ -1225,6 +1238,17 @@ function alignClipBaseXZ(clip, ref){ if(!clip||!ref) return;
   const v=a.values, dx=r.values[0]-v[0], dz=r.values[2]-v[2];
   for(let k=0;k<v.length;k+=3){ v[k]+=dx; v[k+2]+=dz; }
 }
+// Radially clamp a clip's hips-XZ root travel to maxD (clip-local units). The Sky Titan's
+// lunge/kick clips travel up to ~183 hip-units — past the hero's spot — causing model overlap;
+// capped keys freeze at the cap radius so the attack lands JUST SHORT of the hero instead.
+// Idempotent (already-capped values stay), so safe on every rebuild.
+function capClipTravelXZ(clip, maxD){ if(!clip||!(maxD>0)) return;
+  const tr=clip.tracks.find(t=>/(^|\.)Hips\.position$/.test(t.name)); if(!tr) return;
+  const v=tr.values, x0=v[0], z0=v[2];
+  for(let k=0;k<v.length;k+=3){ const dx=v[k]-x0, dz=v[k+2]-z0, d=Math.hypot(dx,dz);
+    if(d>maxD){ const f=maxD/d; v[k]=x0+dx*f; v[k+2]=z0+dz*f; } }
+}
+const ATK_STOP_MARGIN=3.2;   // world units the titan's root stops short of the hero
 ENEMY_GLB.forEach((f,i)=>{ new GLTFLoader().load(f, g=>{ bossGLTF[i]=g;
   stripClipTravelXZ(g.animations.find(c=>c.name===ENEMY_ANIM[i].hit));   // stagger stays planted (once, at load)
   alignClipBaseXZ(g.animations.find(c=>c.name===ENEMY_ANIM[i].idle),
@@ -1276,6 +1300,10 @@ function buildEnemyGLB(i){
   g.add(model); addAnchors(g,h);
   const mixer=new THREE.AnimationMixer(model), clips={};
   for(const c of bossGLTF[i].animations) clips[c.name]=c;
+  // stop attack lunges just short of the hero: clip-local cap = world gap / (model scale × group scale)
+  { const distW=Math.hypot(PHOME.x-(-0.55), PHOME.z-ENEMY_Z);
+    const maxL=(distW-ATK_STOP_MARGIN)/((h/nat)*(ENEMY_SCALE[i]||1));
+    for(const nm of new Set(ENEMY_ANIM[i].attacks)) capClipTravelXZ(clips[nm], maxL); }
   const spk=ENEMY_SPARK[i]; const sparkBone=spk?model.getObjectByName(spk.node):null;
   const handBone=model.getObjectByName('RightHand');   // hand-origin projectile VFX fire from here
   const armDups=ENEMY_ARMS[i]?ENEMY_ARMS[i].map(a=>buildLimbDuplicate(model,a)):null;   // mirrored forearms (Gale, both arms)
