@@ -309,7 +309,7 @@
       <div id="dbgLog"></div>
     </div>
 
-    <div id="brand">CRASHARCADE · TITAN GUARD v0.15.16</div>
+    <div id="brand">CRASHARCADE · TITAN GUARD v0.15.17</div>
   </div>
 </div>
 
@@ -547,10 +547,13 @@ const ENEMY_Z=-11.0;
 const ENEMY_SCALE=[0.66,0.848,0.86];     // per-enemy on-screen size vs v0.13.2 framing: Cliffhorn 66%, Gale 80% height, Titan unchanged (re-derive per-model when GLBs land)
 camera.position.copy(CAM.pos); camera.lookAt(CAM.look);
 
-// lights — bright daytime
-scene.add(new THREE.HemisphereLight(0xdff0ff, 0x5a6a4a, 1.05));
-const sun=new THREE.DirectionalLight(0xfff2d8, 1.35); sun.position.set(-9,14,7); scene.add(sun);
-const fill=new THREE.DirectionalLight(0xbfd8ff, 0.35); fill.position.set(8,5,6); scene.add(fill);
+// lights — bright daytime, tuned so the (dark) characters read against the field
+scene.add(new THREE.HemisphereLight(0xdff0ff, 0x6a7550, 1.1));                                    // sky + warmer ground bounce (lifts shadowed undersides)
+const sun=new THREE.DirectionalLight(0xfff2d8, 1.55); sun.position.set(-9,14,7); scene.add(sun);   // key
+const fill=new THREE.DirectionalLight(0xcfe0ff, 0.5);  fill.position.set(9,6,10);  scene.add(fill); // camera-side fill (lights the faces we actually see)
+const rim=new THREE.DirectionalLight(0xeaf4ff, 1.45);  rim.position.set(-5,12,-16); scene.add(rim); // back/rim — bright edge that separates the dark heroes/titans from the background
+// subtle filmic response so the extra light enriches instead of blowing out
+renderer.toneMapping=THREE.ACESFilmicToneMapping; renderer.toneMappingExposure=1.15;
 
 // materials
 function flat(c){return new THREE.MeshLambertMaterial({color:c});}
@@ -1050,8 +1053,13 @@ function updateEnemySpark(){
   enemySpark.material.rotation=t*2.5;
   enemySpark.visible=true;
 }
-const bossGLTF=[null,null,null];
-ENEMY_GLB.forEach((f,i)=>{ new GLTFLoader().load(f, g=>{ bossGLTF[i]=g; }, undefined, err=>console.error('boss load '+i, err)); });
+const bossGLTF=[null,null,null]; let _pendingStart=null;
+function bossReady(){ return !!(bossGLTF[0]&&bossGLTF[0].scene); }   // boss-1 model must exist before the first fight opens
+{ const b=document.getElementById('startBtn'); if(b)b.textContent='LOADING…'; }
+ENEMY_GLB.forEach((f,i)=>{ new GLTFLoader().load(f, g=>{ bossGLTF[i]=g; swapEnemyToGLB(i);   // upgrade the fallback if this boss loaded mid-fight
+  if(i===0){ const b=document.getElementById('startBtn'); if(b)b.textContent='ENTER BATTLE';
+    if(_pendingStart!=null){ const s=_pendingStart; _pendingStart=null; startRun(s); } }   // player already clicked ENTER BATTLE -> start now
+}, undefined, err=>console.error('boss load '+i, err)); });
 
 // SkeletonUtils.clone (inlined — not vendored): plain .clone() breaks skinned-mesh
 // bone binding, so rebind each cloned SkinnedMesh to the cloned bones.
@@ -1200,7 +1208,16 @@ function setEnemy(i){
   enemyState='idle'; enemyTimer=CFG.breather[i]*0.6; atk=null; lastAtk=-1; last2Atk=-1; recentFast=0; vulnAction=null;
   buildForceList();
 }
+function swapEnemyToGLB(i){
+  // First-play asset race: setEnemy may have built the procedural fallback before the boss GLB finished
+  // downloading. Once it lands, upgrade the mesh in place — no combat-state reset — so the rigged model AND
+  // its sparkBone (tap-window sparkle) appear. Only while actively fighting THIS boss with the fallback.
+  if(state!=='combat' || enemyIdx!==i || !enemyMesh || enemyMesh.userData.mixer) return;
+  scene.remove(enemyMesh);
+  enemyMesh=buildEnemyGLB(i); enemyMesh.position.set(-0.55,0,ENEMY_Z); enemyMesh.scale.setScalar(ENEMY_SCALE[i]||1); scene.add(enemyMesh);
+}
 function startRun(sd){
+  if(!bossReady()){ _pendingStart=(sd==null?'':sd); const b=document.getElementById('startBtn'); if(b)b.textContent='LOADING…'; return; }   // never open the first fight on the procedural fallback
   seed = (sd!=null && sd!=='') ? String(sd) : String(Math.floor(Math.random()*1e9));
   seedStreams(seed);
   document.getElementById('seedIn').value=seed;
