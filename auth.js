@@ -14,7 +14,7 @@
 (function(){
   'use strict';
   var HASHES=[
-    'c379ceebe8ad75280558cea3e74a8721c2616e4d4129a265782f7c1b87fdd2ea', // launch code
+    '5972a76a300876b8e0597f8ab85ad3f0f0b69f56a0087db12e06d93f92acf8af', // launch code
   ];
   var KEY='ca_beta_key';
   var mode=(document.currentScript&&document.currentScript.dataset.mode)||'game';
