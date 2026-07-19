@@ -309,7 +309,7 @@
       <div id="dbgLog"></div>
     </div>
 
-    <div id="brand">CRASHARCADE · TITAN GUARD v0.16.0</div>
+    <div id="brand">CRASHARCADE · TITAN GUARD v0.16.1</div>
   </div>
 </div>
 
@@ -601,20 +601,15 @@ const GROUND_REPEAT=32;   // tiles across the 340u plane => ~10.6u per tile; rai
   scene.add(new THREE.Mesh(geo,new THREE.MeshLambertMaterial({map:tex,vertexColors:true,flatShading:true})));
 })();
 
-/* ---- distant hills / mesas ---- */
+/* ---- painted horizon backdrop (Andrew's art) — replaces the procedural hills/mesas ---- */
 (function(){
-  const rn=mulberry32(77);
-  for(let i=0;i<14;i++){
-    const mesa=rn()>0.5;
-    const w=rf(10,26), h=rf(8,26);
-    const g=mesa?new THREE.CylinderGeometry(w*0.5,w*0.62,h,6):new THREE.ConeGeometry(w*0.6,h,6);
-    const c=new THREE.Color().setHSL(0.30-rn()*0.06,0.28,0.42+rn()*0.08).lerp(new THREE.Color(0xa9c6d8),0.45);
-    const m=new THREE.Mesh(g,new THREE.MeshLambertMaterial({color:c,flatShading:true}));
-    const ang=(-0.5+i/14)*Math.PI*1.15;
-    const dist=rf(90,150);
-    m.position.set(Math.sin(ang)*dist, h*0.5-3, -Math.abs(Math.cos(ang))*dist-30);
-    scene.add(m);
-  }
+  const tex=new THREE.TextureLoader().load('assets/backdrop.webp');
+  tex.colorSpace=THREE.SRGBColorSpace;
+  const W=360, H=W/2;                                       // art is 2:1 (1774x887)
+  const m=new THREE.Mesh(new THREE.PlaneGeometry(W,H),
+    new THREE.MeshBasicMaterial({map:tex, fog:false, toneMapped:false}));  // painting carries its own light + haze — keep game fog/ACES off it
+  m.position.set(0, H/2-4, -142);                           // bottom tucked below the (fogged) far terrain rise, which reads as one more hazy ridge
+  scene.add(m);
 })();
 
 /* ---- big readable clouds ---- */
