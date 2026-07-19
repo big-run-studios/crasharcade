@@ -309,7 +309,7 @@
       <div id="dbgLog"></div>
     </div>
 
-    <div id="brand">CRASHARCADE · TITAN GUARD v0.17.4</div>
+    <div id="brand">CRASHARCADE · TITAN GUARD v0.19.1</div>
   </div>
 </div>
 
@@ -551,9 +551,17 @@ const ENEMY_Z=-11.0;
 const ENEMY_SCALE=[0.66,0.848,0.86];     // per-enemy on-screen size vs v0.13.2 framing: Cliffhorn 66%, Gale 80% height, Titan unchanged (re-derive per-model when GLBs land)
 camera.position.copy(CAM.pos); camera.lookAt(CAM.look);
 
-// lights — bright daytime, tuned so the (dark) characters read against the field
+// lights — warm AFTERNOON key, tuned so the (dark) characters read against the field
 scene.add(new THREE.HemisphereLight(0xdff0ff, 0x6a7550, 1.1));                                    // sky + warmer ground bounce (lifts shadowed undersides)
-const sun=new THREE.DirectionalLight(0xfff2d8, 1.55); sun.position.set(-9,14,7); scene.add(sun);   // key
+const sun=new THREE.DirectionalLight(0xffe3b4, 1.55); sun.position.set(-15,9.5,6); scene.add(sun); // key: lower + warmer = afternoon; the low angle stretches the ground shadows
+// ground shadows: the sun is the only caster — one 2048 map over just the combat lane
+renderer.shadowMap.enabled=true; renderer.shadowMap.type=THREE.PCFSoftShadowMap;
+sun.castShadow=true; sun.shadow.mapSize.set(2048,2048);
+sun.shadow.camera.left=-22; sun.shadow.camera.right=22; sun.shadow.camera.top=24; sun.shadow.camera.bottom=-24;
+sun.shadow.camera.near=1; sun.shadow.camera.far=80;
+sun.shadow.camera.updateProjectionMatrix();                                                       // frustum edits after construction need this or the map stays the default ±5 box
+sun.shadow.bias=-0.0004; sun.shadow.normalBias=0.5;                                               // normalBias: skinned meshes acne badly without it
+sun.target.position.set(0,0,-5); scene.add(sun.target);                                          // aim between hero (z 2.2) and titan (z -11)
 const fill=new THREE.DirectionalLight(0xcfe0ff, 0.5);  fill.position.set(9,6,10);  scene.add(fill); // camera-side fill (lights the faces we actually see)
 const rim=new THREE.DirectionalLight(0xeaf4ff, 1.45);  rim.position.set(-5,12,-16); scene.add(rim); // back/rim — bright edge that separates the dark heroes/titans from the background
 // subtle filmic response so the extra light enriches instead of blowing out
@@ -602,7 +610,9 @@ const GROUND_REPEAT=32;   // tiles across the 340u plane => ~10.6u per tile; rai
   tex.colorSpace=THREE.SRGBColorSpace; tex.wrapS=tex.wrapT=THREE.RepeatWrapping;
   tex.repeat.set(GROUND_REPEAT,GROUND_REPEAT);
   tex.anisotropy=Math.min(8, renderer.capabilities.getMaxAnisotropy());   // low camera = glancing angle; keeps distant tiles crisp
-  scene.add(new THREE.Mesh(geo,new THREE.MeshLambertMaterial({map:tex,vertexColors:true,flatShading:true})));
+  const gnd=new THREE.Mesh(geo,new THREE.MeshLambertMaterial({map:tex,vertexColors:true,flatShading:true}));
+  gnd.receiveShadow=true;                                  // catches the hero/titan afternoon shadows
+  scene.add(gnd);
 })();
 
 /* ---- painted horizon backdrop (Andrew's art) — replaces the procedural hills/mesas ---- */
@@ -734,7 +744,7 @@ function buildPlayer(){
   pike.position.set(0.05,-0.8,0.1);
   armR.add(pike); g.userData.pike=pike;
 
-  g.traverse(o=>{ if(o.material) o.material.side=THREE.DoubleSide; }); // allow horizontal mirror (scale.x=-1) without back-face culling
+  g.traverse(o=>{ if(o.material) o.material.side=THREE.DoubleSide; if(o.isMesh) o.castShadow=true; }); // allow horizontal mirror (scale.x=-1) without back-face culling; cast ground shadows
   g.position.set(PHOME.x,0,PHOME.z);
   g.rotation.y=PHOME.ry;                  // facing the titan
   g.scale.x=PHOME.mirror?-1:1;
@@ -763,7 +773,7 @@ function attachHero(){
   hero.updateMatrixWorld(true);
   const b=new THREE.Box3().setFromObject(hero);
   hero.position.set(-(b.min.x+b.max.x)/2, -b.min.y, -(b.min.z+b.max.z)/2);   // centred, feet at y=0
-  hero.traverse(o=>{ if(o.isMesh){ o.frustumCulled=false; if(o.material) o.material.side=THREE.FrontSide; } });
+  hero.traverse(o=>{ if(o.isMesh){ o.frustumCulled=false; o.castShadow=true; if(o.material) o.material.side=THREE.FrontSide; } });
   playerMesh.add(hero); heroModel=hero;
   playerMesh.userData.body.visible=false;                                    // hide the procedural blocky body
   heroRightHand=hero.getObjectByName('RightHand');
@@ -959,7 +969,7 @@ const ENEMY_ANIM=[
 const ENEMY_ROT=[
   { Hit_Reaction:80 },   // Cliffhorn — hit reaction faces ~80° off; rotate it back to face the player
   {},                    // Gale
-  { Roundhouse_Kick:75, Kung_Fu_Punch:120 },   // Sky Titan — these two clips are authored facing off; rotate back
+  { Roundhouse_Kick:70, Kung_Fu_Punch:120, Lunge_Spin_Kick:320, Sweep_Kick:315 },   // Sky Titan — kick/punch clips are authored facing off; rotate back (lab FACE export)
 ];
 // ANIMATION-DRIVEN DODGE TIMING (Animation Lab DEFEND export). Per boss: clip -> { taps:[sec…] }.
 // When an attack's mapped clip has authored taps, the dodge hits land at those tap moments and the clip
@@ -982,13 +992,13 @@ const ENEMY_TAPS=[
     'mage_soell_cast_6':{ dur:2.3,   taps:[0.492,0.768,1.074] },  // Attack 4 & 7
   },
   {  // Sky Titan — all 8 slots authored
-    'Shrug':                { dur:2,     taps:[0.702,0.852,1.014] },     // Attack 1
-    'Neck_Slashing_Gesture':{ dur:4.233, taps:[0.576,1.518,2.731] },     // Attack 2
-    'Angry_Ground_Stomp_2': { dur:1.8,   taps:[0.726,0.876,1.452] },     // Attack 3
-    'Lunge_Spin_Kick':      { dur:1.633, taps:[1.32] },                  // Attack 4 & 7
-    'Sweep_Kick':           { dur:4.067, taps:[1.327,2.155] },           // Attack 5
-    'Roundhouse_Kick':      { dur:2.7,   taps:[1.512] },                 // Attack 6 (faces +75°)
-    'Kung_Fu_Punch':        { dur:7.3,   taps:[1.38,1.59,2.833,3.937] }, // Attack 8 (faces +120°)
+    'Shrug':                { dur:2,     taps:[0.795] },                 // Attack 1
+    'Neck_Slashing_Gesture':{ dur:4.233, taps:[1.42,2.23] },             // Attack 2
+    'Angry_Ground_Stomp_2': { dur:1.8,   taps:[0.75] },                  // Attack 3
+    'Lunge_Spin_Kick':      { dur:1.633, taps:[1.32] },                  // Attack 4 & 7 (faces +320°)
+    'Sweep_Kick':           { dur:4.067, taps:[1.327,2.155] },           // Attack 5 (faces +315°)
+    'Roundhouse_Kick':      { dur:2.7,   taps:[1.512] },                 // Attack 6 (faces +70°)
+    'Kung_Fu_Punch':        { dur:7.3,   taps:[1.825,2.875,3.94] },      // Attack 8 (faces +120°)
   },
 ];
 // PROJECTILE VFX — per boss: clip -> fx type. One instance spawned per hit, timed to impact at the tap.
@@ -1062,7 +1072,7 @@ function buildLimbDuplicate(model, cfg){
   wg.setAttribute('skinWeight',new THREE.Float32BufferAttribute(SW,4));
   wg.setIndex(ni);
   const dup=new THREE.SkinnedMesh(wg, (Array.isArray(sm.material)?sm.material[0]:sm.material).clone());
-  dup.frustumCulled=false;
+  dup.frustumCulled=false; dup.castShadow=true;
   sm.parent.add(dup);                                             // sibling of the body mesh → same matrixWorld + bind => aligns exactly
   dup.position.copy(sm.position); dup.quaternion.copy(sm.quaternion); dup.scale.copy(sm.scale);
   dup.bind(sm.skeleton, sm.bindMatrix);
@@ -1156,7 +1166,7 @@ function buildEnemyGLB(i){
   model.updateMatrixWorld(true);
   b=new THREE.Box3().setFromObject(model);
   model.position.set(-(b.min.x+b.max.x)/2, -b.min.y, -(b.min.z+b.max.z)/2);      // centred x/z, feet at y=0
-  model.traverse(o=>{ if(o.isMesh){ o.frustumCulled=false; } });
+  model.traverse(o=>{ if(o.isMesh){ o.frustumCulled=false; o.castShadow=true; } });
   g.add(model); addAnchors(g,h);
   const mixer=new THREE.AnimationMixer(model), clips={};
   for(const c of bossGLTF[i].animations) clips[c.name]=c;
@@ -1261,6 +1271,7 @@ function setEnemy(i){
   enemyKb=0; enemyKbV=0; enemyHurtT=0; enemyDeathFx=null;
   enemyIdx=i; enemy={...ENEMIES[i], hp:ENEMIES[i].hp, maxHp:ENEMIES[i].hp};
   enemyMesh=(bossGLTF[i]&&bossGLTF[i].scene)?buildEnemyGLB(i):ENEMY_BUILD[i]();   // rigged GLB once loaded, else procedural fallback
+  enemyMesh.traverse(o=>{ if(o.isMesh) o.castShadow=true; });                     // covers the procedural fallback + Gale's arm duplicates
   enemyMesh.position.set(-0.55,0,ENEMY_Z); enemyMesh.scale.setScalar(ENEMY_SCALE[i]||1); scene.add(enemyMesh);
   enemyState='idle'; enemyTimer=CFG.breather[i]*0.6; atk=null; lastAtk=-1; last2Atk=-1; recentFast=0; vulnAction=null;
   buildForceList();
@@ -2023,17 +2034,18 @@ function drawReticle(cx,cy,R0,dt,win,perfWin,app,col,Rmax,glyph,next){
   const K=Rmax/app;                          // px travelled per second
   const band=clamp(K*win,7,R0*0.85);         // success-band half-thickness (px) = the win in screen space
   octx.save(); octx.translate(cx,cy); octx.textAlign='center'; octx.textBaseline='middle';
+  octx.shadowColor='rgba(4,10,18,.8)'; octx.shadowBlur=7; octx.shadowOffsetY=3;   // hi-vis pass: drop shadow lifts the cue off the field art
   // thick success band (annulus)
-  octx.globalAlpha=next?0.55:0.22; octx.strokeStyle=col; octx.lineWidth=band*2;
+  octx.globalAlpha=next?0.85:0.4; octx.strokeStyle=col; octx.lineWidth=band*2;
   octx.beginPath(); octx.arc(0,0,R0,0,Math.PI*2); octx.stroke();
   // band edges + perfect centre line
-  octx.lineWidth=1.5; octx.globalAlpha=next?0.5:0.2;
+  octx.lineWidth=1.5; octx.globalAlpha=next?0.7:0.32;
   octx.beginPath(); octx.arc(0,0,R0-band,0,Math.PI*2); octx.stroke();
   octx.beginPath(); octx.arc(0,0,R0+band,0,Math.PI*2); octx.stroke();
-  octx.strokeStyle='#fff'; octx.globalAlpha=next?0.75:0.3; octx.lineWidth=2;
+  octx.strokeStyle='#fff'; octx.globalAlpha=next?0.95:0.45; octx.lineWidth=2;
   octx.beginPath(); octx.arc(0,0,R0,0,Math.PI*2); octx.stroke();
   // thin converging ring (only once it enters the approach, so fast closures don't draw a giant off-screen arc)
-  if(dt>-win*1.6 && dt<app*1.06){ const R=R0+K*dt; if(R>2){ octx.strokeStyle=col; octx.globalAlpha=next?1:0.4; octx.lineWidth=next?3.5:2;
+  if(dt>-win*1.6 && dt<app*1.06){ const R=R0+K*dt; if(R>2){ octx.strokeStyle=col; octx.globalAlpha=next?1:0.55; octx.lineWidth=next?4.5:2.5;
     octx.beginPath(); octx.arc(0,0,R,0,Math.PI*2); octx.stroke(); } }
   // aligned pulse
   if(Math.abs(dt)<=win){ octx.globalAlpha=Math.abs(dt)<=perfWin?0.95:0.55; octx.fillStyle='#fff'; octx.beginPath(); octx.arc(0,0,band*0.6,0,Math.PI*2); octx.fill(); }
@@ -2057,14 +2069,15 @@ function shapeForKind(k){                                                       
 function drawTiming(shape,cx,cy,R0,dt,win,perfWin,app,col,Rmax,glyph,next){
   if(shape==='ring'||!shape){ drawReticle(cx,cy,R0,dt,win,perfWin,app,col,Rmax,glyph,next); return; }
   const K=Rmax/app, band=clamp(K*win,7,R0*0.85), off=K*dt;       // identical timing/thickness to the ring
-  const inApp = dt>-win*1.6 && dt<app*1.06, aligned=Math.abs(dt)<=win, perfect=Math.abs(dt)<=perfWin, tA=next?1:0.4;
+  const inApp = dt>-win*1.6 && dt<app*1.06, aligned=Math.abs(dt)<=win, perfect=Math.abs(dt)<=perfWin, tA=next?1:0.55;
   // success band == the ring's band*2 thickness, so every shape reads with the same weight
-  const target=(pathfn)=>{ octx.strokeStyle=col; octx.globalAlpha=tA*0.5; octx.lineWidth=band*2; pathfn(); octx.stroke();
-    octx.strokeStyle='#fff'; octx.globalAlpha=tA*0.7; octx.lineWidth=2; pathfn(); octx.stroke(); };
-  const mover=(pathfn,setup)=>{ if(!(next&&inApp))return; octx.save(); setup(); octx.strokeStyle=col; octx.globalAlpha=1; octx.lineWidth=3.5; pathfn(); octx.stroke();
-    octx.strokeStyle='#fff'; octx.globalAlpha=0.85; octx.lineWidth=1.5; pathfn(); octx.stroke(); octx.restore(); };
+  const target=(pathfn)=>{ octx.strokeStyle=col; octx.globalAlpha=tA*0.8; octx.lineWidth=band*2; pathfn(); octx.stroke();
+    octx.strokeStyle='#fff'; octx.globalAlpha=tA*0.9; octx.lineWidth=2; pathfn(); octx.stroke(); };
+  const mover=(pathfn,setup)=>{ if(!(next&&inApp))return; octx.save(); setup(); octx.strokeStyle=col; octx.globalAlpha=1; octx.lineWidth=4.5; pathfn(); octx.stroke();
+    octx.strokeStyle='#fff'; octx.globalAlpha=0.9; octx.lineWidth=1.5; pathfn(); octx.stroke(); octx.restore(); };
   const pulse=()=>{ if(next&&aligned){ octx.globalAlpha=perfect?0.95:0.55; octx.fillStyle='#fff'; octx.beginPath(); octx.arc(shape==='arrow'?0:0,0,band*0.6,0,Math.PI*2); octx.fill(); } };
   octx.save(); octx.translate(cx,cy); octx.lineJoin='round'; octx.lineCap='round';
+  octx.shadowColor='rgba(4,10,18,.8)'; octx.shadowBlur=7; octx.shadowOffsetY=3;   // hi-vis pass: drop shadow lifts the cue off the field art
   if(shape==='chevron'){ const S=R0*0.86;
     octx.lineJoin='miter'; octx.lineCap='butt'; octx.miterLimit=8;   // hard edges (no rounded look)
     target(()=>_chevron(S));
@@ -2098,56 +2111,86 @@ function fxJag(x0,y0,x1,y1,segs,amp,col,w,alpha,seed){   // jagged polyline; sta
     const off=(r*2-1)*amp*Math.sin(t*Math.PI); octx.lineTo(bx+px/L*off, by+py/L*off); }
   octx.lineTo(x1,y1); octx.stroke(); octx.restore();
 }
+const FX_COL={ wave:'#ffd23a', lightning:'#4fd2ff', windbeam:'#2fe4ff', beam:'#c44bff', meteor:'#ff8a3c', slash:'#ff2a3c', crack:'#ff6a2a' };
+// firing telegraph at the launch point: a ring CONVERGES while charging (0.45s pre-launch), then
+// BURSTS at the shot — same color as the projectile; jagged spikes for the electric/rupture types
+function drawFxMuzzle(s0,col,preT,seed,type){
+  const chg=preT<0, q=chg?clamp(1+preT/0.45,0,1):1, f=chg?0:clamp(1-preT/0.22,0,1);
+  const A=chg? q*0.5 : f*0.8; if(A<=0.01) return;
+  octx.save(); octx.shadowColor=col; octx.shadowBlur=18; octx.shadowOffsetY=0; octx.lineCap='round';
+  const R=chg? 36-q*22 : 16+(1-f)*40;                     // converge in on the charge, burst out on the shot
+  octx.globalAlpha=A; octx.strokeStyle=col; octx.lineWidth=chg?4:6;
+  octx.beginPath(); octx.arc(s0.x,s0.y,R,0,7); octx.stroke();
+  const jag = type==='lightning'||type==='windbeam'||type==='crack';
+  for(let k=0;k<6;k++){ const an=seed+k/3*Math.PI + (chg?q*0.6:(1-f)*0.4);
+    const x1=s0.x+Math.cos(an)*R*0.55, y1=s0.y+Math.sin(an)*R*0.55, x2=s0.x+Math.cos(an)*R*1.45, y2=s0.y+Math.sin(an)*R*1.45;
+    if(jag) fxJag(x1,y1,x2,y2,4,6,col,3,A*0.9,seed+k);
+    else { octx.globalAlpha=A*0.9; octx.lineWidth=3; octx.beginPath(); octx.moveTo(x1,y1); octx.lineTo(x2,y2); octx.stroke(); } }
+  octx.globalAlpha=Math.min(1,A+0.2); octx.fillStyle='#fff'; octx.beginPath(); octx.arc(s0.x,s0.y, chg?2+q*8:3+f*9,0,7); octx.fill();
+  octx.restore();
+}
 function drawEnemyFx(){
   if(!enemyMesh||!playerMesh||state!=='combat') return;
-  const u=enemyMesh.userData, bone=u.handBone||u.sparkBone, pp=playerMesh.position;
+  const u=enemyMesh.userData, bone=u.handBone||u.sparkBone;
   for(let i=enemyFx.length-1;i>=0;i--){ const fx=enemyFx[i];
     const flight=LD(fx.sp||'med'), tail=FX_TAIL[fx.type]||0.3, dImp=T-fx.impactT;
     if(dImp>tail){ enemyFx.splice(i,1); continue; }
-    const ph=clamp((T-(fx.impactT-flight))/flight,0,1); if(ph<=0) continue;
+    const preT=T-(fx.impactT-flight);                       // <0 charging, >=0 in flight
+    if(preT<-0.5) continue;
+    // origin: LIVE while charging, FROZEN at launch — re-reading the swinging hand bone every
+    // frame bent the flight mid-air (Juggernaut read as heat-seeking even after the fixed target)
+    if(fx.o) _fxA.fromArray(fx.o);
+    else{
+      if(fx.type==='meteor') _fxA.copy(enemyMesh.position).add(_METEOR);
+      else if(fx.type==='crack') _fxA.copy(enemyMesh.position).setY(0.12);
+      else if(bone) bone.getWorldPosition(_fxA); else _fxA.copy(enemyMesh.position).setY(6);
+      if(preT>=0) fx.o=_fxA.toArray();
+    }
+    // target = the hero's IDLE spot (PHOME), NOT the live position — tracking the dodging hero read as heat-seeking, like the dodge did nothing
+    _fxB.set(PHOME.x, fx.type==='crack'?0.12: fx.type==='meteor'?0.2: 1.35, PHOME.z);
+    const col=FX_COL[fx.type]||'#fff';
+    // firing telegraph + muzzle flash at the launch point
+    if(preT<0.22){ const s0=toScreen(_fxA); if(s0.ok) drawFxMuzzle(s0,col,preT,fx.seed,fx.type); }
+    const ph=clamp(preT/flight,0,1); if(ph<=0) continue;
     const flash=clamp(1-Math.abs(dImp)/0.13,0,1), fade=dImp>0?clamp(1-dImp/tail,0,1):1;
-    // world-space endpoints per type (origin ON the enemy -> target ON the hero)
-    if(fx.type==='meteor') _fxA.copy(enemyMesh.position).add(_METEOR);
-    else if(fx.type==='crack') _fxA.copy(enemyMesh.position).setY(0.12);
-    else if(bone) bone.getWorldPosition(_fxA); else _fxA.copy(enemyMesh.position).setY(6);
-    _fxB.copy(pp).setY(fx.type==='crack'?0.12: fx.type==='meteor'?0.2: 1.35);
     // projectile position: lerp in WORLD (perspective-correct), arc for thrown looks, then project
     const arcOf=q=> (fx.type==='meteor'||fx.type==='crack')?0 : Math.sin(q*Math.PI)*(fx.type==='wave'?0.6:1.2);
     const at=q=>{ _fxP.lerpVectors(_fxA,_fxB,q); _fxP.y+=arcOf(q); return toScreen(_fxP); };
     const p=at(ph); if(!p.ok) continue;
     const tgt=toScreen(_fxB), ang=Math.atan2((tgt.y-p.y)||1e-4,(tgt.x-p.x)||1e-4);
-    const a=(0.55+0.45*flash)*fade, phB=Math.max(0,ph-0.16);
+    const a=(0.55+0.3*flash)*fade, phB=Math.max(0,ph-0.16);   // softer body + same-color glow = neon pop
     octx.save();
+    octx.shadowColor=col; octx.shadowBlur=16; octx.shadowOffsetY=0;
     switch(fx.type){
       case 'lightning':{ const b=at(phB);
-        fxJag(b.x,b.y,p.x,p.y,7,16,'#eafcff',5,a);                              // crackling head w/ jittering tail
-        fxJag(b.x,b.y,p.x,p.y,7,22,'#8fd8ff',3,a*0.7);
-        octx.globalAlpha=a; octx.fillStyle='#fff'; octx.beginPath(); octx.arc(p.x,p.y,6+flash*8,0,7); octx.fill(); break; }
+        fxJag(b.x,b.y,p.x,p.y,7,28,'#eafcff',10,a);                             // crackling head w/ jittering tail
+        fxJag(b.x,b.y,p.x,p.y,7,38,'#4fd2ff',6,a*0.8);
+        octx.globalAlpha=a; octx.fillStyle='#fff'; octx.beginPath(); octx.arc(p.x,p.y,12+flash*16,0,7); octx.fill(); break; }
       case 'windbeam':{ const b=at(phB);
-        for(let s=0;s<3;s++) fxJag(b.x,b.y,p.x,p.y,8,7+s*5,'#8fe9ff',4-s,a*(0.8-s*0.18),fx.seed+s);
-        octx.globalAlpha=a*0.9; octx.fillStyle='#eafcff'; octx.beginPath(); octx.arc(p.x,p.y,5+flash*6,0,7); octx.fill(); break; }
+        for(let s=0;s<3;s++) fxJag(b.x,b.y,p.x,p.y,8,14+s*8,'#2fe4ff',8-s*2,a*(0.9-s*0.18),fx.seed+s);
+        octx.globalAlpha=a*0.9; octx.fillStyle='#eafcff'; octx.beginPath(); octx.arc(p.x,p.y,10+flash*12,0,7); octx.fill(); break; }
       case 'beam':{ const b=at(phB); octx.lineCap='round';
-        octx.globalAlpha=a; octx.strokeStyle='#c07bff'; octx.lineWidth=10; octx.beginPath(); octx.moveTo(b.x,b.y); octx.lineTo(p.x,p.y); octx.stroke();
-        octx.globalAlpha=a; octx.strokeStyle='#fff'; octx.lineWidth=3.5; octx.beginPath(); octx.moveTo(b.x,b.y); octx.lineTo(p.x,p.y); octx.stroke();
-        octx.globalAlpha=a; octx.fillStyle='#f0e0ff'; octx.beginPath(); octx.arc(p.x,p.y,6+flash*7,0,7); octx.fill(); break; }
+        octx.globalAlpha=a; octx.strokeStyle='#c44bff'; octx.lineWidth=20; octx.beginPath(); octx.moveTo(b.x,b.y); octx.lineTo(p.x,p.y); octx.stroke();
+        octx.globalAlpha=a; octx.strokeStyle='#fff'; octx.lineWidth=7; octx.beginPath(); octx.moveTo(b.x,b.y); octx.lineTo(p.x,p.y); octx.stroke();
+        octx.globalAlpha=a; octx.fillStyle='#f0e0ff'; octx.beginPath(); octx.arc(p.x,p.y,12+flash*14,0,7); octx.fill(); break; }
       case 'wave':{ octx.translate(p.x,p.y); octx.rotate(ang); octx.strokeStyle='#ffd23a'; octx.lineCap='round';
-        for(let k=0;k<3;k++){ octx.globalAlpha=a*(1-k*0.28); octx.lineWidth=5-k;                 // golden crescent flying point-first
-          octx.beginPath(); octx.arc(-k*9,0,14+k*7,-0.8,0.8); octx.stroke(); } break; }
+        for(let k=0;k<3;k++){ octx.globalAlpha=a*(1-k*0.28); octx.lineWidth=10-k*2;              // golden crescent flying point-first
+          octx.beginPath(); octx.arc(-k*18,0,28+k*14,-0.8,0.8); octx.stroke(); } break; }
       case 'meteor':{
-        for(let k=1;k<=5;k++){ const b2=at(Math.max(0,ph-k*0.05)); octx.globalAlpha=fade*(1-k/6)*0.5; octx.fillStyle='#ff8a3c'; octx.beginPath(); octx.arc(b2.x,b2.y,10-k,0,7); octx.fill(); }
-        octx.globalAlpha=fade; octx.fillStyle=dImp>=0?'#fff':'#ffcf8a'; octx.beginPath(); octx.arc(p.x,p.y,dImp>=0?6+18*flash:11,0,7); octx.fill();
-        octx.globalAlpha=fade*0.55; octx.strokeStyle='#ffedcf'; octx.lineWidth=3; octx.beginPath(); octx.arc(p.x,p.y,15,0,7); octx.stroke(); break; }
+        for(let k=1;k<=5;k++){ const b2=at(Math.max(0,ph-k*0.05)); octx.globalAlpha=fade*(1-k/6)*0.5; octx.fillStyle='#ff8a3c'; octx.beginPath(); octx.arc(b2.x,b2.y,20-k*2,0,7); octx.fill(); }
+        octx.globalAlpha=fade; octx.fillStyle=dImp>=0?'#fff':'#ffcf8a'; octx.beginPath(); octx.arc(p.x,p.y,dImp>=0?12+36*flash:22,0,7); octx.fill();
+        octx.globalAlpha=fade*0.55; octx.strokeStyle='#ffedcf'; octx.lineWidth=6; octx.beginPath(); octx.arc(p.x,p.y,30,0,7); octx.stroke(); break; }
       case 'slash':{ octx.translate(p.x,p.y); octx.rotate(ang); octx.lineCap='round';             // red blade crescent, edge forward
-        octx.globalAlpha=a; octx.strokeStyle='#ff2a3c'; octx.lineWidth=7; octx.beginPath(); octx.arc(-6,0,16,-0.95,0.95); octx.stroke();
-        octx.globalAlpha=a*0.9; octx.strokeStyle='#fff'; octx.lineWidth=2.5; octx.beginPath(); octx.arc(-6,0,16,-0.75,0.75); octx.stroke(); break; }
+        octx.globalAlpha=a; octx.strokeStyle='#ff2a3c'; octx.lineWidth=14; octx.beginPath(); octx.arc(-12,0,32,-0.95,0.95); octx.stroke();
+        octx.globalAlpha=a*0.9; octx.strokeStyle='#fff'; octx.lineWidth=5; octx.beginPath(); octx.arc(-12,0,32,-0.75,0.75); octx.stroke(); break; }
       case 'crack':{ const o=toScreen(_fxA); if(!o.ok)break;                                      // ground rupture racing to the hero's feet
-        fxJag(o.x,o.y,p.x,p.y,12,12,'#ff6a2a',5,(0.6+0.4*flash)*fade,fx.seed);
-        fxJag(o.x,o.y,p.x,p.y,12,12,'#ffd06a',2,(0.6+0.4*flash)*fade*0.85,fx.seed); break; }
+        fxJag(o.x,o.y,p.x,p.y,12,24,'#ff6a2a',10,(0.45+0.35*flash)*fade,fx.seed);
+        fxJag(o.x,o.y,p.x,p.y,12,24,'#ffd06a',4,(0.45+0.35*flash)*fade*0.85,fx.seed); break; }
     }
     octx.restore();
     // unified arrival pop at the hero: ring expands right at the tap moment (all types)
-    if(flash>0 && tgt.ok){ octx.save(); octx.globalAlpha=flash*0.85*fade; octx.strokeStyle='#fff'; octx.lineWidth=3;
-      octx.beginPath(); octx.arc(tgt.x,tgt.y,10+(1-flash)*26,0,7); octx.stroke(); octx.restore(); }
+    if(flash>0 && tgt.ok){ octx.save(); octx.shadowColor=col; octx.shadowBlur=16; octx.globalAlpha=flash*0.8*fade; octx.strokeStyle='#fff'; octx.lineWidth=5;
+      octx.beginPath(); octx.arc(tgt.x,tgt.y,14+(1-flash)*40,0,7); octx.stroke(); octx.restore(); }
   }
 }
 function overlayDraw(){
@@ -2193,7 +2236,8 @@ function overlayDraw(){
   // offensive timing targets (thin ring -> thick success band; only the NEXT one is "live")
   if(off){
     let firstUnres=-1; for(let i=0;i<off.targets.length;i++){ if(!off.targets[i].resolved){firstUnres=i;break;} }
-    const col= off.action==='strike'?'#ff5a6e': off.action==='shoot'?'#34e1ff': off.action==='cast'?'#b06bff':'#ffc233';
+    // hi-vis canvas variants of the action palette (hotter/more saturated than the :root DOM colors — these fight the field art)
+    const col= off.action==='strike'?'#ff2e55': off.action==='shoot'?'#17e9ff': off.action==='cast'?'#c26bff':'#ffce1e';
     const drawn=[];   // already-drawn screen positions — skip overlaps (never overlap, esp. in Blitz)
     for(let i=0;i<off.targets.length;i++){
       const tg=off.targets[i]; if(tg.resolved) continue;
@@ -2394,7 +2438,8 @@ window.__game={
     eHead:(s=>({x:Math.round(s.x),y:Math.round(s.y),ok:s.ok}))(toScreen(enemyMesh.userData.anchors.head.getWorldPosition(new THREE.Vector3()))),
     eFeet:(s=>({x:Math.round(s.x),y:Math.round(s.y),ok:s.ok}))(toScreen(enemyMesh.userData.anchors.low.getWorldPosition(new THREE.Vector3()))),
     cw,ch }),
-  bench:(n=90)=>{ const t0=performance.now(); for(let i=0;i<n;i++){ step(1/60); renderer.render(scene,camera);} return +((performance.now()-t0)/n).toFixed(2); }
+  bench:(n=90)=>{ const t0=performance.now(); for(let i=0;i<n;i++){ step(1/60); renderer.render(scene,camera);} return +((performance.now()-t0)/n).toFixed(2); },
+  _gl:()=>({scene,renderer,sun,camera,THREE})   // 3D internals for live debugging (shadows/lights)
 };
 
 /* =========================================================================
