@@ -309,7 +309,7 @@
       <div id="dbgLog"></div>
     </div>
 
-    <div id="brand">CRASHARCADE · TITAN GUARD v0.21.0</div>
+    <div id="brand">CRASHARCADE · TITAN GUARD v0.22.0</div>
   </div>
 </div>
 
@@ -859,10 +859,11 @@ function updateHero(rdt){
    SPEAR MODEL — real double-ended weapon (spear blade / bazooka bell) replacing
    the procedural pike parts. Art WIP: silently no-ops until assets/spear.glb exists.
    ========================================================================= */
-let spearGLTF=null, spearModel=null;
+let spearGLTF=null, spearModel=null, spearBlitzGLTF=null, spearBlitzModel=null;
 const SPEAR_BLADE_END=+1;     // +1 = blade at the export's +long-axis end; flip to -1 if it reads upside-down
 const SPEAR_TOP=2.1, SPEAR_BOT=-1.8, SPEAR_GRIP_SHIFT=0;   // where the ends land in pike-local Y; shift both via GRIP_SHIFT to move the hand along the shaft
 new GLTFLoader().load('assets/spear.glb', g=>{ spearGLTF=g; attachSpear(); }, undefined, ()=>{});
+new GLTFLoader().load('assets/spear-blitz.glb', g=>{ spearBlitzGLTF=g; attachSpearBlitz(); }, undefined, ()=>{});
 function attachSpear(){
   if(!spearGLTF || !playerMesh || spearModel) return;
   const u=playerMesh.userData, pike=u.pike;
@@ -888,6 +889,23 @@ function attachSpear(){
   hold.traverse(o=>{ if(o.isMesh){ o.castShadow=true; o.frustumCulled=false; if(o.material&&o.material.emissive&&!mats.includes(o.material)) mats.push(o.material); } });
   if(mats.length) u.pikeMats=mats;
   pike.add(hold); spearModel=hold;
+  attachSpearBlitz();
+}
+// blitz skin — the same lance with Andrew's charged texture, stacked exactly on the base model
+// and cross-faded in by opacity as the Blitz bar fills (replaces the old gold emissive tint)
+function attachSpearBlitz(){
+  if(!spearBlitzGLTF || !spearModel || spearBlitzModel) return;
+  const u=playerMesh.userData, pike=u.pike;
+  const hold=new THREE.Group(); hold.add(spearBlitzGLTF.scene);
+  hold.quaternion.copy(spearModel.quaternion);          // identical geometry => identical transform aligns it 1:1
+  hold.scale.copy(spearModel.scale);
+  hold.position.copy(spearModel.position);
+  const mats=[];
+  hold.traverse(o=>{ if(o.isMesh){ o.castShadow=false; o.frustumCulled=false; o.renderOrder=10;   // no double shadow; draw after the base skin
+    const m=o.material; if(m){ m.transparent=true; m.opacity=0; m.depthWrite=false; if(!mats.includes(m)) mats.push(m); } } });
+  u.spearBlitzMats=mats;
+  hold.visible=false;
+  pike.add(hold); spearBlitzModel=hold; u.spearBlitzModel=hold;
 }
 
 /* =========================================================================
@@ -1994,9 +2012,15 @@ function animatePlayer(rdt){
     muzzleSpark.material.opacity=mf;
     muzzleSpark.visible=mf>0;
   } else muzzleSpark.visible=false;
-  // ---- Blitz charge: pike tints to glowing gold; ribbons (physics) are handled in updateBlitzRibbons ----
+  // ---- Blitz charge: cross-fade to the charged lance skin as the bar fills (real model);
+  //      fallback = gold emissive tint on the procedural stand-in. Ribbons live in updateBlitzRibbons ----
   const bf=clamp(blitz/CFG.blitzMax,0,1);
-  if(u.pikeMats){ const ge=bf*0.85; for(const m of u.pikeMats){ if(m.emissive) m.emissive.setRGB(ge,ge*0.72,ge*0.12); } }
+  if(u.spearBlitzMats){
+    u.spearBlitzModel.visible = bf>0.01;
+    const pe = bf>=1 ? 0.22+0.14*Math.sin(t*11) : 0;    // full charge: gentle emissive pulse on the charged skin
+    for(const m of u.spearBlitzMats){ m.opacity=bf; if(m.emissive)m.emissive.setRGB(pe,pe*0.8,pe*0.35); }
+  }
+  else if(u.pikeMats){ const ge=bf*0.85; for(const m of u.pikeMats){ if(m.emissive) m.emissive.setRGB(ge,ge*0.72,ge*0.12); } }
   u.tipLight.intensity = Math.max(tipInt.intensity, bf*1.6 + (bf>=1?0.8+Math.sin(t*11)*0.5:0), mf*6);
 
   // ---- action bar as a ground ring around the feet (fills centre-out) ----
