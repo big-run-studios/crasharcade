@@ -183,7 +183,7 @@
     </div>
 
     <div id="dbg"></div>
-    <div class="brand" id="brand">CRASHARCADE · STACK MONKEY v0.6.2</div>
+    <div class="brand" id="brand">CRASHARCADE · STACK MONKEY v0.6.3</div>
   </div>
   <audio id="unlockAudio" loop src="data:audio/wav;base64,UklGRigAAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQQAAACAgICA"></audio>
   <audio id="music" src="music.mp3" loop preload="auto"></audio>
@@ -1058,8 +1058,9 @@ function drawMonkeySprite(){
     drawArmSprite(SR,gripR,false);
   }
   ctx.save(); ctx.translate(mx,CFG.floorY+my); ctx.rotate(mrot+lean);
-  // tail behind the body — the counterbalance performer
-  const T=MRIG.tail, tb={x:-bw/2+B.tail.x*MK, y:-bh+B.tail.y*MK};
+  // tail behind the body — the counterbalance performer (base nudged inward so its
+  // socket disc hides behind the leg)
+  const T=MRIG.tail, tb={x:-bw/2+B.tail.x*MK+13, y:-bh+B.tail.y*MK+5};
   const wag=Math.sin(t*(2+d*9))*(0.10+d*0.4)+side*d*0.3;
   ctx.save(); ctx.translate(tb.x,tb.y); ctx.rotate(wag);
   ctx.drawImage(ART.tail,-T.base.x*MK,-T.base.y*MK,T.w*MK,T.h*MK);
