@@ -309,7 +309,7 @@
       <div id="dbgLog"></div>
     </div>
 
-    <div id="brand">CRASHARCADE · TITAN GUARD v0.17.1</div>
+    <div id="brand">CRASHARCADE · TITAN GUARD v0.17.2</div>
   </div>
 </div>
 
@@ -346,8 +346,9 @@ const CFG={
   enemyDmgScale:[0.55,0.68,0.96], // per-enemy incoming-damage multiplier (E1 forgiving -> E3 lethal)
   actionFill:2.7,          // s to fill the action bar
   introDur:6.1,            // hero intro stance plays FULLY before battle starts (Axe_Stance clip length)
-  // dodge
-  dodgeWin:0.20,           // ± s around impact (0.2 before / 0.2 after = 400ms total)
+  // dodge — asymmetric: anticipatory dodging (before the hit) is natural, so the early side is wider
+  dodgeWinEarly:0.32,      // s BEFORE impact that still saves (anticipatory)
+  dodgeWin:0.20,           // s AFTER impact that still saves (reaction)
   perfectDodgeWin:0.09,
   // offensive timing (base; widened by ability level)
   goodWin:0.115, perfectWin:0.05, centerWin:0.022,
@@ -437,12 +438,14 @@ const SEQ={
 /* =========================================================================
    ENEMIES — 3 foes, 10 attack sets each  (30 total)
    hit = {sp:'slow'|'med'|'fast', dmg, at}  at = impact time from set start (s)
-   dodge windows never overlap (all gaps >= 0.24s > 2*dodgeWin)
+   adjacent windows can overlap (early 0.32 + late 0.20 > some gaps) — tapDodge
+   resolves to the nearest UNRESOLVED hit, which disambiguates correctly
    ========================================================================= */
 let runClock=0, ragePhase=0;                   // total combat time (s) + rage phase (0 calm / 1 angry / 2 enraged)
 const LEAD={slow:0.9, med:0.58, fast:0.34};   // telegraph lead per speed (base; scaled by CFG.timeScale)
 const LD=sp=>LEAD[sp]*CFG.timeScale*CFG.rageTele[ragePhase];  // telegraph lead (rage shortens it)
-const dwin=()=>CFG.dodgeWin*CFG.rageWin[ragePhase];           // current dodge (good) window
+const dwin=()=>CFG.dodgeWin*CFG.rageWin[ragePhase];           // dodge window AFTER impact (reaction side)
+const dwinE=()=>CFG.dodgeWinEarly*CFG.rageWin[ragePhase];     // dodge window BEFORE impact (anticipatory side, wider)
 const pdwin=()=>CFG.perfectDodgeWin*CFG.rageWin[ragePhase];   // current perfect-dodge window
 const bankValue=()=>Math.round(score)+Math.floor(runClock*CFG.timeBonusPerSec);  // at-risk total = score + survival bonus
 const H=(sp,dmg,at)=>({sp,dmg,at});
@@ -1082,8 +1085,9 @@ function updateEnemySpark(){
   const u=enemyMesh&&enemyMesh.userData, spk=u&&u.spark, bone=u&&u.sparkBone;
   let amt=0;
   if(atk && (enemyState==='telegraph'||enemyState==='active')){      // brighten toward each unresolved hit's impact, within its tap window
-    const rel=T-atk.startT, w=dwin();
-    for(const h of atk.hits){ if(h.resolved) continue; const d=Math.abs(rel-h.at); if(d<=w) amt=Math.max(amt, 1-d/w); }
+    const rel=T-atk.startT, wE=dwinE(), wL=dwin();
+    for(const h of atk.hits){ if(h.resolved) continue; const d=rel-h.at;   // d<0 = before impact (anticipatory side)
+      if(d>=-wE && d<=wL) amt=Math.max(amt, 1-Math.abs(d)/(d<0?wE:wL)); }
   }
   if(sparkForce) amt=1;
   if(amt<=0 || !bone){ enemySpark.visible=false; return; }
@@ -1545,21 +1549,22 @@ function tapDodge(now, offset, forcedHit){
   playerPose='dodge'; poseT=0;
   heroDodgeRoll();                                 // full roll clip, chained rolls turn 90° CCW (cosmetic)
   if(!atk || (enemyState!=='active')){ return; }   // whiff, no incoming hit
-  // find nearest pending hit within window
+  // find nearest pending hit within the ASYMMETRIC window (early/anticipatory side is wider than late)
   let best=null,bestErr=1e9;
   if(forcedHit && !forcedHit.resolved){ best=forcedHit; bestErr=Math.abs(offset||0); best._err=offset||0; }
   else for(const hit of atk.hits){
     if(hit.resolved) continue;
     const imp=atk.startT+hit.at;
-    const err=(offset!=null?offset:(now-imp));
-    if(Math.abs(err)<=dwin() && Math.abs(err)<bestErr){ best=hit; bestErr=Math.abs(err); best._err=err; }
+    const err=(offset!=null?offset:(now-imp));                 // err<0 = tapped before impact
+    if(err>=-dwinE() && err<=dwin() && Math.abs(err)<bestErr){ best=hit; bestErr=Math.abs(err); best._err=err; }
   }
-  if(!best){ return; }   // early/late = fail (hit will still land)
+  if(!best){ return; }   // outside both sides = fail (hit will still land)
   best.resolved=true; best.dodged=true;
   const perfect=bestErr<=pdwin();
-  // dodge score by quality: perfect => 1000; good scales GoodHi..GoodLo by precision
+  // dodge score by quality: perfect => 1000; good scales GoodHi..GoodLo by precision (per-side span)
+  const span=Math.max(1e-4,(best._err<0?dwinE():dwin())-pdwin());
   const pts = perfect ? CFG.dodgeScorePerfect
-    : Math.round(lerp(CFG.dodgeScoreGoodHi, CFG.dodgeScoreGoodLo, clamp((bestErr-pdwin())/Math.max(1e-4,dwin()-pdwin()),0,1)));
+    : Math.round(lerp(CFG.dodgeScoreGoodHi, CFG.dodgeScoreGoodLo, clamp((bestErr-pdwin())/span,0,1)));
   score += pts;
   addMult(perfect?CFG.mPerfDodge:CFG.mDodge);
   blitz=Math.min(CFG.blitzMax, blitz+(perfect?CFG.blitzPerfDodge:CFG.blitzDodge));
@@ -1639,7 +1644,7 @@ function updateEnemy(dt){
   if(enemyState==='telegraph'||enemyState==='active'){
     const rel=T-atk.startT;
     // 'active' must open no later than the dodge window's early edge, so the first hit's full ±dodgeWin is dodgeable.
-    enemyState = rel<atk.hits[0].at-Math.max(LD(atk.hits[0].sp)*0.15, dwin()) ? 'telegraph':'active';
+    enemyState = rel<atk.hits[0].at-Math.max(LD(atk.hits[0].sp)*0.15, dwinE()) ? 'telegraph':'active';   // 'active' opens no later than the anticipatory edge
     // per-hit telegraph audio
     for(const hit of atk.hits){
       if(!hit.tele){ const lead=LD(hit.sp); if(rel>=hit.at-lead){ hit.tele=true; } }
@@ -2218,7 +2223,7 @@ function syncHud(){
     if(atk && (enemyState==='telegraph'||enemyState==='active')){ let bd=1e9;
       for(const h of atk.hits){ if(h.resolved) continue; const d=(atk.startT+h.at)-T; if(d<bd){bd=d;inc={dt:d,sp:h.sp};} } }
     if(inc && inc.dt < LD(inc.sp)*1.05 && inc.dt > -dwin()*1.6 && blitz<CFG.blitzMax){   // shield OFF when Blitz is available (Blitz owns the corner then)
-      const app=LD(inc.sp), f=clamp(1-inc.dt/app,0,1), aligned=Math.abs(inc.dt)<=dwin();
+      const app=LD(inc.sp), f=clamp(1-inc.dt/app,0,1), aligned=inc.dt<=dwinE() && inc.dt>=-dwin();   // glows through the full asymmetric window (early side first)
       fillEl.setAttribute('transform',`translate(50 58) scale(${f.toFixed(3)}) translate(-50 -58)`);  // a shield grows to fill the shield
       const c = inc.sp==='fast'?['#fff4b0','#ffcf1e'] : inc.sp==='med'?['#ffe0b0','#ff9a2e'] : ['#ffc9c2','#ff4d4d'];
       el('shGrad0').setAttribute('stop-color',c[0]); el('shGrad1').setAttribute('stop-color',c[1]);

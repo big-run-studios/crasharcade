@@ -54,7 +54,7 @@ i.e. deliberately slow/readable).
         │        │                                        │
         │   TURN-BASED: only ONE timing game is ever live.│
         │   Attacking→tap=hit; enemy attacking→tap=dodge  │
-        │   (±0.2s); commit during their attack = QUEUED.  │
+        │   (−0.32/+0.2s); commit during attack = QUEUED. │
         └───┬───────────────┬───────────────┬────────────┘
             │ enemy.hp≤0     │ cashout()     │ player hp≤0
             │ (foe 1&2)      │ (foe 1&2)     │
@@ -152,9 +152,10 @@ usageWeight 3.2 × share`), abilities at L9 excluded. **Max 8 level-ups per run*
 - **Reticle:** every timing target (dodge and offense) is a **thin ring shrinking onto a thick
   "success band"** — line the thin ring up with the band to hit (band centre = Perfect). The band's
   screen thickness *is* the success window, so fairness is legible.
-- **Dodge window: ±0.20 s** around each hit's impact (0.2 before / 0.2 after = 400 ms total).
-  Perfect dodge = within **±0.09 s**. Early/late = the hit lands in full. **Every hit in a multi-hit
-  set needs its own dodge.** A successful dodge cancels all damage, feeds mult + Blitz, pops a beam ring.
+- **Dodge window is ASYMMETRIC: −0.32 s / +0.20 s** around each hit's impact (anticipatory side is
+  wider — dodging *ahead* of a hit is the natural instinct; 520 ms total). Perfect dodge = within
+  **±0.09 s**. Outside both sides = the hit lands in full. **Every hit in a multi-hit set needs its
+  own dodge.** A successful dodge cancels all damage, feeds mult + Blitz, pops a beam ring.
 - **Offense grades:** Miss / Good (±`lvGood`, ~0.115 s +0.004/lv) / Perfect (±0.05 s). A
   **finisher** hit tapped dead-center (±0.022 s) is a **guaranteed critical**.
 - **Crit:** deterministic roll from `rngCrit`; Good ~8% + lv, Perfect ~24% + lv; crit = ×1.9 dmg.
@@ -215,8 +216,9 @@ Hits: `speed@impact_s:dmg`. Speeds: **s**low / **m**ed / **f**ast (telegraph lea
 **Director rules** (`chooseAttack`, seeded via `rngDir`): never the same set >2 in a row;
 `castPunish` sets (Star Barrage, Judgement) weight ×3.4 while you're casting (and ×2 on a cast
 streak); a 3rd consecutive *fast* set is suppressed (×0.35); difficulty is paced toward the
-enemy's remaining-HP fraction; low-HP enrage sets gated by `maxHpFrac`. All authored gaps are
-≥0.30 s, so **no two dodge windows in a set ever overlap** (2×0.10 = 0.20).
+enemy's remaining-HP fraction; low-HP enrage sets gated by `maxHpFrac`. With the asymmetric window
+(0.32+0.20 = 0.52 s) adjacent windows CAN overlap on tight gaps — `tapDodge` resolves the tap to the
+**nearest unresolved hit**, which disambiguates chains correctly (a resolved hit never eats a tap).
 
 ---
 
