@@ -309,7 +309,7 @@
       <div id="dbgLog"></div>
     </div>
 
-    <div id="brand">CRASHARCADE · TITAN GUARD v0.17.0</div>
+    <div id="brand">CRASHARCADE · TITAN GUARD v0.17.1</div>
   </div>
 </div>
 
@@ -767,6 +767,18 @@ function attachHero(){
   playerMesh.add(playerMesh.userData.pike);                                  // keep the pike (+blitzAura/tipLight) out of the hidden arm
   heroMixer=new THREE.AnimationMixer(hero);
   for(const c of heroGLTF.animations) heroClips[c.name]=c;
+  // clip fix-ups (once — attachHero body runs a single time):
+  // (1) dodge roll travelled way too far — keep 25% of its horizontal root motion (Y crouch intact)
+  // (2) intro must END on idle's spot (it ended ~36u off in hips-local X/Z => visible jump) — constant-shift its XZ
+  {
+    const hipsOf=c=>c && c.tracks.find(t=>/(^|\.)Hips\.position$/.test(t.name));
+    const d=hipsOf(heroClips[HERO_CLIP.dodge]);
+    if(d){ const v=d.values, x0=v[0], z0=v[2];
+      for(let i=0;i<v.length;i+=3){ v[i]=x0+(v[i]-x0)*0.25; v[i+2]=z0+(v[i+2]-z0)*0.25; } }
+    const it=hipsOf(heroClips[HERO_CLIP.intro]), id=hipsOf(heroClips[HERO_CLIP.idle]);
+    if(it && id){ const v=it.values, n=v.length, dx=id.values[0]-v[n-3], dz=id.values[2]-v[n-1];
+      for(let i=0;i<n;i+=3){ v[i]+=dx; v[i+2]+=dz; } }
+  }
   playHeroClip(HERO_CLIP.idle, true, 0);
 }
 function playHeroClip(name, loop, fade, ts){
