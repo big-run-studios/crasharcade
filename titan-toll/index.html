@@ -309,7 +309,7 @@
       <div id="dbgLog"></div>
     </div>
 
-    <div id="brand">CRASHARCADE · TITAN GUARD v0.20.1</div>
+    <div id="brand">CRASHARCADE · TITAN GUARD v0.21.0</div>
   </div>
 </div>
 
@@ -723,20 +723,27 @@ function buildPlayer(){
   const armR=new THREE.Group(); armR.position.set(0.46,1.72,0);
   const armRm=new THREE.Mesh(new THREE.BoxGeometry(0.24,0.8,0.24),armMat); armRm.position.y=-0.4; armR.add(armRm); body.add(armR); g.userData.armR=armR;
 
-  // ---- the PIKE (held by right hand) ----
+  // ---- the PIKE — double-ended: spear blade up top, stylized bazooka bell at the butt ----
+  // (procedural stand-in; the real model swaps in via attachSpear when assets/spear.glb exists)
+  const TIP_Y=1.9, MUZ_Y=-1.72;                     // functional ends: blitz aura/tip light; shot origin
+  g.userData.tipY=TIP_Y; g.userData.muzY=MUZ_Y;
   const pike=new THREE.Group();
-  const shaft=new THREE.Mesh(new THREE.CylinderGeometry(0.045,0.05,3.0,8),flat(0x5a3d24)); pike.add(shaft);
+  const shaft=new THREE.Mesh(new THREE.CylinderGeometry(0.045,0.055,3.0,8),flat(0x5a3d24)); pike.add(shaft);
   const grip=new THREE.Mesh(new THREE.CylinderGeometry(0.06,0.06,0.5,8),flat(0x2a1c12)); grip.position.y=-0.2; pike.add(grip);
-  // blade head (melee)
+  // blade head (spear end)
   const blade=new THREE.Mesh(new THREE.ConeGeometry(0.12,0.7,4),flat(STEEL)); blade.position.y=1.75; pike.add(blade); g.userData.blade=blade;
   const cross=new THREE.Mesh(new THREE.BoxGeometry(0.5,0.08,0.08),flat(STEEL)); cross.position.y=1.35; pike.add(cross);
-  // muzzle (shoot form, hidden until used)
-  const muzzle=new THREE.Mesh(new THREE.CylinderGeometry(0.16,0.13,0.5,10),flat(0x353b48)); muzzle.position.y=1.45; muzzle.visible=false; pike.add(muzzle); g.userData.muzzle=muzzle;
+  // bazooka bell (always visible — it IS the other end), flaring open toward the mouth at the butt
+  const muzzle=new THREE.Mesh(new THREE.CylinderGeometry(0.11,0.20,0.55,10),flat(0x353b48)); muzzle.position.y=-1.42; pike.add(muzzle); g.userData.muzzle=muzzle;
+  const bore=new THREE.Mesh(new THREE.CylinderGeometry(0.15,0.15,0.05,10),unlit(0x0a0d14)); bore.position.y=-1.70; pike.add(bore);
+  for(const m of [shaft,grip,blade,cross,muzzle,bore]) m.userData.proc=true;   // removed when the real spear model lands
   // pike materials that tint to glowing gold as the Blitz charge builds
   g.userData.pikeMats=[shaft.material, blade.material, cross.material, muzzle.material];
   // Blitz tip anchor (invisible sphere) — physics ribbons attach here in world space when Blitz is ready.
-  const aura=new THREE.Object3D(); aura.position.y=1.9; pike.add(aura); g.userData.blitzAura=aura;
-  const tipL=new THREE.PointLight(0xffd23a,0,6); tipL.position.y=1.9; pike.add(tipL); g.userData.tipLight=tipL;
+  const aura=new THREE.Object3D(); aura.position.y=TIP_Y; pike.add(aura); g.userData.blitzAura=aura;
+  const tipL=new THREE.PointLight(0xffd23a,0,6); tipL.position.y=TIP_Y; pike.add(tipL); g.userData.tipLight=tipL;
+  // muzzle anchor — shot-origin for the bazooka flash (world-space, rides the shoot flip)
+  const muzA=new THREE.Object3D(); muzA.position.y=MUZ_Y; pike.add(muzA); g.userData.muzzleAnchor=muzA;
   // rune ring for cast (hidden until casting)
   const rune=new THREE.Mesh(new THREE.TorusGeometry(0.32,0.03,6,20),unlit(0xc07bff)); rune.position.y=1.0; rune.rotation.x=Math.PI/2; rune.visible=false; pike.add(rune); g.userData.rune=rune;
 
@@ -846,6 +853,41 @@ function updateHero(rdt){
   }
   if(heroRightHand){ const pike=playerMesh.userData.pike;                    // pike follows the right hand (position)
     heroRightHand.getWorldPosition(_hHand); playerMesh.worldToLocal(_hHand); pike.position.copy(_hHand); }
+}
+
+/* =========================================================================
+   SPEAR MODEL — real double-ended weapon (spear blade / bazooka bell) replacing
+   the procedural pike parts. Art WIP: silently no-ops until assets/spear.glb exists.
+   ========================================================================= */
+let spearGLTF=null, spearModel=null;
+const SPEAR_BLADE_END=+1;     // +1 = blade at the export's +long-axis end; flip to -1 if it reads upside-down
+const SPEAR_TOP=2.1, SPEAR_BOT=-1.8, SPEAR_GRIP_SHIFT=0;   // where the ends land in pike-local Y; shift both via GRIP_SHIFT to move the hand along the shaft
+new GLTFLoader().load('assets/spear.glb', g=>{ spearGLTF=g; attachSpear(); }, undefined, ()=>{});
+function attachSpear(){
+  if(!spearGLTF || !playerMesh || spearModel) return;
+  const u=playerMesh.userData, pike=u.pike;
+  const hold=new THREE.Group(); hold.add(spearGLTF.scene);
+  // orient the export's longest bbox axis onto local +Y (weapon length = the long axis)
+  hold.updateMatrixWorld(true);
+  const b0=new THREE.Box3().setFromObject(hold), s=new THREE.Vector3(); b0.getSize(s);
+  if(s.x>=s.y && s.x>=s.z) hold.rotation.z=Math.PI/2;        // +X -> +Y
+  else if(s.z>=s.y) hold.rotation.x=-Math.PI/2;              // +Z -> +Y
+  if(SPEAR_BLADE_END<0) hold.quaternion.premultiply(new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0,0,1),Math.PI));
+  // scale + place so blade tip / bazooka mouth land exactly on the functional ends
+  hold.updateMatrixWorld(true);
+  const b1=new THREE.Box3().setFromObject(hold);
+  hold.scale.setScalar((SPEAR_TOP-SPEAR_BOT)/((b1.max.y-b1.min.y)||1));
+  hold.updateMatrixWorld(true);
+  const b2=new THREE.Box3().setFromObject(hold);
+  hold.position.set(-(b2.min.x+b2.max.x)/2, SPEAR_BOT+SPEAR_GRIP_SHIFT-b2.min.y, -(b2.min.z+b2.max.z)/2);
+  // drop the procedural stand-in parts; keep anchors, lights and the rune
+  const dead=[]; pike.traverse(o=>{ if(o.userData&&o.userData.proc) dead.push(o); });
+  for(const o of dead) o.parent.remove(o);
+  // the model's materials take over the Blitz gold charge-tint
+  const mats=[];
+  hold.traverse(o=>{ if(o.isMesh){ o.castShadow=true; o.frustumCulled=false; if(o.material&&o.material.emissive&&!mats.includes(o.material)) mats.push(o.material); } });
+  if(mats.length) u.pikeMats=mats;
+  pike.add(hold); spearModel=hold;
 }
 
 /* =========================================================================
@@ -1093,6 +1135,17 @@ function makeSparkTexture(){
 }
 const enemySpark=new THREE.Sprite(new THREE.SpriteMaterial({ map:makeSparkTexture(), color:0xffffff, transparent:true, opacity:0, depthTest:false, depthWrite:false, blending:THREE.AdditiveBlending }));
 enemySpark.renderOrder=999; enemySpark.visible=false; enemySpark.scale.setScalar(0.001); scene.add(enemySpark);
+// big bazooka muzzle flash — starburst sprite popped at the bell mouth on shoot hits
+const muzzleSpark=new THREE.Sprite(new THREE.SpriteMaterial({ map:makeSparkTexture(), color:0x9fefff, transparent:true, opacity:0, depthTest:false, depthWrite:false, blending:THREE.AdditiveBlending }));
+muzzleSpark.renderOrder=999; muzzleSpark.visible=false; scene.add(muzzleSpark);
+const MUZ_FLASH=0.22; const _muzV=new THREE.Vector3();
+function muzzleFlash(big){
+  const u=playerMesh&&playerMesh.userData; if(!u||!u.muzzleAnchor) return;
+  u.muzzleFlashT=MUZ_FLASH; u.muzzleFlashBig=big?1.4:1;
+  muzzleSpark.material.rotation=rf(0,Math.PI*2);
+  u.muzzleAnchor.getWorldPosition(_muzV);
+  burst(_muzV,'#9fefff', big?16:10);
+}
 const _spkV=new THREE.Vector3(); let sparkForce=0;   // sparkForce = harness override for placement testing
 function updateEnemySpark(){
   const u=enemyMesh&&enemyMesh.userData, spk=u&&u.spark, bone=u&&u.sparkBone;
@@ -1300,6 +1353,7 @@ function startRun(sd){
   hitLog.length=0; floaters.length=0; particles.length=0; enemyFx.length=0; _fxStartT=-1; paused=false;
   if(!playerMesh){playerMesh=buildPlayer(); scene.add(playerMesh);}
   attachHero();                 // swap in the GLB hero once it (and the player rig) exist
+  attachSpear();                // same for the real spear model (art WIP — no-ops until spear.glb exists)
   heroDead=false; heroCurName=''; heroOneShotT=0; heroRollT=0; heroRollYawOff=0;
   introT=CFG.introDur;          // battle is gated until the hero's full intro stance completes
   playerPose='idle'; poseT=0;
@@ -1463,7 +1517,6 @@ function beginOffense(action){
 
 function setPikeForm(kind,action){
   const u=playerMesh.userData; if(!u.tipLight)return;
-  const melee=(kind==='thrust'||kind==='launch'||kind==='heavy'||action==='strike');
   const shot =(kind==='reticle'||kind==='charge'&&action==='shoot');
   const casty=(kind==='glyph'||kind==='detonate'||action==='cast');
   let col=0xffb648;
@@ -1471,8 +1524,10 @@ function setPikeForm(kind,action){
   else if(action==='cast'||casty) col=0xc07bff;
   else if(action==='blitz') col=0xffd23a;
   u.tipLight.color.setHex(col);
-  u.muzzle.visible=(action==='shoot');
-  u.blade.visible=!(action==='shoot');
+  // shoot = flip the weapon end-over-end (grip is the pivot) so the bazooka butt aims up
+  // at the titan; the tip light rides whichever end is live
+  u.pikeFlip=(action==='shoot')?Math.PI:0;
+  u.tipLight.position.y=(action==='shoot')?u.muzY:u.tipY;
   u.rune.visible=(action==='cast'); if(u.rune.visible)u.rune.material.color.setHex(col);
 }
 
@@ -1536,6 +1591,7 @@ function resolveTarget(tg, grade, err){
   // fx + feedback
   if(dmg>0) resolveLockT=CFG.resolveLock;   // only lock cashout while real damage resolves (not a 0-dmg auto-miss)
   const anchor=off._anchorPos?off._anchorPos(tg):enemyMesh.userData.anchors.core.getWorldPosition(new THREE.Vector3());
+  if(off.action==='shoot' && !isMiss) muzzleFlash(grade==='perfect'||crit);   // the bazooka end fires
   if(grade==='perfect'){ sfx(crit?'crit':'perfect'); addFloater(anchor,crit?'CRITICAL':'PERFECT',crit?'#ff4fd8':'#ffe14d',crit?1.2:1.0,crit?30:24); hitPauseT=CFG.hitPause*(crit?1.6:1); shake(crit?0.5:0.28,0.28); burst(anchor,crit?'#ff4fd8':'#ffe14d',crit?18:10);}
   else if(grade==='good'){ sfx(crit?'crit':'good'); addFloater(anchor,crit?'CRITICAL':'GOOD',crit?'#ff4fd8':'#8fe9ff',crit?1.1:0.85,crit?28:20); if(crit){hitPauseT=CFG.hitPause*1.4;shake(0.4,0.24);} burst(anchor,crit?'#ff4fd8':'#8fe9ff',crit?14:7);}
   else { sfx('miss'); addFloater(anchor,'MISS','#8a99b8',0.8,18); }
@@ -1554,7 +1610,7 @@ function endOffense(){
   }
   if(off) use[off.action]+=0.0;
   off=null; playerPose='idle'; poseT=0;
-  const u=playerMesh.userData; if(u){ u.muzzle.visible=false; u.blade.visible=true; u.rune.visible=false; u.tipLight.color.setHex(0xffd23a); }
+  const u=playerMesh.userData; if(u){ u.rune.visible=false; u.tipLight.color.setHex(0xffd23a); u.pikeFlip=0; u.tipLight.position.y=u.tipY; }
 }
 function interruptOffense(){
   if(!off)return;
@@ -1926,10 +1982,22 @@ function animatePlayer(rdt){
   u.armL.rotation.x=lerp(u.armL.rotation.x,playerPose==='cast'?-1.6:(playerPose==='shoot'?-1.4:-0.3),0.3);
   u.cloak.rotation.x=Math.sin(t*3)*0.05+bodyLean*0.3;
 
+  // ---- shoot form: fast end-over-end flip (grip = pivot) so the bazooka butt points up at the titan ----
+  u.pike.rotation.x += ((u.pikeFlip||0)-u.pike.rotation.x)*Math.min(1,rdt*14);
+  // ---- bazooka muzzle flash: pop big at the bell mouth, then fade ----
+  let mf=0;
+  if((u.muzzleFlashT||0)>0){
+    u.muzzleFlashT-=rdt; mf=clamp(u.muzzleFlashT/MUZ_FLASH,0,1);
+    u.muzzleAnchor.getWorldPosition(_muzV);
+    muzzleSpark.position.copy(_muzV);
+    muzzleSpark.scale.setScalar((u.muzzleFlashBig||1)*(2.2+0.9*(1-mf)));
+    muzzleSpark.material.opacity=mf;
+    muzzleSpark.visible=mf>0;
+  } else muzzleSpark.visible=false;
   // ---- Blitz charge: pike tints to glowing gold; ribbons (physics) are handled in updateBlitzRibbons ----
   const bf=clamp(blitz/CFG.blitzMax,0,1);
   if(u.pikeMats){ const ge=bf*0.85; for(const m of u.pikeMats){ if(m.emissive) m.emissive.setRGB(ge,ge*0.72,ge*0.12); } }
-  u.tipLight.intensity = Math.max(tipInt.intensity, bf*1.6 + (bf>=1?0.8+Math.sin(t*11)*0.5:0));
+  u.tipLight.intensity = Math.max(tipInt.intensity, bf*1.6 + (bf>=1?0.8+Math.sin(t*11)*0.5:0), mf*6);
 
   // ---- action bar as a ground ring around the feet (fills centre-out) ----
   if(actGrp){
