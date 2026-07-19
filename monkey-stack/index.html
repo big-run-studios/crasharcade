@@ -183,7 +183,7 @@
     </div>
 
     <div id="dbg"></div>
-    <div class="brand" id="brand">CRASHARCADE · STACK MONKEY v0.5.5</div>
+    <div class="brand" id="brand">CRASHARCADE · STACK MONKEY v0.6.0</div>
   </div>
   <audio id="unlockAudio" loop src="data:audio/wav;base64,UklGRigAAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQQAAACAgICA"></audio>
   <audio id="music" src="music.mp3" loop preload="auto"></audio>
@@ -892,8 +892,8 @@ function drawPlatform(){
   roundRect(-TRAY_W/2,-CFG.trayH/2,TRAY_W,CFG.trayH,7); ctx.stroke(); ctx.shadowBlur=0;
   // pegs on free columns (base rect sits U/2 above the pass-in point, so anchor them to the tray top)
   for(let i=-HALF;i<=HALF;i++) if(!occ.has(i+',0')) drawPeg(i*U,U/2-CFG.trayH/2,{x:0,y:-1},cols);
-  // monkey hands gripping the tray (gone the moment he lets go in a crash)
-  if(monkeyMood!=='crash'){
+  // procedural hands gripping the tray (sprite palms replace these once the art kit is loaded)
+  if(monkeyMood!=='crash'&&!spriteOK()){
     ctx.fillStyle='#f4dcb8';
     ctx.beginPath(); ctx.arc(-26,CFG.trayH/2+7,10,0,TAU); ctx.fill();
     ctx.beginPath(); ctx.arc(26,CFG.trayH/2+7,10,0,TAU); ctx.fill();
@@ -968,9 +968,125 @@ function drawDangerGlow(){
   ctx.fillStyle=g; ctx.beginPath(); ctx.arc(p.x,p.y,90,0,TAU); ctx.fill();
 }
 
-/* ---------------- the monkey ---------------- */
+/* ---------------- the monkey (sprite rig; procedural fallback below) ---------------- */
+const MK=0.2;                       // sprite px → world px
+const MRIG={                        // anchors extracted from the art kit's magenta dots
+  body:{w:368,h:514,neck:{x:189,y:18},shl:{x:53,y:66},shr:{x:329,y:66},tail:{x:44,y:308}},
+  arm:{w:352,h:413,palm:{x:210,y:73},sh:{x:47,y:346}},
+  heads:{
+    calm:{key:'head-calm',w:524,h:426,neck:{x:262,y:414},eyes:[{cx:195,cy:224,rx:41,ry:45},{cx:329,cy:224,rx:41,ry:45}]},
+    strain:{key:'head-strain',w:524,h:426,neck:{x:262,y:414},eyes:[{cx:192,cy:228,rx:41,ry:44},{cx:331,cy:228,rx:41,ry:44}]},
+    panic:{key:'head-panic',w:518,h:450,neck:{x:260,y:436},eyes:[{cx:191,cy:215,rx:42,ry:51},{cx:327,cy:214,rx:42,ry:52}]},
+  },
+  tail:{w:497,h:144,base:{x:458,y:72}},   // socket joint is the RIGHT end of the art
+};
+const ART={}, ART_N=['body','arm','head-calm','head-strain','head-panic','tail'];
+let artLoaded=0;
+if(typeof Image!=='undefined') ART_N.forEach(n=>{ const i=new Image(); i.onload=()=>artLoaded++; i.src='art/'+n+'.webp'; ART[n]=i; });
+const spriteOK=()=>artLoaded===ART_N.length;
+
+function lookTarget(){
+  let dx=0,dy=0;
+  if(active&&(state==='descend'||state==='snapping')){ dx=clamp((active.x-W/2)/120,-1,1); dy=clamp((active.y-500)/300,-1,0.5); }
+  else if(danger>0.4) dx=(dangerSide||1)*0.8;
+  if(danger>0.9&&Math.sin(t*4)>0.4){ dx=0; dy=0.7; }              // panicked glance at the player
+  return {dx,dy};
+}
+function drawHeadSprite(kind,x,y,rot,scale,look){  // neck anchor lands on (x,y) in the CURRENT ctx frame
+  const h=MRIG.heads[kind], k=MK*scale;
+  ctx.save(); ctx.translate(x,y); ctx.rotate(rot);
+  ctx.drawImage(ART[h.key], -h.neck.x*k, -h.neck.y*k, h.w*k, h.h*k);
+  for(const ey of h.eyes){                          // the art ships blank eye whites — pupils track live
+    const ex=(ey.cx-h.neck.x)*k, eyy=(ey.cy-h.neck.y)*k;
+    const lx=look?clamp(look.dx,-1,1)*(ey.rx*k-4.5*scale):0;
+    const ly=look?clamp(look.dy,-1,1)*(ey.ry*k-5*scale):0;
+    ctx.fillStyle='#2b1a0e';
+    ctx.beginPath(); ctx.arc(ex+lx,eyy+ly,(kind==='panic'?3.4:4.6)*scale,0,TAU); ctx.fill();
+  }
+  ctx.restore();
+}
+function drawArmSprite(S,G,flip){  // shoulder anchor → S, palm anchor → G (both in the CURRENT ctx frame)
+  const A=MRIG.arm;
+  const sh={x:(flip?A.w-A.sh.x:A.sh.x)*MK, y:A.sh.y*MK};
+  const pm={x:(flip?A.w-A.palm.x:A.palm.x)*MK, y:A.palm.y*MK};
+  const v1={x:pm.x-sh.x,y:pm.y-sh.y}, L1=Math.hypot(v1.x,v1.y);
+  const v2={x:G.x-S.x,y:G.y-S.y}, L2=Math.hypot(v2.x,v2.y);
+  const s=L2/L1, sT=clamp(s,0.85,1.25);             // stretch along the arm, cap the thickness change
+  ctx.save(); ctx.translate(S.x,S.y);
+  ctx.rotate(Math.atan2(v2.y,v2.x)); ctx.scale(s,sT); ctx.rotate(-Math.atan2(v1.y,v1.x));
+  ctx.translate(-sh.x,-sh.y);
+  if(flip){ ctx.translate(A.w*MK,0); ctx.scale(-1,1); }
+  ctx.drawImage(ART.arm,0,0,A.w*MK,A.h*MK);
+  ctx.restore();
+}
+function drawMonkeySprite(){
+  const d=clamp(danger,0,1), a=board.angle, side=Math.sign(a)||1;
+  const e=monkeyMood==='crash'?t-crashT:0;
+  const B=MRIG.body, bw=B.w*MK, bh=B.h*MK;
+  let mx=W/2, my=0, mrot=0, hidden=false;
+  const tremble=(d>0.65&&monkeyMood==='play')?Math.sin(t*70)*(d-0.65)*5:0;
+  mx+=tremble - a*46*(1+d*0.6);                     // lean opposite the weight
+  if(monkeyMood==='crash'){ if(e<0.95){ mrot=side*e*e*3.4; my=e*e*180; mx+=side*e*70; } else hidden=true; }
+  if(monkeyMood==='bank') my=-Math.abs(Math.sin((t-bankT)*6))*22;
+
+  // block pile + popping head (crash finale)
+  if(monkeyMood==='crash'&&e>0.55){
+    const grow=clamp((e-0.55)/0.5,0,1);
+    ctx.save(); ctx.translate(W/2,CFG.floorY);
+    for(let i=0;i<14;i++){
+      const px=(seeded(i)-0.5)*170, ph=(14+seeded(i+9)*26)*grow, pw=26+seeded(i+30)*26;
+      const py=-Math.abs(Math.cos(px*0.05))*34*grow;
+      ctx.fillStyle=COLORS[i%COLORS.length][0];
+      roundRect(px-pw/2,py-ph,pw,ph,5); ctx.fill();
+      ctx.strokeStyle='rgba(0,0,0,.15)'; ctx.lineWidth=1.5; ctx.stroke();
+    }
+    if(e>1.5){ const pop=Math.min(1,(e-1.5)*3), hy=-22-pop*42+Math.sin(t*3)*2;
+      drawHeadSprite('calm',0,hy,Math.sin(t*2)*0.06,0.85,{dx:Math.sin(t*1.7)*0.5,dy:0.2}); }
+    ctx.restore();
+    if(hidden) return;
+  }
+
+  const lean=mrot?0:(-a*0.25-side*d*0.06);
+  ctx.save(); ctx.translate(mx,CFG.floorY+my); ctx.rotate(mrot+lean);
+  // tail behind the body — the counterbalance performer
+  const T=MRIG.tail, tb={x:-bw/2+B.tail.x*MK, y:-bh+B.tail.y*MK};
+  const wag=Math.sin(t*(2+d*9))*(0.10+d*0.4)+side*d*0.3;
+  ctx.save(); ctx.translate(tb.x,tb.y); ctx.rotate(wag);
+  ctx.drawImage(ART.tail,-T.base.x*MK,-T.base.y*MK,T.w*MK,T.h*MK);
+  ctx.restore();
+  // body, feet planted at y=0
+  ctx.drawImage(ART.body,-bw/2,-bh,bw,bh);
+  // head on the neck stub, face escalating with danger
+  const neck={x:-bw/2+B.neck.x*MK, y:-bh+B.neck.y*MK+2};
+  const kind=d>0.9?'panic':(d>0.45?'strain':'calm');
+  drawHeadSprite(kind,neck.x,neck.y,lean*0.6+(mrot?side*0.2:0),1,lookTarget());
+  if(monkeyMood==='crash'){                          // he let go — arms flail with the body
+    const wv=Math.sin(t*22)*0.35, L=200*MK;
+    const SL={x:-bw/2+B.shl.x*MK,y:-bh+B.shl.y*MK}, SR={x:-bw/2+B.shr.x*MK,y:-bh+B.shr.y*MK};
+    drawArmSprite(SL,{x:SL.x+Math.cos(-2.4+wv)*L,y:SL.y+Math.sin(-2.4+wv)*L},true);
+    drawArmSprite(SR,{x:SR.x+Math.cos(-0.7-wv)*L,y:SR.y+Math.sin(-0.7-wv)*L},false);
+  }
+  ctx.restore();
+
+  // arms up to the tray grips (world space) — palms cup the tray underside
+  if(!hidden&&monkeyMood!=='crash'){
+    const org={x:mx,y:CFG.floorY+my};
+    const SL=vAdd(org,vRot({x:-bw/2+B.shl.x*MK,y:-bh+B.shl.y*MK},mrot+lean));
+    const SR=vAdd(org,vRot({x:-bw/2+B.shr.x*MK,y:-bh+B.shr.y*MK},mrot+lean));
+    const gripL=vAdd(PIVOT,vRot({x:-58,y:CFG.trayH/2+8},board.angle));
+    const gripR=vAdd(PIVOT,vRot({x:58,y:CFG.trayH/2+8},board.angle));
+    drawArmSprite(SL,gripL,true);
+    drawArmSprite(SR,gripR,false);
+  }
+  // sweat
+  if(d>0.6&&monkeyMood==='play'&&Math.random()<0.06)
+    particles.push({type:'sweat',x:mx+rnd(-16,16),y:CFG.floorY-bh-30,vx:rnd(-30,30),vy:-60,life:0.7,max:0.7,color:'#7ec8ff',sz:3});
+}
+function drawMonkey(){ if(spriteOK()) drawMonkeySprite(); else drawMonkeyLegacy(); }
+
+/* ---------------- procedural fallback monkey ---------------- */
 const FUR='#c68a4a', FURD='#9a6633', CREAM='#f4dcb8';
-function drawMonkey(){
+function drawMonkeyLegacy(){
   const d=clamp(danger,0,1), a=board.angle, side=Math.sign(a)||1;
   const e=monkeyMood==='crash'?t-crashT:0;
   let mx=W/2, my=0, mrot=0, hidden=false;
