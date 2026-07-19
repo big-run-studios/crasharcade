@@ -309,7 +309,7 @@
       <div id="dbgLog"></div>
     </div>
 
-    <div id="brand">CRASHARCADE · TITAN GUARD v0.16.3</div>
+    <div id="brand">CRASHARCADE · TITAN GUARD v0.17.0</div>
   </div>
 </div>
 
@@ -345,6 +345,7 @@ const CFG={
   playerHP:100,
   enemyDmgScale:[0.55,0.68,0.96], // per-enemy incoming-damage multiplier (E1 forgiving -> E3 lethal)
   actionFill:2.7,          // s to fill the action bar
+  introDur:6.1,            // hero intro stance plays FULLY before battle starts (Axe_Stance clip length)
   // dodge
   dodgeWin:0.20,           // ± s around impact (0.2 before / 0.2 after = 400ms total)
   perfectDodgeWin:0.09,
@@ -741,6 +742,8 @@ function buildPlayer(){
    HERO MODEL — rigged GLB (Meshy "Nocturnal Vanguard") replacing the blocky body
    ========================================================================= */
 let heroGLTF=null, heroModel=null, heroMixer=null, heroAction=null, heroCurName='', heroRightHand=null, heroDead=false, heroOneShot='', heroOneShotT=0;
+let heroRollT=0, heroRollYawOff=0;   // dodge roll: remaining time + accumulated 90° CCW yaw for chained rolls
+let introT=0;                        // sim-clocked intro gate: battle starts after the hero's full stance
 const heroClips={};
 const HERO_H=2.05, HERO_YAW=1.85+Math.PI/2;   // target height + facing (rotated 90° CCW to face the titan)
 // Andrew's mapping from the Animation Lab (sandbox.html)
@@ -766,29 +769,56 @@ function attachHero(){
   for(const c of heroGLTF.animations) heroClips[c.name]=c;
   playHeroClip(HERO_CLIP.idle, true, 0);
 }
-function playHeroClip(name, loop, fade){
+function playHeroClip(name, loop, fade, ts){
   if(!heroMixer || !heroClips[name] || heroCurName===name) return;
   const next=heroMixer.clipAction(heroClips[name]);
   next.reset(); next.setLoop(loop?THREE.LoopRepeat:THREE.LoopOnce, loop?Infinity:1); next.clampWhenFinished=!loop;
+  next.timeScale=ts||1;
   next.enabled=true; next.setEffectiveWeight(1); next.fadeIn(fade); next.play();
   if(heroAction && heroAction!==next) heroAction.fadeOut(fade);
   heroAction=next; heroCurName=name;
 }
 function triggerHeroOneShot(slot,cap){ const nm=HERO_CLIP[slot]; if(!nm)return; heroOneShot=nm;
-  const c=heroClips[nm]; heroOneShotT=Math.min(c?c.duration:cap, cap); }   // brief one-shot (hit flinch / intro)
-const HERO_LOOP=[HERO_CLIP.idle,HERO_CLIP.strike,HERO_CLIP.shoot,HERO_CLIP.cast,HERO_CLIP.blitz];   // clips that loop
+  const c=heroClips[nm]; heroOneShotT=Math.min(c?c.duration:cap, cap); }   // brief one-shot (hit flinch)
+// blitz is NOT in the loop list: it plays ONCE (25% slower) and holds its final pose for the rest of the blitz game
+const HERO_LOOP=[HERO_CLIP.idle,HERO_CLIP.strike,HERO_CLIP.shoot,HERO_CLIP.cast];   // clips that loop
+// dodge = the FULL roll clip, time-scaled to fit the gap before the next incoming hit; chained
+// dodges mid-roll restart it rotated another 90° CCW so the hero rolls AROUND, not a repeated lean.
+function heroDodgeRoll(){
+  let avail=0.9;
+  if(atk){ let bd=1e9; for(const h of atk.hits){ if(h.resolved) continue; const d=(atk.startT+h.at)-T; if(d>0.05 && d<bd) bd=d; } if(bd<1e9) avail=bd; }
+  avail=clamp(avail,0.45,1.6);
+  heroRollYawOff = heroRollT>0 ? heroRollYawOff+Math.PI/2 : 0;
+  const c=heroClips[HERO_CLIP.dodge];
+  if(heroMixer && c){
+    const a=heroMixer.clipAction(c);
+    a.reset(); a.setLoop(THREE.LoopOnce,1); a.clampWhenFinished=true; a.timeScale=c.duration/avail;
+    a.enabled=true; a.setEffectiveWeight(1); a.fadeIn(0.05); a.play();
+    if(heroAction && heroAction!==a) heroAction.fadeOut(0.05);
+    heroAction=a; heroCurName=HERO_CLIP.dodge;
+  }
+  heroRollT=avail;
+}
 function updateHero(rdt){
   if(!heroMixer) return;
   heroMixer.update(rdt);
   if(heroOneShotT>0) heroOneShotT-=rdt;
+  if(heroRollT>0) heroRollT-=rdt;
   let want;
   if(heroDead) want=HERO_CLIP.dead;                              // death
   else if(state==='result') want=HERO_CLIP.victory;             // cash-out / full clear
-  else if(off) want=HERO_CLIP[off.action]||HERO_CLIP.idle;      // attacking -> action clip (loops through the combo)
-  else if(heroOneShotT>0) want=heroOneShot;                     // hit flinch / intro stance
-  else if(playerPose==='dodge' && poseT<0.5) want=HERO_CLIP.dodge;
+  else if(off){ want=HERO_CLIP[off.action]||HERO_CLIP.idle; heroRollT=0; }  // attacking (blitz interrupt cancels a roll)
+  else if(heroRollT>0) want=HERO_CLIP.dodge;                    // mid roll — let the full clip run
+  else if(introT>0) want=HERO_CLIP.intro;                       // pre-battle stance (sim-gated, plays fully)
+  else if(heroOneShotT>0) want=heroOneShot;                     // hit flinch
   else want=HERO_CLIP.idle;
-  playHeroClip(want, HERO_LOOP.includes(want), 0.15);
+  playHeroClip(want, HERO_LOOP.includes(want), 0.15, want===HERO_CLIP.blitz?0.75:1);
+  // chained-roll facing: spin to the accumulated CCW offset while rolling, ease home after
+  if(heroModel){
+    const ty = heroRollT>0 ? HERO_YAW+heroRollYawOff : HERO_YAW;
+    heroModel.rotation.y += (ty-heroModel.rotation.y)*Math.min(1,rdt*10);
+    if(heroRollT<=0 && Math.abs(heroModel.rotation.y-HERO_YAW)<0.01){ heroModel.rotation.y=HERO_YAW; heroRollYawOff=0; }
+  }
   if(heroRightHand){ const pike=playerMesh.userData.pike;                    // pike follows the right hand (position)
     heroRightHand.getWorldPosition(_hHand); playerMesh.worldToLocal(_hHand); pike.position.copy(_hHand); }
 }
@@ -1230,7 +1260,8 @@ function startRun(sd){
   hitLog.length=0; floaters.length=0; particles.length=0; enemyFx.length=0; _fxStartT=-1; paused=false;
   if(!playerMesh){playerMesh=buildPlayer(); scene.add(playerMesh);}
   attachHero();                 // swap in the GLB hero once it (and the player rig) exist
-  heroDead=false; heroCurName=''; heroOneShotT=0; if(heroMixer){playHeroClip(HERO_CLIP.idle,true,0.1); triggerHeroOneShot('intro',1.6);}
+  heroDead=false; heroCurName=''; heroOneShotT=0; heroRollT=0; heroRollYawOff=0;
+  introT=CFG.introDur;          // battle is gated until the hero's full intro stance completes
   playerPose='idle'; poseT=0;
   setEnemy(0);
   state='combat';
@@ -1353,7 +1384,7 @@ function showResult(dead){
    ========================================================================= */
 const enemyAttacking=()=> !!atk && (enemyState==='telegraph'||enemyState==='active') && atk.hits.some(h=>!h.resolved);
 function commit(action){
-  if(state!=='combat'||off||queuedAction) return;      // already attacking or one queued
+  if(state!=='combat'||off||queuedAction||introT>0) return;   // already attacking / queued / intro still playing
   if(action==='blitz'){ if(blitz<CFG.blitzMax) return; } else { if(actBar<1) return; if(cooldown[action]>0) return; }  // can't pick a cooling ability
   // consume the resource now
   if(action==='blitz') blitz=0; else actBar=0;
@@ -1500,6 +1531,7 @@ function tapDodge(now, offset, forcedHit){
   if(state!=='combat') return;
   dodgeFlash=1;
   playerPose='dodge'; poseT=0;
+  heroDodgeRoll();                                 // full roll clip, chained rolls turn 90° CCW (cosmetic)
   if(!atk || (enemyState!=='active')){ return; }   // whiff, no incoming hit
   // find nearest pending hit within window
   let best=null,bestErr=1e9;
@@ -1799,6 +1831,7 @@ function update(rdt){
   step(dt);
 }
 function step(dt){
+  if(introT>0){ introT-=dt; return; }   // cinematic intro: the battle (clocks, bars, enemy) starts after the stance
   T+=dt; runClock+=dt;
   { const rp = runClock>=CFG.enrageAt?2 : runClock>=CFG.angryAt?1 : 0; if(rp>ragePhase){ ragePhase=rp; onRageChange(rp); } }
   resolveLockT=Math.max(0,resolveLockT-dt);
@@ -2270,7 +2303,7 @@ window.__game={
     mult, multMeter:+multMeter.toFixed(2), blitz:Math.round(blitz), blitzReady:blitz>=CFG.blitzMax, xp:Math.round(xp), levelUps, lv:{...lv}, use:{strike:+use.strike.toFixed(0),shoot:+use.shoot.toFixed(0),cast:+use.cast.toFixed(0),blitz:+use.blitz.toFixed(0)},
     actBar:+actBar.toFixed(2), off:off?{action:off.action,tier:off.tier,left:off.targets.filter(t=>!t.resolved).length}:null, queued:queuedAction,
     enemyState, atk:atk?atk.set.name:null, atkLeft:atk?atk.hits.filter(h=>!h.resolved).length:0, vuln:vulnAction, lock:+resolveLockT.toFixed(2),
-    runClock:+runClock.toFixed(2), ragePhase, bank:bankValue(),
+    runClock:+runClock.toFixed(2), ragePhase, bank:bankValue(), introT:+introT.toFixed(2),
     cd:{strike:+cooldown.strike.toFixed(1),shoot:+cooldown.shoot.toFixed(1),cast:+cooldown.cast.toFixed(1)}, draws:renderer.info.render.calls }; },
   step:d=>{ try{ if(state==='combat')step(d); else if(state==='defeated'){ tickDefeated(d); } }catch(e){console.error(e);} },
   start:sd=>startRun(sd), toMenu,
