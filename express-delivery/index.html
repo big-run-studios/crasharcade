@@ -74,7 +74,7 @@
   @keyframes bob{0%,100%{transform:translateY(0)}50%{transform:translateY(5px)}}
 
   /* ---------- steering wheel ---------- */
-  #wheelZone{position:absolute;left:0;bottom:0;width:52vw;max-width:300px;height:40vh;pointer-events:auto;touch-action:none;}
+  #wheelZone{position:absolute;inset:0;pointer-events:auto;touch-action:none;}  /* whole screen steers; buttons sit on top */
   #wheel{position:absolute;left:clamp(10px,3.4vw,26px);bottom:calc(clamp(14px,3.5vw,30px) + env(safe-area-inset-bottom));
     width:clamp(108px,30vw,148px);height:clamp(108px,30vw,148px);pointer-events:none;filter:drop-shadow(0 6px 14px rgba(0,0,0,.4));}
   #wheel svg{width:100%;height:100%;will-change:transform;}
@@ -184,10 +184,10 @@
     </div>
     <div class="logo1">EXPRESS</div>
     <div class="logo2">DELIVERY</div>
-    <div class="tag">Steer 🛞 &nbsp;Throw 📦 &nbsp;Smash the block 💥 &nbsp;Cash out 💰</div>
+    <div class="tag">Drag anywhere to steer 🛞 &nbsp;Double-tap to throw 📦 &nbsp;Cash out 💰</div>
     <button id="startBtn">START ROUTE</button>
     <div id="menuBest"></div>
-    <div class="brand" id="brand">EXPRESS DELIVERY v0.1.6 · BIG RUN STUDIOS</div>
+    <div class="brand" id="brand">EXPRESS DELIVERY v0.1.7 · BIG RUN STUDIOS</div>
   </div>
 
   <div id="over">
@@ -205,7 +205,7 @@ import * as THREE from './lib/three.module.js';
 
 /* ================================================================== CFG */
 const CFG = {
-  ver:'0.1.6',
+  ver:'0.1.7',
   // --- vehicle
   baseSpeed:8.5,          // forward m/s at run start
   speedGrowth:0.075,      // m/s gained per second
@@ -223,13 +223,14 @@ const CFG = {
   cooldown:1.0,
   inherit:0.62,           // fraction of vehicle velocity a package inherits
   throwFwd:1.0,           // small fixed forward push
+  throwYawDeg:22.5,       // throw is angled this far forward of pure-right — landings resolve in view
   pkgGravity:12,
   // --- ramps
   rampBoost:1.45,         // vy = speed * slope * boost
   rampEveryChunks:5,      // one ramp roughly every N chunks (after rampStartChunk)
   rampStartChunk:8,
-  // --- delivery zone base points: ANY touch on the door = full score; porch = 1/10 door
-  zonePts:{ property:250, walkway:500, porch:1000, door:10000 },
+  // --- delivery zone base points: ANY touch on the door = full score; porch = half door
+  zonePts:{ property:250, walkway:500, porch:5000, door:10000 },
   tierUpAt:1000,          // deliveries scoring >= this base advance the package tier
   // --- destruction base points
   propPts:{ gnome:750, flamingo:750, birdbath:750, can:500, bin:500, mailbox:1000, cone:250,
@@ -1159,14 +1160,18 @@ function toss(){
   // forward & right in world space (steering direction bends the throw)
   const fl=Math.hypot(veh.vx,veh.speed)||1;
   const fx=veh.vx/fl, fz=-veh.speed/fl;
-  const rx=-fz, rz=fx;                                     // always throw to the RIGHT (targets live there)
-  const px=veh.x+rx*0.6, py=veh.y+1.0, pz=veh.z+rz*0.6;
+  const rx=-fz, rz=fx;                                     // right = forward rotated -90° about Y
+  // throw direction: right, rotated CFG.throwYawDeg toward forward ("north")
+  const ty=CFG.throwYawDeg*Math.PI/180, tc=Math.cos(ty), ts=Math.sin(ty);
+  const dx=rx*tc+fx*ts, dz=rz*tc+fz*ts;
+  // launch from the RIGHT HAND, not the rack
+  const px=veh.x+rx*0.35+fx*0.3, py=veh.y+1.15, pz=veh.z+rz*0.35+fz*0.3;
   grp.position.set(px,py,pz);
   scene.add(grp);
   const pkg={grp,x:px,y:py,z:pz,
-    vx:veh.vx*CFG.inherit + rx*t.lat + fx*CFG.throwFwd,
+    vx:veh.vx*CFG.inherit + dx*t.lat + fx*CFG.throwFwd,
     vy:t.up,
-    vz:-veh.speed*CFG.inherit + rz*t.lat + fz*CFG.throwFwd,
+    vz:-veh.speed*CFG.inherit + dz*t.lat + fz*CFG.throwFwd,
     ax:rnd(-5,5),ay:rnd(-3,3),az:rnd(-5,5),
     tier:veh.tier,target:world.curTarget,thrownAir:veh.air,hits:0,settleT:0,done:false,t:0};
   world.packages.push(pkg);
@@ -1424,8 +1429,15 @@ function updateVehicle(dt){
 /* ==================================================== input */
 const input={wheelActive:false,wheelVal:0,wheelId:null,wheelX0:0,forceWheel:null};
 const wz=$('wheelZone');
+let lastDownT=-9e9,lastDownX=0,lastDownY=0;
 wz.addEventListener('pointerdown',e=>{
   e.preventDefault(); auInit();
+  // double-tap anywhere = throw (one-handed play)
+  const now=performance.now();
+  if(now-lastDownT<300 && Math.hypot(e.clientX-lastDownX,e.clientY-lastDownY)<48){
+    if(S.state==='run') toss();
+  }
+  lastDownT=now; lastDownX=e.clientX; lastDownY=e.clientY;
   input.wheelActive=true; input.wheelId=e.pointerId;
   input.wheelX0=e.clientX-veh.wheel*70;                    // regrab continues from the current wheel angle
   input.wheelVal=veh.wheel;
