@@ -309,7 +309,7 @@
       <div id="dbgLog"></div>
     </div>
 
-    <div id="brand">CRASHARCADE · TITAN GUARD v0.29.1</div>
+    <div id="brand">CRASHARCADE · TITAN GUARD v0.29.2</div>
   </div>
 </div>
 
@@ -674,22 +674,25 @@ const GROUND_REPEAT=32;   // tiles across the 340u plane => ~10.6u per tile
   inst.receiveShadow=true;
   scene.add(inst);
 
-  // ---- hide the terrain->backdrop seam ----
-  // (a) blend strip: a soft vertical gradient in the matched grass green, hugging the
-  //     terrain/plane intersection just in front of the backdrop — melts the hard edge.
+  // ---- hide the terrain->backdrop seam: a detail-fade CARPET lying on the far terrain slope.
+  //      Flat matched-grass color, transparent at z~-95 ramping to ~opaque where it meets the
+  //      backdrop, so the ground's sharp texture gradually dissolves into the painting's soft
+  //      wash instead of switching at a hard line. (A thin vertical strip at the plane projected
+  //      only a few pixels tall from this camera — useless; this rides the slope instead.)
   {
     const c=document.createElement('canvas'); c.width=4; c.height=128;
     const x=c.getContext('2d'); const gr=x.createLinearGradient(0,128,0,0);
-    gr.addColorStop(0,'rgba(129,163,48,0.95)'); gr.addColorStop(0.45,'rgba(129,163,48,0.55)'); gr.addColorStop(1,'rgba(129,163,48,0)');
+    gr.addColorStop(0,'rgba(129,163,48,0)'); gr.addColorStop(0.55,'rgba(129,163,48,0.45)'); gr.addColorStop(1,'rgba(129,163,48,0.92)');
     x.fillStyle=gr; x.fillRect(0,0,4,128);
     const stx=new THREE.CanvasTexture(c); stx.colorSpace=THREE.SRGBColorSpace;
-    const strip=new THREE.Mesh(new THREE.PlaneGeometry(560,12),
+    const D=50, zNear=-91.5, zFar=-141.5;
+    const carpet=new THREE.Mesh(new THREE.PlaneGeometry(560,D),
       new THREE.MeshBasicMaterial({map:stx, transparent:true, depthWrite:false, fog:false, toneMapped:false}));
-    strip.position.set(-80, 7.5, -141.5);   // straddles the intersection height (~6-7.5u); bottom hides behind nearer terrain
-    scene.add(strip);
+    carpet.rotation.x=-Math.PI/2+0.06;                     // flat, tilted to match the 0.06/u terrain rise
+    const yMid=(( -zNear-30)*0.06 + (-zFar-30)*0.06)/2 + 0.9;   // hover just above the bumpy terrain
+    carpet.position.set(-80, yMid, (zNear+zFar)/2);
+    scene.add(carpet);
   }
-  // (grass-knoll experiment removed — the flat unlit mounds clashed with the painted art style;
-  //  the gradient blend strip above does the seam-softening on its own)
 })();
 
 /* ---- painted horizon backdrop (Andrew's art) — replaces the procedural hills/mesas ---- */
