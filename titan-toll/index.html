@@ -311,7 +311,7 @@
       <div id="dbgLog"></div>
     </div>
 
-    <div id="brand">CRASHARCADE · TITAN GUARD v0.48.2</div>
+    <div id="brand">CRASHARCADE · TITAN GUARD v0.48.3</div>
   </div>
 </div>
 
@@ -345,7 +345,7 @@ const rf=(a,b)=>a+Math.random()*(b-a);   // cosmetic only (never gameplay)
    ========================================================================= */
 const CFG={
   playerHP:1000,          // x10 (v0.37.0, with 10x enemy damage — bigger numbers, same ratio)
-  enemyDmgScale:[5.5,6.8,9.6],    // per-enemy incoming-damage multiplier x10 (E1 forgiving -> E3 lethal)
+  enemyDmgScale:[27.5,34,48],     // per-enemy incoming-damage multiplier (E1 forgiving -> E3 lethal); v0.48.3: x5 (Andrew) — was [5.5,6.8,9.6]
   cds:{shoot:4, cast:8, strike:13},  // v0.46: no action bar — each attack on its own flat cooldown (fast/weak -> slow/strong)
   introDur:7.3,            // intro gate: reveal -> pull-back -> VISIBLE sky-fall -> stance (v0.48.1; was 6.1 = raw clip length — grew so the fall happens on camera and the stance still plays ~1.3x)
   // dodge — asymmetric: anticipatory dodging (before the hit) is natural, so the early side is wider
