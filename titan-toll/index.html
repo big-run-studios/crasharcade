@@ -311,7 +311,7 @@
       <div id="dbgLog"></div>
     </div>
 
-    <div id="brand">CRASHARCADE · TITAN GUARD v0.46.1</div>
+    <div id="brand">CRASHARCADE · TITAN GUARD v0.47.0</div>
   </div>
 </div>
 
@@ -866,6 +866,7 @@ let heroRollT=0, heroRollYawOff=0;   // dodge roll: remaining time + accumulated
 let introT=0;                        // sim-clocked intro gate: battle starts after the hero's full stance
 const heroClips={};
 const HERO_H=2.05, HERO_YAW=1.85+Math.PI/2;   // target height + facing (rotated 90° CCW to face the titan)
+const HERO_VICT_YAW=HERO_YAW+0.26-Math.PI;    // victory celebration: turned around to face the end-game camera (short-way ease — same heading as +PI, without the 340° spin)
 // Andrew's mapping from the Animation Lab (sandbox.html), 2026-07-19 export.
 // hit = 'Arise': the fall-down-on-hit IS the intended reaction (Andrew's call after
 // trying Male_Head_Down_Charge, which read as running in place once root-pinned).
@@ -1011,8 +1012,13 @@ function heroDodgeRoll(){
 }
 function updateHero(rdt){
   if(!heroMixer) return;
-  heroMixer.update(rdt);
-  if(heroRightForeArm) heroRightForeArm.rotateY(HERO_FORE_ROLL);   // roll the pike hand onto the shaft (post-mixer — clips reset the bone every update)
+  // celebration finished (LoopOnce + clamp): freeze the mixer outright — advancing a finished action
+  // kept micro-jittering the hand the pike follows (the "pike shudder" on the result screen)
+  const victFrozen = state==='result' && !heroDead && heroCurName===HERO_CLIP.victory && heroAction && heroAction.paused;
+  if(!victFrozen){
+    heroMixer.update(rdt);
+    if(heroRightForeArm) heroRightForeArm.rotateY(HERO_FORE_ROLL);   // roll the pike hand onto the shaft (post-mixer — clips reset the bone every update)
+  }
   if(heroOneShotT>0) heroOneShotT-=rdt;
   if(heroRollT>0) heroRollT-=rdt;
   // strike dash arrival: swing wind-up starts only once the run-in completes
@@ -1030,8 +1036,8 @@ function updateHero(rdt){
   playHeroClip(want, HERO_LOOP.includes(want), 0.44, want===HERO_CLIP.blitz?0.75: want===HERO_CLIP.idle?0.5: (want===HERO_CLIP.intro&&introT>0)?CAMS.intro.stanceSpeed:1);   // idle at half speed; intro stance sped to fit the gate minus the reveal hold
   // chained-roll facing: spin to the accumulated CCW offset while rolling, ease home after
   if(heroModel){
-    const ty = heroRollT>0 ? HERO_YAW+heroRollYawOff : HERO_YAW;
-    heroModel.rotation.y += (ty-heroModel.rotation.y)*Math.min(1,rdt*10);
+    const ty = heroRollT>0 ? HERO_YAW+heroRollYawOff : (state==='result'&&!heroDead ? HERO_VICT_YAW : HERO_YAW);   // victory: turn around to face the camera
+    heroModel.rotation.y += (ty-heroModel.rotation.y)*Math.min(1,rdt*(state==='result'?4:10));
     if(heroRollT<=0 && Math.abs(heroModel.rotation.y-HERO_YAW)<0.01){ heroModel.rotation.y=HERO_YAW; heroRollYawOff=0; }
   }
   if(heroRightHand){ const pike=playerMesh.userData.pike;                    // pike follows the right hand (position)
@@ -1690,6 +1696,7 @@ function startRun(sd){
   attachSpear();                // same for the real spear model (art WIP — no-ops until spear.glb exists)
   heroDead=false; heroCurName=''; heroOneShotT=0; heroRollT=0; heroRollYawOff=0;
   introT=CFG.introDur;          // battle is gated until the hero's full intro stance completes
+  resultShowT=0;                // cancel a pending celebration->menu pop from a previous run
   playerPose='idle'; poseT=0;
   setEnemy(0);
   state='combat';
@@ -1796,8 +1803,15 @@ function die(){
   playStinger(sfxLose); shake(0.9,0.6); state='result'; heroDead=true;
   showResult(true);
 }
+let resultShowT=0;   // celebration hold: Sword_Shout plays ONCE through before the menu pops (cosmetic timer, rdt-driven)
 function showResult(dead){
   state='result';
+  if(dead){ showResultOverlay(true); return; }                    // death menu pops immediately (no celebration)
+  const c=heroClips && heroClips[HERO_CLIP.victory];
+  resultShowT=(c?c.duration:2.5)+0.3;                             // one full pass + a beat
+}
+function showResultOverlay(dead){
+  resultShowT=0;
   const r=document.getElementById('result');
   document.getElementById('resultTitle').textContent=resultTitle;
   document.getElementById('resultTitle').style.color=dead?'var(--danger)':'#fff';
@@ -2265,6 +2279,7 @@ function update(rdt){
   // cosmetic real-time decay
   shakeT=Math.max(0,shakeT-rdt); if(shakeT<=0)shakeAmt*=0.86;
   dodgeFlash=Math.max(0,dodgeFlash-rdt*3);
+  if(resultShowT>0 && state==='result'){ resultShowT-=rdt; if(resultShowT<=0) showResultOverlay(false); }   // celebration done -> pop the menu
   for(let i=floaters.length-1;i>=0;i--){ const f=floaters[i]; f.life+=rdt; f.p.y+=f.vy*rdt; if(f.life>=f.max)floaters.splice(i,1); }
   for(let i=particles.length-1;i>=0;i--){ const p=particles[i]; p.life+=rdt; p.v.y-=14*rdt; p.p.addScaledVector(p.v,rdt); if(p.life>=p.max)particles.splice(i,1); }
   for(let i=beamRings.length-1;i>=0;i--){ beamRings[i].life+=rdt; if(beamRings[i].life>=beamRings[i].max)beamRings.splice(i,1); }
@@ -2314,7 +2329,8 @@ function offAnchor(tg){
 }
 
 const _pikeQT=new THREE.Quaternion(), _pikeAim=new THREE.Vector3(), _pikeDir=new THREE.Vector3(),
-      _pikeDown=new THREE.Vector3(0,-1,0), _pikeUp=new THREE.Vector3(0,1,0), _pikeSideE=new THREE.Euler(-Math.PI/2,0,0);
+      _pikeDown=new THREE.Vector3(0,-1,0), _pikeUp=new THREE.Vector3(0,1,0), _pikeSideE=new THREE.Euler(-Math.PI/2,0,0),
+      _pikeQI=new THREE.Quaternion();   // identity = the upright idle grip
 function animatePlayer(rdt){
   const u=playerMesh.userData; if(!u.body) return;
   const t=performance.now()/1000;
@@ -2357,7 +2373,11 @@ function animatePlayer(rdt){
   //                stabs through the ground during the low Axe_Stance crouch
   //      shoot  -> bazooka butt (local -Y) aimed at the titan's midsection
   //      else   -> upright
-  if(heroDead || introT>0) _pikeQT.setFromEuler(_pikeSideE);   // dead: the pike lies flat beside him; intro: held level
+  if(heroDead) _pikeQT.setFromEuler(_pikeSideE);               // dead: the pike lies flat beside him
+  else if(introT>0){                                           // intro: sideways -> UPRIGHT across the first half (Andrew) so it lands on the idle grip
+    const ip=smooth(clamp((CFG.introDur-introT)/(CFG.introDur*0.5),0,1));
+    _pikeQT.setFromEuler(_pikeSideE).slerp(_pikeQI, ip);
+  }
   else if((playerPose==='shoot'||playerPose==='strike') && enemyMesh && enemyMesh.userData.anchors){
     // shoot: bazooka butt (local -Y) at the titan's core; strike: blade TIP (local +Y) drives at it
     enemyMesh.userData.anchors.core.getWorldPosition(_pikeAim);
@@ -2539,9 +2559,9 @@ const CAMS={
   // y0/y1/look1 raised per v0.33.0 — the low shot aimed past the backdrop's top edge into blue.
   intro:{d:8.0, az:0.5, y0:2.6, y1:3.4, look0:0.10, look1:0.55, rise:0.20, settle:0.38, stanceAt:1.22, stanceSpeed:1.25},
   kill:{d0:1.45, d1:0.98, az:0.42, yF:0.42, lookF:0.52},                         // push-in on the dissolve (x titan height)
-  victory:{dx:3.2, dy:1.15, dz:4.6, lookDx:-0.3, lookY:1.2, fov:44},
-  crash:{rise:4.2, back:7.0, dur:4.0, lookY:0.5},
-  cashout:{rise:6.5, back:3.5, dur:4.5, lookY:1.2},
+  victory:{dx:2.2, dy:1.3, dz:5.8, lookDx:0, lookY:1.5, fov:44},   // v0.46: axis-aligned tighter angle — the old 37°-off view caught the backdrop's edge; hero now turns to face it
+  crash:{rise:2.6, back:6.0, dur:4.0, lookY:2.0},     // v0.47: flatter pitch — the steep look-down filled the frame with lawn and caught the terrain seam at the top
+  cashout:{rise:3.6, back:3.5, dur:4.5, lookY:2.2},
 };
 const _camCur={pos:CAM.pos.clone(), look:CAM.look.clone(), fov:41};
 const _cg={pos:new THREE.Vector3(), look:new THREE.Vector3(), fov:41, cut:false, rate:CAMS.glideRate, max:0};
