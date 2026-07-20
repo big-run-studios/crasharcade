@@ -309,7 +309,7 @@
       <div id="dbgLog"></div>
     </div>
 
-    <div id="brand">CRASHARCADE · TITAN GUARD v0.40.0</div>
+    <div id="brand">CRASHARCADE · TITAN GUARD v0.40.1</div>
   </div>
 </div>
 
@@ -1223,9 +1223,9 @@ const ENEMY_FX=[
 // EYE GLOWS — two red embers on each boss's face (menace; brighten with rage).
 // {fx: half eye spacing, fy: height, fz: forward} as fractions of the boss height h.
 const ENEMY_EYE=[
-  {fx:0.024, fy:0.853, fz:0.090, s:0.065},   // Cliffhorn — embedded in the visor (tuned live via __game.eyeTune 2026-07-20)
-  null,                                       // Gale — no eye glows (Andrew)
-  null,                                       // Sky Titan — no eye glows (Andrew)
+  {lx:2.2, ly:10, lz:12, s:11},   // Cliffhorn — HEAD-BONE-LOCAL units (visor slit, matched to Andrew's markup 2026-07-20)
+  null,                            // Gale — no eye glows (Andrew)
+  null,                            // Sky Titan — no eye glows (Andrew)
 ];
 // TAP-WINDOW SPARKLE — a character-anchored twinkle on each boss's signature body part,
 // lit only while the dodge tap window is open (brightest at the perfect-tap instant).
@@ -1482,15 +1482,12 @@ function buildEnemyGLB(i){
   // animation. Position estimated in enemy-group space and converted to bone-local at bind.
   { const E=ENEMY_EYE[i];
     const nb=g.userData.nodBone;
-    if(E && nb){
-      const eyeGlows=[]; g.updateMatrixWorld(true);
-      const ws=new THREE.Vector3(); nb.getWorldScale(ws);
+    if(E && nb){                                            // offsets are BONE-LOCAL: stable under any pose
+      const eyeGlows=[];
       for(const sgn of [-1,1]){
         const sp=new THREE.Sprite(new THREE.SpriteMaterial({ map:makeSparkTexture(), color:0xff2418, transparent:true, opacity:0.5, depthTest:true, depthWrite:false, blending:THREE.AdditiveBlending }));
-        const pg=new THREE.Vector3(sgn*E.fx*h, E.fy*h, E.fz*h);
-        g.localToWorld(pg); nb.worldToLocal(pg);
-        sp.position.copy(pg);
-        sp.scale.setScalar(E.s*h/(ws.x||1));
+        sp.position.set(sgn*E.lx, E.ly, E.lz);
+        sp.scale.setScalar(E.s);
         nb.add(sp); eyeGlows.push(sp);
       }
       g.userData.eyeGlows=eyeGlows;
@@ -3115,14 +3112,9 @@ window.__game={
   sparkTune:(dx,dy,dz,scale)=>{ const u=enemyMesh&&enemyMesh.userData; if(!u||!u.spark)return '(no spark)'; if(dx!=null)u.spark.off=[dx,dy,dz]; if(scale!=null)u.spark.scale=scale; return {node:u.spark.node, off:u.spark.off, scale:u.spark.scale, boneFound:!!u.sparkBone}; },
   boneFix:(node,rx=0,ry=0,rz=0)=>{ const u=enemyMesh&&enemyMesh.userData; if(!u||!u.model)return '(no enemy)'; const bone=u.model.getObjectByName(node);
     u.boneFix=[{bone, q:new THREE.Quaternion().setFromEuler(new THREE.Euler(rx,ry,rz)), node}]; return {node, found:!!bone, e:[rx,ry,rz]}; },
-  eyeTune:(fx,fy,fz,sc)=>{ const u=enemyMesh&&enemyMesh.userData; if(!u||!u.eyeGlows||!u.nodBone) return '(no eyes)';
-    const h=u.height, nb=u.nodBone; enemyMesh.updateMatrixWorld(true);
-    const ws=new THREE.Vector3(); nb.getWorldScale(ws);
-    u.eyeGlows.forEach((sp,k)=>{ const sgn=k===0?-1:1;
-      const pg=new THREE.Vector3(sgn*fx*h, fy*h, fz*h);
-      enemyMesh.localToWorld(pg); nb.worldToLocal(pg); sp.position.copy(pg);
-      if(sc!=null) sp.scale.setScalar(sc*h/(ws.x||1)); });
-    return JSON.stringify({fx,fy,fz,sc}); },
+  eyeTune:(lx,ly,lz,sc)=>{ const u=enemyMesh&&enemyMesh.userData; if(!u||!u.eyeGlows) return '(no eyes)';
+    u.eyeGlows.forEach((sp,k)=>{ sp.position.set((k===0?-1:1)*lx, ly, lz); if(sc!=null) sp.scale.setScalar(sc); });
+    return JSON.stringify({lx,ly,lz,sc}); },   // HEAD-BONE-LOCAL units (pose-stable)
   arms:()=>{ const u=enemyMesh&&enemyMesh.userData; if(!u||!u.armDups) return null;
     return u.armDups.map(d=>{ if(!d||!d.mesh) return null;
       d.mesh.computeBoundingBox(); const bb=d.mesh.boundingBox.clone().applyMatrix4(d.mesh.matrixWorld);
