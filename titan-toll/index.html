@@ -309,7 +309,7 @@
       <div id="dbgLog"></div>
     </div>
 
-    <div id="brand">CRASHARCADE · TITAN GUARD v0.26.0</div>
+    <div id="brand">CRASHARCADE · TITAN GUARD v0.26.1</div>
   </div>
 </div>
 
@@ -773,10 +773,9 @@ let introT=0;                        // sim-clocked intro gate: battle starts af
 const heroClips={};
 const HERO_H=2.05, HERO_YAW=1.85+Math.PI/2;   // target height + facing (rotated 90° CCW to face the titan)
 // Andrew's mapping from the Animation Lab (sandbox.html), 2026-07-19 export.
-// hit stays 'Male_Head_Down_Charge' (NOT the lab's 'Arise', which starts flat on the
-// ground -> hero collapsed on every hit taken); it's a 0.53s standing brace that fits
-// the 0.6s flinch cap exactly.
-const HERO_CLIP={ idle:'Idle_10', strike:'Axe_Spin_Attack', shoot:'mage_soell_cast_6', cast:'Charged_Spell_Cast_1', blitz:'360_Power_Spin_Jump', dodge:'Roll_Dodge_4', dead:'Dead', hit:'Male_Head_Down_Charge', victory:'Sword_Shout', intro:'Axe_Stance' };
+// hit = 'Arise': the fall-down-on-hit IS the intended reaction (Andrew's call after
+// trying Male_Head_Down_Charge, which read as running in place once root-pinned).
+const HERO_CLIP={ idle:'Idle_10', strike:'Axe_Spin_Attack', shoot:'mage_soell_cast_6', cast:'Charged_Spell_Cast_1', blitz:'360_Power_Spin_Jump', dodge:'Roll_Dodge_4', dead:'Dead', hit:'Arise', victory:'Sword_Shout', intro:'Axe_Stance' };
 const _hHand=new THREE.Vector3();
 new GLTFLoader().load('assets/hero.glb', gltf=>{ heroGLTF=gltf; attachHero(); }, undefined, err=>console.error('hero load',err));
 function attachHero(){
@@ -807,11 +806,6 @@ function attachHero(){
     const it=hipsOf(heroClips[HERO_CLIP.intro]), id=hipsOf(heroClips[HERO_CLIP.idle]);
     if(it && id){ const v=it.values, n=v.length, dx=id.values[0]-v[n-3], dz=id.values[2]-v[n-1];
       for(let i=0;i<n;i+=3){ v[i]+=dx; v[i+2]+=dz; } }
-    // (3) hit flinch (Male_Head_Down_Charge) is authored as a forward CHARGE — pin its
-    //     root XZ at frame 0 so the flinch braces IN PLACE instead of sliding forward
-    const hh=hipsOf(heroClips[HERO_CLIP.hit]);
-    if(hh){ const v=hh.values, x0=v[0], z0=v[2];
-      for(let i=0;i<v.length;i+=3){ v[i]=x0; v[i+2]=z0; } }
   }
   playHeroClip(HERO_CLIP.idle, true, 0, 0.5);
 }
