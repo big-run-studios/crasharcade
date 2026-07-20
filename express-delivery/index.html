@@ -183,7 +183,7 @@
     <div class="tag">Steer 🛞 &nbsp;Throw 📦 &nbsp;Smash the block 💥 &nbsp;Cash out 💰</div>
     <button id="startBtn">START ROUTE</button>
     <div id="menuBest"></div>
-    <div class="brand" id="brand">EXPRESS DELIVERY v0.1.4 · BIG RUN STUDIOS</div>
+    <div class="brand" id="brand">EXPRESS DELIVERY v0.1.5 · BIG RUN STUDIOS</div>
   </div>
 
   <div id="over">
@@ -201,7 +201,7 @@ import * as THREE from './lib/three.module.js';
 
 /* ================================================================== CFG */
 const CFG = {
-  ver:'0.1.4',
+  ver:'0.1.5',
   // --- vehicle
   baseSpeed:8.5,          // forward m/s at run start
   speedGrowth:0.075,      // m/s gained per second
@@ -260,8 +260,12 @@ const CFG = {
   roadHalf:3.6, walkIn:3.8, walkOut:6.0, houseX:12.8,
   // --- feel
   camYawDeg:22.5,         // run camera orbits this far around the hero toward the delivery (right) side
+  camSpring:30, camDamp:11,  // critically-damped lateral follow — ramps up, no snap
   slowMoScale:0.35, slowMoTime:0.5,
   shakeDecay:5.5,
+  // --- pickup stack (inverted triangle on the rack)
+  stackRows:9,            // rows of 1,2,3,…,9 → 45 slots; overflow gets run over for NEGATIVE points
+  stackTween:0.28,        // seconds for items to fly/resort into their slots
 };
 window.CFG = CFG;
 
@@ -778,6 +782,57 @@ const veh={
   stuckT:0, airT:0, onRamp:false, dead:false,
 };
 scene.add(veh.grp);
+// pickup stack: an invisible inverted triangle above the rack
+const stackGrp=new THREE.Group(); stackGrp.position.set(0,0.85,-0.95); veh.grp.add(stackGrp);
+const pickups=[];   // FIFO — [0] is the oldest, thrown first
+function slotPos(i){
+  const r=Math.floor((Math.sqrt(8*i+1)-1)/2), p=i-r*(r+1)/2;   // row r has r+1 slots, filled left→right
+  return new THREE.Vector3((p-r/2)*0.5, 0.1+r*0.42, 0);
+}
+function stackCapacity(){ return CFG.stackRows*(CFG.stackRows+1)/2; }
+function retargetStack(){
+  for(let i=0;i<pickups.length;i++){
+    const it=pickups[i];
+    it.start=it.pos.clone(); it.target=slotPos(i); it.t=0;
+  }
+}
+function pickupProp(pr){
+  // scored like a smash, but the prop hops onto the scooter instead of flying away
+  const pts=award(pr.pts,'destroy');
+  popup(pr.x,0,pr.z,'+'+fmt(pts),'', '#ffe14d');
+  comboAction();
+  (SFX[pr.sfx]||SFX.plastic)();
+  S.lastDestroyT=S.t;
+  if(pr.kind==='mailbox') S.mailboxInCombo=true;
+  if(pr.decor){ S.decorInCombo++; if(S.decorInCombo===3) namedBonus('CURB APPEAL'); }
+  pr.dead=true;
+  world.props=world.props.filter(p=>p!==pr);
+  const mesh=pr.grp;
+  const wp=new THREE.Vector3(); mesh.getWorldPosition(wp);
+  mesh.parent.remove(mesh);
+  const scl=Math.min(1,0.5/Math.max(pr.h,pr.rad*2,0.3));
+  mesh.scale.setScalar(scl); mesh.rotation.set(0,rnd(-0.4,0.4),0);
+  stackGrp.add(mesh);
+  stackGrp.updateWorldMatrix(true,false);
+  const start=stackGrp.worldToLocal(wp.clone());
+  const it={kind:pr.kind,h:pr.h,scl,sfx:pr.sfx,mesh,pos:start.clone(),start:start.clone(),target:slotPos(pickups.length),t:0};
+  pickups.push(it);
+}
+function clearStack(){
+  for(const it of pickups) stackGrp.remove(it.mesh);
+  pickups.length=0;
+}
+function updateStack(dt){
+  const dur=CFG.stackTween;
+  for(const it of pickups){
+    if(it.t>=1) continue;
+    it.t=Math.min(1,it.t+dt/dur);
+    const k=it.t*it.t*(3-2*it.t);                              // smoothstep tween
+    it.pos.lerpVectors(it.start,it.target,k);
+    it.mesh.position.copy(it.pos);
+  }
+  if(veh.rackMesh) veh.rackMesh.visible=pickups.length===0;    // stack replaces the boxed package visually
+}
 function setRackPackage(tier){
   const r=veh.grp.userData.rack;
   while(r.children.length) r.remove(r.children[0]);
@@ -846,17 +901,19 @@ function updatePopups(dt){
 }
 
 /* ==================================================== destruction */
-function smash(pr,vel,src){    // pr = prop rec, vel = impacting velocity vector, src='veh'|'pkg'|'chain'
+function smash(pr,vel,src){    // pr = prop rec, vel = impacting velocity vector, src='veh'|'pkg'|'chain'|'runover'
   if(pr.dead) return;
   pr.dead=true;
-  const pts=award(pr.pts,'destroy');
-  popup(pr.x,pr.h+0.7,pr.z,'+'+fmt(pts),'', '#ffe14d');
-  comboAction();
+  if(src!=='runover'){
+    const pts=award(pr.pts,'destroy');
+    popup(pr.x,pr.h+0.7,pr.z,'+'+fmt(pts),'', '#ffe14d');
+    comboAction();
+    S.lastDestroyT=S.t;
+    if(pr.kind==='mailbox') S.mailboxInCombo=true;
+    if(pr.decor){ S.decorInCombo++; if(S.decorInCombo===3) namedBonus('CURB APPEAL'); }
+  }
   (SFX[pr.sfx]||SFX.plastic)();
   if(pr.kind==='barrier') SFX.smash();
-  S.lastDestroyT=S.t;
-  if(pr.kind==='mailbox') S.mailboxInCombo=true;
-  if(pr.decor){ S.decorInCombo++; if(S.decorInCombo===3) namedBonus('CURB APPEAL'); }
   // launch it
   const sp=Math.max(3,Math.hypot(vel.x,vel.z)*0.8);
   const dir=Math.hypot(vel.x,vel.z)>0.5?Math.atan2(vel.x,vel.z):rnd(0,Math.PI*2);
@@ -1040,7 +1097,18 @@ function toss(){
   if(S.state!=='run'||veh.cd>0||veh.dead) return false;
   veh.cd=CFG.cooldown;
   const t=CFG.tiers[veh.tier];
-  const grp=buildPackageMesh(veh.tier);
+  let grp;
+  if(pickups.length){
+    // throw the OLDEST pickup instead of a boxed package; the tower re-sorts with tweens
+    const it=pickups.shift();
+    stackGrp.remove(it.mesh);
+    grp=new THREE.Group();
+    it.mesh.position.set(0,-it.h*it.scl*0.5,0); it.mesh.rotation.set(0,0,0);
+    grp.add(it.mesh);
+    retargetStack();
+  } else {
+    grp=buildPackageMesh(veh.tier);
+  }
   // forward & right in world space (steering direction bends the throw)
   const fl=Math.hypot(veh.vx,veh.speed)||1;
   const fx=veh.vx/fl, fz=-veh.speed/fl;
@@ -1235,7 +1303,15 @@ function updateVehicle(dt){
     for(const pr of world.props){
       if(pr.dead) continue;
       if(Math.abs(pr.z-veh.z)<pr.rad+0.8 && Math.abs(pr.x-veh.x)<pr.rad+0.6){
-        smash(pr,new THREE.Vector3(veh.vx*0.5,0,-veh.speed),'veh');
+        if(pickups.length<stackCapacity()){
+          pickupProp(pr);                                   // hops onto the rack, becomes throwable ammo
+        } else {
+          // stack is full — this one gets run over and COSTS points
+          S.pot=Math.max(0,S.pot-pr.pts);
+          popup(pr.x,0,pr.z,'-'+fmt(pr.pts)+' RUN OVER','', '#ff6a5a');
+          SFX.bump();
+          smash(pr,new THREE.Vector3(veh.vx*0.5,0,-veh.speed),'runover'); // flies away but scores nothing extra
+        }
         veh.speed*=pr.kind==='barrier'?0.5:pr.kind==='hedge'||pr.kind==='fence'?0.75:0.93;
         S.shake=Math.min(S.shake+0.2,0.7);
       }
@@ -1334,6 +1410,7 @@ $('muteBtn2').addEventListener('click',()=>setMute(!AU.muted));
 setMute(AU.muted);
 
 /* ==================================================== camera */
+const camS={x:0,v:0,lookX:0,lookV:0,init:false};
 function updateCamera(dt){
   let tx,ty,tz,lx,ly,lz;
   if(S.state==='menu'){
@@ -1351,11 +1428,16 @@ function updateCamera(dt){
     camera.position.x=lerp(camera.position.x,tx,k);
     camera.position.y=lerp(camera.position.y,ty,k);
     camera.position.z=lerp(camera.position.z,tz,k);
+    camS.init=false;
   } else {
-    // hard-lock to the hero (no forward lag), light smoothing on x only
-    camera.position.x=lerp(camera.position.x,tx,Math.min(1,10*dt));
-    camera.position.y=lerp(camera.position.y,ty,Math.min(1,10*dt));
+    // critically-damped spring on the lateral follow — accelerates into the move instead of snapping
+    if(!camS.init){ camS.x=tx; camS.v=0; camS.lookX=lx; camS.lookV=0; camS.init=true; }
+    camS.v+=((tx-camS.x)*CFG.camSpring-camS.v*CFG.camDamp)*dt;  camS.x+=camS.v*dt;
+    camS.lookV+=((lx-camS.lookX)*CFG.camSpring-camS.lookV*CFG.camDamp)*dt;  camS.lookX+=camS.lookV*dt;
+    camera.position.x=camS.x;
+    camera.position.y=lerp(camera.position.y,ty,Math.min(1,6*dt));
     camera.position.z=tz;
+    lx=camS.lookX;
   }
   if(S.shake>0.01){
     camera.position.x+=rnd(-1,1)*S.shake*0.18;
@@ -1399,7 +1481,7 @@ function startRun(){
     stuckT:0,airT:0,dead:false,prevGy:0,prevSlope:0,crashT:0});
   veh.grp.rotation.set(0,Math.PI,0);
   input.forceWheel=null; input.wheelVal=0;
-  clearPopups();
+  clearPopups(); clearStack(); camS.init=false;
   setRackPackage(0);
   ensureChunks(); updateTargets();
   camera.position.set(1.1,6.4,8.6);
@@ -1445,6 +1527,7 @@ function update(dt){
   if(S.state==='run'){
     keyWheel(dt);
     updateVehicle(dt);
+    updateStack(dt);
     ensureChunks();
     updateTargets();
     updatePackages(dt);
@@ -1489,6 +1572,7 @@ window.__game={
   get s(){ return {state:S.state,pot:S.pot,delivery:S.deliveryScore,destroy:S.destroyScore,
     combo:S.combo,comboMult:S.comboMult,tier:veh.tier,speed:veh.speed,dist:S.dist,
     x:veh.x,y:veh.y,z:veh.z,air:veh.air,cd:veh.cd,dead:veh.dead,
+    pickups:pickups.length,
     packages:world.packages.length,props:world.props.length,peds:world.peds.length,
     dogs:world.dogs.length,ramps:world.ramps.length,
     target:world.curTarget?{hz:world.curTarget.hz,scored:world.curTarget.scored}:null}; },
