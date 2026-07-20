@@ -309,7 +309,7 @@
       <div id="dbgLog"></div>
     </div>
 
-    <div id="brand">CRASHARCADE · TITAN GUARD v0.44.0</div>
+    <div id="brand">CRASHARCADE · TITAN GUARD v0.45.0</div>
   </div>
 </div>
 
@@ -353,7 +353,7 @@ const CFG={
   // offensive timing (base; widened by ability level)
   goodWin:0.115, perfectWin:0.05, centerWin:0.022,
   winPerLv:0.004,          // +good window per ability level
-  closurePerLv:0.25,       // +25% ring-closure speed per ability level (tighter timing at higher levels)
+  closureBase:1.25,        // flat ring-closure speed: +25% over the old L1 at EVERY level (v0.45: level-ups grant damage/windows, not speed — predictable leads for the camera)
   minSeqGap:0.22,          // floor on the gap between attack targets so high levels stay tappable
   cdPerLevel:3,            // ability cooldown grows 3s/level beyond the action bar; starts at level 2
   // grade -> damage
@@ -400,7 +400,7 @@ const ABASE={strike:150, shoot:170, cast:220, blitz:200};   // x10 (v0.35.0) —
 /* per-level numeric scaling */
 function lvDmg(lv){return 1+0.13*(lv-1);}            // base damage grows with level
 function lvGood(lv){return CFG.goodWin+CFG.winPerLv*(lv-1);}
-function closureSpeed(lv){return Math.pow(1+CFG.closurePerLv, lv-1);}   // ring closes 25% faster per level
+function closureSpeed(lv){return CFG.closureBase;}   // flat (v0.45, was 1.25^(lv-1)) — signature kept for the call sites
 function abilityCd(lv){return lv>=2 ? CFG.actionFill+CFG.cdPerLevel*(lv-1) : 0;}  // cooldown: none at L1, then bar + 5s/level
 function lvCrit(lv){return CFG.critPerLv*(lv-1);}
 
@@ -1024,10 +1024,10 @@ function updateHero(rdt){
   else if(off){ want= off._cued ? (HERO_CLIP[off.action]||HERO_CLIP.idle)
     : (off.action==='strike' && (off.startT-T)<=CFG.heroDashT ? 'Running' : HERO_CLIP.idle); heroRollT=0; }  // ready-beat (idle) -> run-in -> attack; no running in place during the fade
   else if(heroRollT>0) want=HERO_CLIP.dodge;                    // mid roll — let the full clip run
-  else if(introT>0) want=HERO_CLIP.intro;                       // pre-battle stance (sim-gated, plays fully)
+  else if(introT>0) want=(CFG.introDur-introT)>=CAMS.intro.stanceAt ? HERO_CLIP.intro : HERO_CLIP.idle;  // idle through the titan reveal; the stance starts WITH the camera pull-back (Andrew: he never saw it play)
   else if(heroOneShotT>0) want=heroOneShot;                     // hit flinch
   else want=HERO_CLIP.idle;
-  playHeroClip(want, HERO_LOOP.includes(want), 0.44, want===HERO_CLIP.blitz?0.75: want===HERO_CLIP.idle?0.5:1);   // idle at half speed (calmer stance); 0.22 crossfade tween between states
+  playHeroClip(want, HERO_LOOP.includes(want), 0.44, want===HERO_CLIP.blitz?0.75: want===HERO_CLIP.idle?0.5: (want===HERO_CLIP.intro&&introT>0)?CAMS.intro.stanceSpeed:1);   // idle at half speed; intro stance sped to fit the gate minus the reveal hold
   // chained-roll facing: spin to the accumulated CCW offset while rolling, ease home after
   if(heroModel){
     const ty = heroRollT>0 ? HERO_YAW+heroRollYawOff : HERO_YAW;
@@ -1836,7 +1836,7 @@ function beginOffense(action){
   const level=lv[action], tier=tierOf(level);
   const seqList = action==='blitz' ? SEQ.blitz[tier] : SEQ[action][tier];
   const targets=[]; let t=0;
-  const cs=closureSpeed(level);   // higher level => tighter gaps => the rings close faster (esp. blitz, which had big gaps)
+  const cs=closureSpeed(level);   // flat 1.25x ring speed at every level (v0.45)
   for(const d of seqList){ t+=Math.max(CFG.minSeqGap, d.g*CFG.timeScale/cs); targets.push({t, an:d.an, w:d.w, k:d.k, fin:!!d.fin, mv:d.mv||null, resolved:false, grade:null}); }
   const dur=targets[targets.length-1].t;
   off={action, level, tier, startT:T, targets, dur, idx:0, clean:true, dmgMul:lvDmg(level)*(action==='blitz'?1.35:1)};
@@ -2533,11 +2533,23 @@ const CAMS={
   swayAmp:0.05, swayT:7.3,              // breathing layer — imperceptible as motion, perceptible as life
   punchK:150, punchC:14, punchMax:0.55, // dolly-punch spring along the view axis (Law 4: replaces FOV kicks)
   // HOME tighten stack (fractions of the pos->look distance); validated via camCheck at tightenCap
-  tele:0.035, vuln:0.055, rageCue:0.05, rage:[0,0.022,0.045], bankRef:25000, bankMax:0.04, tightenCap:0.12,
+  tele:0.06, vuln:0.055, rageCue:0.05, rage:[0,0.022,0.045], bankRef:25000, bankMax:0.04, tightenCap:0.12,   // tele = the PROJECTILE wind-up push (melee wind-ups get the imposing shot instead)
+  // attack shot: after commit, glide low + screen-left of the hero to sit with the timing game; crawl home on resolve.
+  // PHOME-anchored (strike's dash must never drag the camera). offLeadIn guarantees the glide lands before target 1.
+  attack:{dx:2.8, dy:2.0, dz:8.4, lookX:0.0, lookY:3.0, lookZ:-6.0, rate:4.5, max:8,
+          perFoe:[null, {dx:4.2, dz:15.3, lookY:3.3}, {dz:10.4, lookY:4.1}]},   // Gale: scythe+wingspan needs distance; Sky: tilt up for the halo (screenshot-verified)
+  // imposing shot (MELEE wind-ups): overshoot toward the titan during the walk-in, settle low-right of the hero
+  // for the dodge game — the titan towers. Settle is a short same-rail pull-back, done before the tap window.
+  // (only the Juggernaut melees, and he fights from MID_PT — pose verified with him there; lookZ ~= MID_PT.z)
+  imposing:{dx:4.9, dy:1.35, dz:9.4, lookX:0.1, lookY:2.4, lookHe:0.08, lookZ:-4.5, pushF:0.14, rate:2.6, settleRate:4.5, max:9, perFoe:[null,null,null]},
+  budgetN:2, budgetWin:15,   // cinema budget: max N attack/imposing activations per rolling window (s) — overload guard
   // low-angle hero shot (hard cut); per-foe pull-back keeps Gale's wings + the Sky Titan fully framed (screenshot-verified all 3)
   blitz:{dx:2.2, dy:0.74, dz:4.9, lookMix:0.32, lookDx:-0.3, lookH:2.0, lookHe:0.17, fov:52,
          perFoe:[null, {dx:2.4, dz:6.1, lookDx:0}, {dx:2.4, dz:6.1, lookDx:0}]},
-  intro:{d:8.0, az:0.5, y0:2.6, y1:3.4, look0:0.10, look1:0.55, rise:0.45},      // titan reveal -> glide to HOME (v0.33.0: raised + capped up-tilt — the low shot aimed past the backdrop's top edge into blue)
+  // titan reveal -> pull back -> HOME hold while the stance plays (v0.45: reveal shortened — Andrew never saw the
+  // stance; hero idles until stanceAt, then Axe_Stance runs at stanceSpeed to end exactly with the 6.1s gate).
+  // y0/y1/look1 raised per v0.33.0 — the low shot aimed past the backdrop's top edge into blue.
+  intro:{d:8.0, az:0.5, y0:2.6, y1:3.4, look0:0.10, look1:0.55, rise:0.20, settle:0.38, stanceAt:1.22, stanceSpeed:1.25},
   kill:{d0:1.45, d1:0.98, az:0.42, yF:0.42, lookF:0.52},                         // push-in on the dissolve (x titan height)
   victory:{dx:3.2, dy:1.15, dz:4.6, lookDx:-0.3, lookY:1.2, fov:44},
   crash:{rise:4.2, back:7.0, dur:4.0, lookY:0.5},
@@ -2547,6 +2559,7 @@ const _camCur={pos:CAM.pos.clone(), look:CAM.look.clone(), fov:41};
 const _cg={pos:new THREE.Vector3(), look:new THREE.Vector3(), fov:41, cut:false, rate:CAMS.glideRate, max:0};
 let _camShotId='home', _camShotT=0, _camPunch=0, _camPunchV=0, _camSway=0, _camRageCueT=0;
 let _camForce=null, _camForceT=null, _camTightForce=null;
+let _camClock=0, _camSpends=[], _camVeto=null, _camLastRaw='home';   // cinema budget: rolling activation window + per-beat veto
 const _camV1=new THREE.Vector3(), _camV2=new THREE.Vector3();
 function camPunch(a){ _camPunchV+=a*12; }             // impulse along the view axis; the spring pulls it home
 function _camEnemyH(){ return enemyMesh ? (enemyMesh.userData.height||10)*enemyMesh.scale.x : 8; }
@@ -2561,7 +2574,7 @@ function _camShotGoal(g,id,t){
       if(p<C.rise){ const q=smooth(p/C.rise);
         g.pos.set(px, lerp(C.y0,C.y1,q), pz);
         g.look.set(ep.x, eH*lerp(C.look0,C.look1,q), ep.z);
-      }else{ const q=smooth((p-C.rise)/(1-C.rise));
+      }else{ const q=smooth(clamp((p-C.rise)/(C.settle-C.rise),0,1));   // pull back by p=settle, then HOLD at HOME while the stance plays
         g.pos.set(lerp(px,CAM.pos.x,q), lerp(C.y1,CAM.pos.y,q), lerp(pz,CAM.pos.z,q));
         g.look.set(lerp(ep.x,CAM.look.x,q), lerp(eH*C.look1,CAM.look.y,q), lerp(ep.z,CAM.look.z,q));
       }
@@ -2576,6 +2589,20 @@ function _camShotGoal(g,id,t){
       g.pos.set(hx+C.dx, C.dy, hz+C.dz);
       g.look.set(lerp(hx,ep.x,C.lookMix)+C.lookDx, C.lookH+eH*C.lookHe, lerp(hz,ep.z,C.lookMix*1.4));
       g.fov=C.fov; g.cut=true; break; }
+    case 'attack':{ // committed action: sit low with the timing game (glide in during offLeadIn, static through the sequence)
+      const C={...CAMS.attack, ...(CAMS.attack.perFoe[enemyIdx]||{})};
+      g.pos.set(PHOME.x+C.dx, C.dy, PHOME.z+C.dz);
+      g.look.set(C.lookX, C.lookY, C.lookZ);
+      g.rate=C.rate; g.max=C.max; break; }
+    case 'imposing':{ // melee wind-up: overshoot toward the titan on the walk-in, settle low-right of the hero — it TOWERS
+      const C={...CAMS.imposing, ...(CAMS.imposing.perFoe[enemyIdx]||{})};
+      g.pos.set(PHOME.x+C.dx, C.dy, PHOME.z+C.dz);
+      g.look.set(C.lookX, C.lookY+eH*C.lookHe, C.lookZ);
+      if(enemyState==='approach'){                    // phase 1: dolly toward the titan along the shot's own rail
+        _camV2.set(ep.x-g.pos.x, eH*0.5-g.pos.y, ep.z-g.pos.z);
+        g.pos.addScaledVector(_camV2, C.pushF); g.rate=C.rate;
+      } else g.rate=C.settleRate;                     // phase 2: short pull-back settle, done before the tap window opens
+      g.max=C.max; break; }
     case 'victory':{ // EXEMPT: the titan is gone — a close heroic angle on the Sword_Shout
       const C=CAMS.victory;
       g.pos.set(hx+C.dx, C.dy, hz+C.dz); g.look.set(hx+C.lookDx, C.lookY, hz);
@@ -2616,10 +2643,26 @@ function directCamera(rdt){
   else if(state==='defeated') id='kill';
   else if(state==='result') id = heroDead?'crash' : (resultTitle==='CASHED OUT'?'cashout':'victory');
   else if(state==='combat' && off && off.action==='blitz') id='blitz';
+  else if(state==='combat' && off) id='attack';
+  else if(state==='combat' && ((enemyState==='approach'&&approachMove) || (atk&&atk.approached&&(enemyState==='telegraph'||enemyState==='active')))) id='imposing';
+  // cinema budget (Andrew): the two per-turn shots fire at most budgetN times per budgetWin seconds.
+  // Decided once at beat entry and sticky for the beat — a blocked shot never pops in halfway.
+  _camClock+=rdt;
+  if(!_camForce){
+    if(id!==_camLastRaw){
+      if(id==='attack'||id==='imposing'){
+        _camSpends=_camSpends.filter(s=>_camClock-s<CAMS.budgetWin);
+        if(_camSpends.length>=CAMS.budgetN) _camVeto=id; else { _camSpends.push(_camClock); _camVeto=null; }
+      } else _camVeto=null;
+      _camLastRaw=id;
+    }
+    if(_camVeto===id) id='home';   // over budget: this beat plays at HOME with the standard drifts
+  }
   const prevCut=_cg.cut, changed=(id!==_camShotId);
   if(changed) _camShotT=0; else if(!paused) _camShotT+=rdt;
   _camShotId=id;
   _camShotGoal(_cg, id, _camForceT!=null?_camForceT:_camShotT);
+  if(id==='home' && _camCur.pos.distanceTo(_cg.pos)>0.6){ _cg.rate=3.2; _cg.max=6; }   // far from HOME (leaving attack/imposing): pull back out as a real glide, then the crawl class takes over
   if(changed && (_cg.cut||prevCut)){ _camCur.pos.copy(_cg.pos); _camCur.look.copy(_cg.look); }
   else{
     const k=1-Math.exp(-rdt*_cg.rate);
@@ -3214,7 +3257,7 @@ window.__game={
   camOn:(v=true)=>{ CAMS.on=!!v; },
   camShot:(name=null,t=null)=>{ _camForce=name; _camForceT=t; return _camForce||'(auto)'; },   // force a shot (+optional shot-time) for posing; camShot() releases
   camTight:(v=null)=>{ _camTightForce=v; return v; },                                          // force the HOME tighten for Law-1 validation
-  camDbg:()=>({ shot:_camShotId, t:+_camShotT.toFixed(2), fov:_camCur.fov, punch:+_camPunch.toFixed(3),
+  camDbg:()=>({ shot:_camShotId, t:+_camShotT.toFixed(2), fov:_camCur.fov, punch:+_camPunch.toFixed(3), veto:_camVeto, spends:_camSpends.length,
     pos:_camCur.pos.toArray().map(n=>+n.toFixed(2)), look:_camCur.look.toArray().map(n=>+n.toFixed(2)) }),
   camCheck:(m=0.04)=>{ if(!playerMesh||!enemyMesh) return '(need a run)';   // Law 1 vs the LIVE camera: both real bounding boxes inside an m-margin frame
     const box=new THREE.Box3(), c=new THREE.Vector3(), out={ok:true};
@@ -3235,7 +3278,7 @@ window.__game={
     eFeet:(s=>({x:Math.round(s.x),y:Math.round(s.y),ok:s.ok}))(toScreen(enemyMesh.userData.anchors.low.getWorldPosition(new THREE.Vector3()))),
     cw,ch }),
   bench:(n=90)=>{ const t0=performance.now(); for(let i=0;i<n;i++){ step(1/60); renderer.render(scene,camera);} return +((performance.now()-t0)/n).toFixed(2); },
-  _gl:()=>({scene,renderer,sun,camera,THREE})   // 3D internals for live debugging (shadows/lights)
+  _gl:()=>({scene,renderer,sun,camera,THREE,CAMS})   // 3D internals for live debugging (shadows/lights/camera tuning)
 };
 
 /* =========================================================================
