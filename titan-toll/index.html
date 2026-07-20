@@ -309,7 +309,7 @@
       <div id="dbgLog"></div>
     </div>
 
-    <div id="brand">CRASHARCADE · TITAN GUARD v0.27.2</div>
+    <div id="brand">CRASHARCADE · TITAN GUARD v0.27.3</div>
   </div>
 </div>
 
@@ -622,7 +622,8 @@ const GROUND_REPEAT=32;   // tiles across the 340u plane => ~10.6u per tile; rai
   tex.anisotropy=Math.min(8, renderer.capabilities.getMaxAnisotropy());   // plane is viewed ~22.5° oblique — keeps the art crisp
   const W=400, H=W/2;                                       // art is 2:1 (1774x887)
   const m=new THREE.Mesh(new THREE.PlaneGeometry(W,H),
-    new THREE.MeshBasicMaterial({map:tex, fog:false, toneMapped:false}));  // painting carries its own light + haze — keep game fog/ACES off it
+    new THREE.MeshBasicMaterial({map:tex, fog:false, toneMapped:false,     // painting carries its own light + haze — keep game fog/ACES off it
+      color:0xc7dbc0}));   // dim (0.78,0.86,0.75): measured ratio of the LIT ground texture to the art's grass at the seam — the two greens meet without a brightness step
   // Size: 1.5x a desktop-view footprint at this depth (16:9 frustum spans ~268 units here) —
   // W=520 stretched the 1774px art blurry. Centred on the desktop footprint (x≈-87..-65 across
   // aspects -> -80). y keeps the art's bright-grass band meeting the terrain horizon (~y=5 sits
