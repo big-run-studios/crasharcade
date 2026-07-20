@@ -309,7 +309,7 @@
       <div id="dbgLog"></div>
     </div>
 
-    <div id="brand">CRASHARCADE · TITAN GUARD v0.32.0</div>
+    <div id="brand">CRASHARCADE · TITAN GUARD v0.32.1</div>
   </div>
 </div>
 
@@ -3052,7 +3052,12 @@ window.__game={
   boneFix:(node,rx=0,ry=0,rz=0)=>{ const u=enemyMesh&&enemyMesh.userData; if(!u||!u.model)return '(no enemy)'; const bone=u.model.getObjectByName(node);
     u.boneFix=[{bone, q:new THREE.Quaternion().setFromEuler(new THREE.Euler(rx,ry,rz)), node}]; return {node, found:!!bone, e:[rx,ry,rz]}; },
   arms:()=>{ const u=enemyMesh&&enemyMesh.userData; if(!u||!u.armDups) return null;
-    return u.armDups.map(d=>d?{mesh:!!d.mesh, mirroredWrist:!!(d.hand&&d.dupHand)}:null); },
+    return u.armDups.map(d=>{ if(!d||!d.mesh) return null;
+      d.mesh.computeBoundingBox(); const bb=d.mesh.boundingBox.clone().applyMatrix4(d.mesh.matrixWorld);
+      const c=bb.getCenter(new THREE.Vector3()), s=bb.getSize(new THREE.Vector3());
+      return {visible:d.mesh.visible, tris:d.mesh.geometry.index.count/3,
+        centre:[+c.x.toFixed(2),+c.y.toFixed(2),+c.z.toFixed(2)], size:[+s.x.toFixed(2),+s.y.toFixed(2),+s.z.toFixed(2)],
+        mirroredWrist:!!(d.hand&&d.dupHand)}; }); },
   armTune:(which=0,rx=Math.PI,ry=0,rz=0)=>{ const u=enemyMesh&&enemyMesh.userData; if(!u||!u.model)return '(no enemy)'; const arms=ENEMY_ARMS[u.armIdx]; if(!arms||!arms[which])return '(no such arm)';
     if(u.armDups&&u.armDups[which]){ const d=u.armDups[which], m=d.mesh||d; m.parent&&m.parent.remove(m); m.geometry.dispose();
       if(d.dupFore&&d.dupFore.parent) d.dupFore.parent.remove(d.dupFore); }
