@@ -309,7 +309,7 @@
       <div id="dbgLog"></div>
     </div>
 
-    <div id="brand">CRASHARCADE · TITAN GUARD v0.26.1</div>
+    <div id="brand">CRASHARCADE · TITAN GUARD v0.26.2</div>
   </div>
 </div>
 
@@ -2084,7 +2084,7 @@ function animatePlayer(rdt){
   //                stabs through the ground during the low Axe_Stance crouch
   //      shoot  -> bazooka butt (local -Y) aimed at the titan's midsection
   //      else   -> upright
-  if(introT>0) _pikeQT.setFromEuler(_pikeSideE);
+  if(heroDead || introT>0) _pikeQT.setFromEuler(_pikeSideE);   // dead: the pike lies flat beside him; intro: held level
   else if((playerPose==='shoot'||playerPose==='strike') && enemyMesh && enemyMesh.userData.anchors){
     // shoot: bazooka butt (local -Y) at the titan's core; strike: blade TIP (local +Y) drives at it
     enemyMesh.userData.anchors.core.getWorldPosition(_pikeAim);
