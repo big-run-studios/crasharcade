@@ -309,7 +309,7 @@
       <div id="dbgLog"></div>
     </div>
 
-    <div id="brand">CRASHARCADE · TITAN GUARD v0.43.2</div>
+    <div id="brand">CRASHARCADE · TITAN GUARD v0.44.0</div>
   </div>
 </div>
 
@@ -856,7 +856,12 @@ function buildPlayer(){
 /* =========================================================================
    HERO MODEL — rigged GLB (Meshy "Nocturnal Vanguard") replacing the blocky body
    ========================================================================= */
-let heroGLTF=null, heroModel=null, heroMixer=null, heroAction=null, heroCurName='', heroRightHand=null, heroDead=false, heroOneShot='', heroOneShotT=0;
+let heroGLTF=null, heroModel=null, heroMixer=null, heroAction=null, heroCurName='', heroRightHand=null, heroRightForeArm=null, heroDead=false, heroOneShot='', heroOneShotT=0;
+// Pike-hand fit (v0.44.0): roll the pike forearm 90° so the fist wraps the shaft naturally
+// (bone-local Y = roll axis, same convention as Gale's forearm), and grip the shaft INSIDE
+// the fist — GRIP_ALONG is bone-local units from the wrist toward the knuckles (hand spans
+// y 0→~9 post-curl; ~6 = palm centre). Re-applied every frame AFTER the mixer (clips own the bones).
+const HERO_FORE_ROLL=Math.PI/2, HERO_GRIP_ALONG=6;
 let heroRollT=0, heroRollYawOff=0;   // dodge roll: remaining time + accumulated 90° CCW yaw for chained rolls
 let introT=0;                        // sim-clocked intro gate: battle starts after the hero's full stance
 const heroClips={};
@@ -924,6 +929,7 @@ function attachHero(){
   playerMesh.add(hero); heroModel=hero;
   playerMesh.userData.body.visible=false;                                    // hide the procedural blocky body
   heroRightHand=hero.getObjectByName('RightHand');
+  heroRightForeArm=hero.getObjectByName('RightForeArm');
   playerMesh.add(playerMesh.userData.pike);                                  // keep the pike (+blitzAura/tipLight) out of the hidden arm
   heroMixer=new THREE.AnimationMixer(hero);
   for(const c of heroGLTF.animations) heroClips[c.name]=c;
@@ -1006,6 +1012,7 @@ function heroDodgeRoll(){
 function updateHero(rdt){
   if(!heroMixer) return;
   heroMixer.update(rdt);
+  if(heroRightForeArm) heroRightForeArm.rotateY(HERO_FORE_ROLL);   // roll the pike hand onto the shaft (post-mixer — clips reset the bone every update)
   if(heroOneShotT>0) heroOneShotT-=rdt;
   if(heroRollT>0) heroRollT-=rdt;
   // strike dash arrival: swing wind-up starts only once the run-in completes
@@ -1028,7 +1035,9 @@ function updateHero(rdt){
     if(heroRollT<=0 && Math.abs(heroModel.rotation.y-HERO_YAW)<0.01){ heroModel.rotation.y=HERO_YAW; heroRollYawOff=0; }
   }
   if(heroRightHand){ const pike=playerMesh.userData.pike;                    // pike follows the right hand (position)
-    heroRightHand.getWorldPosition(_hHand); playerMesh.worldToLocal(_hHand); pike.position.copy(_hHand); }
+    heroRightHand.updateWorldMatrix(true,false);
+    _hHand.set(0,HERO_GRIP_ALONG,0).applyMatrix4(heroRightHand.matrixWorld); // grip point sits IN the fist, not on the wrist bone origin
+    playerMesh.worldToLocal(_hHand); pike.position.copy(_hHand); }
 }
 
 /* =========================================================================
