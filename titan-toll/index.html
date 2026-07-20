@@ -309,7 +309,7 @@
       <div id="dbgLog"></div>
     </div>
 
-    <div id="brand">CRASHARCADE · TITAN GUARD v0.27.0</div>
+    <div id="brand">CRASHARCADE · TITAN GUARD v0.27.1</div>
   </div>
 </div>
 
@@ -623,10 +623,11 @@ const GROUND_REPEAT=32;   // tiles across the 340u plane => ~10.6u per tile; rai
   const m=new THREE.Mesh(new THREE.PlaneGeometry(W,H),
     new THREE.MeshBasicMaterial({map:tex, fog:false, toneMapped:false}));  // painting carries its own light + haze — keep game fog/ACES off it
   // Centered on the camera's VIEW AXIS at this depth (the quarter-profile orbit hits z=-142 at
-  // x≈-57 — a 0-centred plane sat visibly off to the right in landscape windows), and scaled up
-  // 1.44x about the mountain-band line (world y≈8) so the art keeps its horizon placement while
-  // the top edge reaches y≈155 (no background band above the painting in wide/tall windows).
-  m.position.set(-57, 25, -142);
+  // x≈-57 — a 0-centred plane sat visibly off to the right in landscape windows), scaled up
+  // 1.44x (W 360->520) to cover wide/tall windows. y=80 — raised halfway toward "bottom edge on
+  // the ground line" (Andrew) so the painting's bright-green grass foreground shows above the
+  // terrain horizon instead of hiding below it.
+  m.position.set(-57, 80, -142);
   scene.add(m);
 })();
 
