@@ -309,7 +309,7 @@
       <div id="dbgLog"></div>
     </div>
 
-    <div id="brand">CRASHARCADE · TITAN GUARD v0.30.2</div>
+    <div id="brand">CRASHARCADE · TITAN GUARD v0.31.1</div>
   </div>
 </div>
 
@@ -388,6 +388,7 @@ const CFG={
   dodgeScorePerfect:1000, dodgeScoreGoodHi:750, dodgeScoreGoodLo:300, // dodge score by quality
   dmgFontMax:300,          // damage >= this draws at the 4x max size
   approachT:0.9,           // Juggernaut walk-in time before a MELEE attack (the dodge game starts on arrival)
+  galePreT:2.0,            // Gale's pre-attack tell: two slow head nods (the dodge game starts after)
   heroDashT:0.55,          // hero run-in time before a strike (the timing game starts on arrival)
 };
 
@@ -1410,9 +1411,11 @@ function buildEnemyGLB(i){
     const maxL=(distW-ATK_STOP_MARGIN)/((h/nat)*(ENEMY_SCALE[i]||1));
     for(const nm of new Set(ENEMY_ANIM[i].attacks)) capClipTravelXZ(clips[nm], maxL); }
   const spk=ENEMY_SPARK[i]; const sparkBone=spk?model.getObjectByName(spk.node):null;
+  let nodBone=model.getObjectByName('Head');                       // pre-attack nod tell (Gale)
+  if(!nodBone) model.traverse(o=>{ if(!nodBone && o.isBone && /head/i.test(o.name)) nodBone=o; });
   const handBone=model.getObjectByName('RightHand');   // hand-origin projectile VFX fire from here
   const armDups=ENEMY_ARMS[i]?ENEMY_ARMS[i].map(a=>buildLimbDuplicate(model,a)):null;   // mirrored forearms (Gale, both arms)
-  g.userData={...g.userData, height:h, model, mixer, clips, animMap:ENEMY_ANIM[i], baseYaw:ENEMY_YAW[i], rotMap:ENEMY_ROT[i]||{}, curClip:'', action:null, _rx:0, spark:spk, sparkBone, boneFix:resolveBoneFix(model,i), armDups, armIdx:i, handBone};
+  g.userData={...g.userData, height:h, model, mixer, clips, animMap:ENEMY_ANIM[i], baseYaw:ENEMY_YAW[i], rotMap:ENEMY_ROT[i]||{}, curClip:'', action:null, _rx:0, spark:spk, sparkBone, nodBone, boneFix:resolveBoneFix(model,i), armDups, armIdx:i, handBone};
   playEnemyClip(g.userData, ENEMY_ANIM[i].idle, true, 0);
   return g;
 }
@@ -1448,7 +1451,8 @@ let forcedAttack=-1;
 let godMode=false, paused=false;
 let defeatedT=0;
 let enemyKb=0, enemyKbV=0;                 // enemy hit-recoil spring (knockback away from player, scaled by damage)
-let pendingAtk=-1;                          // attack chosen but waiting on the approach walk-in
+let pendingAtk=-1;                          // attack chosen but waiting on the pre-attack phase
+let preDur=0, approachMove=true;            // pre-attack length + whether it MOVES (Juggernaut walks; Gale nods in place)
 let enemyHurtT=0;                          // >0 => play the boss hit-reaction clip (cosmetic; set when a player hit lands)
 let enemyDeathFx=null;                      // active slow red death dissolve
 const E_DEATH_FREEZE=0.45, E_DEATH_DUR=2.2, E_DEATH_HOLD=0.3, E_DEATH_COL=0xff2a1e, E_DEATH_MOTE='#ff6a4a';
@@ -1900,7 +1904,7 @@ function startAttack(idx){
   } else {
     hits = s.hits.map(h=>({...h, at:h.at*CFG.timeScale, dmg:h.dmg, resolved:false, dodged:false, tele:false}));
   }
-  atk={setIdx:idx, set:s, startT:T, animTimed, hits, approached:enemyState==='approach'};   // approached: walked in — walk back during recovery
+  atk={setIdx:idx, set:s, startT:T, animTimed, hits, approached:enemyState==='approach'&&approachMove};   // approached: walked in — jump home after (Gale's nod doesn't move)
   last2Atk=lastAtk; lastAtk=idx;
   recentFast = isFast(s) ? recentFast+1 : 0;
   enemyState='telegraph'; enemyTimer=0;
@@ -1918,14 +1922,15 @@ function updateEnemy(dt){
       const idx=chooseAttack();
       const alist=ENEMY_ANIM[enemyIdx].attacks, clip=alist&&alist[idx%alist.length];
       const melee = enemyIdx===0 && !(ENEMY_FX[enemyIdx]&&ENEMY_FX[enemyIdx][clip]);   // Juggernaut walks in for MELEE attacks; projectiles fire from home
-      if(melee){ pendingAtk=idx; enemyState='approach'; enemyTimer=0; }
+      if(melee){ pendingAtk=idx; enemyState='approach'; enemyTimer=0; preDur=CFG.approachT; approachMove=true; }
+      else if(enemyIdx===1){ pendingAtk=idx; enemyState='approach'; enemyTimer=0; preDur=CFG.galePreT; approachMove=false; }   // Gale: two slow nods before every cast
       else startAttack(idx);
     }
     return;
   }
   if(enemyState==='approach'){
     enemyTimer+=dt;
-    if(enemyTimer>=CFG.approachT) startAttack(pendingAtk);   // arrive -> the dodge game starts NOW (the walk never eats into it)
+    if(enemyTimer>=preDur) startAttack(pendingAtk);   // pre-attack done -> the dodge game starts NOW (the tell never eats into it)
     return;
   }
   if(enemyState==='telegraph'||enemyState==='active'){
@@ -2266,6 +2271,7 @@ function animatePlayer(rdt){
     }
   }
 }
+const _nodQ=new THREE.Quaternion(), _nodE=new THREE.Euler();
 function animateEnemy(rdt){
   if(!enemyMesh)return; const u=enemyMesh.userData; const t=performance.now()/1000;
   if(enemyDeathFx) return;                 // pose frozen during the death dissolve
@@ -2276,7 +2282,7 @@ function animateEnemy(rdt){
   // attack, then JUMP home at recovery start — a fast ballistic arc (no jump clip authored;
   // the parabola + Stand_Dodge hop pose sell it). Cosmetic — the dodge game anchors on arrival.
   let apT=0, jumpY=0, snap=false;
-  if(enemyState==='approach') apT=clamp(enemyTimer/CFG.approachT,0,1);
+  if(enemyState==='approach') apT=approachMove?clamp(enemyTimer/preDur,0,1):0;   // Gale's nod tell stays planted
   else if(atk && atk.approached && (enemyState==='telegraph'||enemyState==='active')) apT=1;
   else if(atk && atk.approached && enemyState==='recovery'){
     const p=clamp(enemyTimer/0.45,0,1);
@@ -2315,9 +2321,14 @@ function animateEnemy(rdt){
   if(u.mixer){
     u.mixer.update(rdt);
     if(u.boneFix){ for(const f of u.boneFix){ if(f.bone) f.bone.quaternion.premultiply(f.q); } }   // corrective bone rotations on top of the animation
+    if(enemyState==='approach' && !approachMove && u.nodBone){                 // Gale's tell: two slow head nods over the pre-attack window
+      const p=clamp(enemyTimer/preDur,0,1);
+      _nodQ.setFromEuler(_nodE.set(Math.max(0,Math.sin(p*Math.PI*4))*0.5,0,0));
+      u.nodBone.quaternion.multiply(_nodQ);                                    // local pitch, applied after the mixer like boneFix
+    }
     const map=u.animMap; let want=map.idle, loop=true, spd=map.idleSpd||1;   // per-boss idle pace (Cliffhorn 0.5)
     if(enemyHurtT>0 || enemyState==='stagger'){ want=map.hit; loop=false; spd=1; }
-    else if(enemyState==='approach' && u.clips['Walking']){ want='Walking'; loop=true; spd=1.15; }   // walk in (jump home keeps the idle pose — the arc sells it; Stand_Dodge read silly)
+    else if(enemyState==='approach' && approachMove && u.clips['Walking']){ want='Walking'; loop=true; spd=1.15; }   // walk in (jump home keeps the idle pose — the arc sells it; Stand_Dodge read silly)
     else if(atk && (enemyState==='telegraph'||enemyState==='active')){       // attack: fit the clip to the dodge-game window
       want=map.attacks[(atk.setIdx||0)%map.attacks.length]; loop=false;
       if(atk.animTimed){ spd=1; }                                            // animation-driven: play natural so the swing aligns with the taps
