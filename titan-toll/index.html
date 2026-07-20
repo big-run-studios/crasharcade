@@ -309,7 +309,7 @@
       <div id="dbgLog"></div>
     </div>
 
-    <div id="brand">CRASHARCADE · TITAN GUARD v0.33.0</div>
+    <div id="brand">CRASHARCADE · TITAN GUARD v0.34.0</div>
   </div>
 </div>
 
@@ -559,8 +559,8 @@ camera.position.copy(CAM.pos); camera.lookAt(CAM.look);
 // Light balance v0.33.0: shadows only attenuate the SUN's share — at the old mix (sun 1.55 vs
 // 3.05 of unshadowed hemi+fill+rim) a shadowed patch kept ~66% brightness and read as nothing on
 // the busy grass. Same total energy, sun-heavier => shadows land at ~51% and actually read.
-scene.add(new THREE.HemisphereLight(0xdff0ff, 0x6a7550, 0.75));                                   // sky + warmer ground bounce (lifts shadowed undersides)
-const sun=new THREE.DirectionalLight(0xffe3b4, 2.2); sun.position.set(-15,9.5,6); scene.add(sun); // key: lower + warmer = afternoon; the low angle stretches the ground shadows
+scene.add(new THREE.HemisphereLight(0xdff0ff, 0x6a7550, 0.6));                                    // sky + warmer ground bounce (lifts shadowed undersides)
+const sun=new THREE.DirectionalLight(0xffe3b4, 2.6); sun.position.set(-15,9.5,6); scene.add(sun); // key: lower + warmer = afternoon; the low angle stretches the ground shadows
 // ground shadows: the sun is the only caster — one 2048 map over just the combat lane
 renderer.shadowMap.enabled=true; renderer.shadowMap.type=THREE.PCFSoftShadowMap;
 sun.castShadow=true; sun.shadow.mapSize.set(2048,2048);
@@ -569,8 +569,8 @@ sun.shadow.camera.near=1; sun.shadow.camera.far=80;
 sun.shadow.camera.updateProjectionMatrix();                                                       // frustum edits after construction need this or the map stays the default ±5 box
 sun.shadow.bias=-0.0004; sun.shadow.normalBias=0.5;                                               // normalBias: skinned meshes acne badly without it
 sun.target.position.set(0,0,-5); scene.add(sun.target);                                          // aim between hero (z 2.2) and titan (z -11)
-const fill=new THREE.DirectionalLight(0xcfe0ff, 0.4);  fill.position.set(9,6,10);  scene.add(fill); // camera-side fill (lights the faces we actually see)
-const rim=new THREE.DirectionalLight(0xeaf4ff, 1.15);  rim.position.set(-5,12,-16); scene.add(rim); // back/rim — bright edge that separates the dark heroes/titans from the background
+const fill=new THREE.DirectionalLight(0xcfe0ff, 0.35); fill.position.set(9,6,10);  scene.add(fill); // camera-side fill (lights the faces we actually see)
+const rim=new THREE.DirectionalLight(0xeaf4ff, 0.95);  rim.position.set(-5,12,-16); scene.add(rim); // back/rim — bright edge that separates the dark heroes/titans from the background
 // subtle filmic response so the extra light enriches instead of blowing out
 renderer.toneMapping=THREE.ACESFilmicToneMapping; renderer.toneMappingExposure=1.15;
 
@@ -1183,11 +1183,11 @@ const ENEMY_TAPS=[
     'Punch_Combo':  { dur:2.467, taps:[0.646,1.404] },
     'Punch_Pose':   { dur:4.3,   taps:[2.516] },
   },
-  {  // Gale — all 4 unique cast clips authored
-    'mage_soell_cast':  { dur:2.267, taps:[0.972] },              // Attack 1 & 8
-    'mage_soell_cast_2':{ dur:3,     taps:[0.33,0.684,1.398] },   // Attack 2 & 5
-    'mage_soell_cast_4':{ dur:2.233, taps:[0.732] },              // Attack 3 & 6
-    'mage_soell_cast_6':{ dur:2.3,   taps:[0.492,0.768,1.074] },  // Attack 4 & 7
+  {  // Gale — all 4 unique cast clips authored (lab re-export 2026-07-20)
+    'mage_soell_cast':  { dur:2.267, taps:[0.972] },        // Attack 1 & 8
+    'mage_soell_cast_2':{ dur:3,     taps:[1.4,1.735] },    // Attack 2 & 5
+    'mage_soell_cast_4':{ dur:2.233, taps:[0.825] },        // Attack 3 & 6
+    'mage_soell_cast_6':{ dur:2.3,   taps:[0.94,1.485] },   // Attack 4 & 7
   },
   {  // Sky Titan — all 8 slots authored
     'Shrug':                { dur:2,     taps:[0.795] },                 // Attack 1
@@ -1422,13 +1422,24 @@ function buildEnemyGLB(i){
   const handBone=model.getObjectByName('RightHand');   // hand-origin projectile VFX fire from here
   const armDups=ENEMY_ARMS[i]?ENEMY_ARMS[i].map(a=>buildLimbDuplicate(model,a)):null;   // mirrored forearms (Gale, both arms)
   g.userData={...g.userData, height:h, model, mixer, clips, animMap:ENEMY_ANIM[i], baseYaw:ENEMY_YAW[i], rotMap:ENEMY_ROT[i]||{}, curClip:'', action:null, _rx:0, spark:spk, sparkBone, nodBone, boneFix:resolveBoneFix(model,i), armDups, armIdx:i, handBone};
+  // GROUND OFFSETS PER CLIP — clips are authored at different heights (idle floated, some attacks
+  // hover or sink). Measure each mapped clip's FIRST-FRAME skinned min-Y once at build;
+  // animateEnemy then lifts/drops the model per playing clip so every animation STARTS on the ground.
+  { const groundOffs={}, bb=new THREE.Box3();
+    const measured=new Set([ENEMY_ANIM[i].idle, ENEMY_ANIM[i].hit, 'Walking', ...ENEMY_ANIM[i].attacks]);
+    for(const nm of measured){ const c=clips[nm]; if(!c) continue;
+      mixer.stopAllAction();
+      const a=mixer.clipAction(c); a.reset(); a.setEffectiveWeight(1); a.play();
+      mixer.update(0.02); g.updateMatrixWorld(true);
+      let minY=Infinity;
+      model.traverse(o=>{ if(o.isSkinnedMesh){ o.computeBoundingBox(); bb.copy(o.boundingBox).applyMatrix4(o.matrixWorld); minY=Math.min(minY,bb.min.y); } });
+      if(isFinite(minY)) groundOffs[nm]=minY;
+      a.stop();
+    }
+    mixer.stopAllAction();
+    g.userData.groundOffs=groundOffs; g.userData.modelBaseY=model.position.y;
+  }
   playEnemyClip(g.userData, ENEMY_ANIM[i].idle, true, 0);
-  // ground-fit to the IDLE pose, not the bind pose — every boss idled floating (idle hips sit
-  // higher than bind): tick the mixer once, measure the SKINNED bbox, drop the feet to y=0
-  mixer.update(0.03); g.updateMatrixWorld(true);
-  { let minY=Infinity; const bb=new THREE.Box3();
-    model.traverse(o=>{ if(o.isSkinnedMesh){ o.computeBoundingBox(); bb.copy(o.boundingBox).applyMatrix4(o.matrixWorld); minY=Math.min(minY,bb.min.y); } });
-    if(isFinite(minY)) model.position.y-=minY; }
   return g;
 }
 
@@ -2303,6 +2314,13 @@ function animateEnemy(rdt){
     apT=1-smooth(p); jumpY=Math.sin(p*Math.PI)*3.4; snap=true;   // leap: horizontal ease + parabolic height
   }
   u._apF = snap ? apT : lerp(u._apF||0, apT, Math.min(1,rdt*5));
+  // per-clip ground offset (measured at build): every animation STARTS touching the ground;
+  // lerped at ~fade speed so clip crossfades don't pop the height
+  if(u.groundOffs && u.model){
+    const gOff = u.groundOffs[u.curClip]!=null ? -u.groundOffs[u.curClip] : 0;
+    u._gy = (u._gy==null) ? gOff : lerp(u._gy, gOff, Math.min(1,rdt*6));
+    u.model.position.y = u.modelBaseY + u._gy;
+  }
   // feet stay planted (the old sine bob floated the grounded GLBs); keep the small hop when shoved back
   enemyMesh.position.x=-0.55 + u._apF*(MID_PT.x+0.55);
   enemyMesh.position.y=Math.max(0,-enemyKb)*0.25 + jumpY;
