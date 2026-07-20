@@ -181,7 +181,7 @@
     <div class="tag">Steer 🛞 &nbsp;Throw 📦 &nbsp;Smash the block 💥 &nbsp;Cash out 💰</div>
     <button id="startBtn">START ROUTE</button>
     <div id="menuBest"></div>
-    <div class="brand" id="brand">EXPRESS DELIVERY v0.1.1 · BIG RUN STUDIOS</div>
+    <div class="brand" id="brand">EXPRESS DELIVERY v0.1.2 · BIG RUN STUDIOS</div>
   </div>
 
   <div id="over">
@@ -199,7 +199,7 @@ import * as THREE from './lib/three.module.js';
 
 /* ================================================================== CFG */
 const CFG = {
-  ver:'0.1.1',
+  ver:'0.1.2',
   // --- vehicle
   baseSpeed:8.5,          // forward m/s at run start
   speedGrowth:0.075,      // m/s gained per second
@@ -582,6 +582,7 @@ const world={
   grp:new THREE.Group(),        // everything streamed (chunks)
   chunks:new Map(),             // idx -> {grp, props:[], solids:[], peds:[], dogs:[], ramps:[], house}
   houses:[],                    // right-side houses: {hz, zones, grp, scored, isTarget, chunkIdx}
+  lhouses:[],                   // left-side house z centers (wall bounce only)
   targetQueue:[], curTarget:null,
   props:[], solids:[], peds:[], dogs:[], ramps:[], flying:[], packages:[],
 };
@@ -616,7 +617,7 @@ function genChunk(idx){
   const hrec={hz:hzR,zones:houseZones(hzR),grp:houseR,scored:false,missed:false,isTarget,chunkIdx:idx,tier:0};
   world.houses.push(hrec); rec.house=hrec;
   if(isTarget) world.targetQueue.push(hrec);
-  if(idx%3!==2){ const houseL=buildHouse(zc+rnd(-3,3),-1,false); grp.add(houseL); }
+  if(idx%3!==2){ const houseL=buildHouse(zc+rnd(-3,3),-1,false); grp.add(houseL); rec.lhz=houseL.position.z; world.lhouses.push(rec.lhz); }
 
   // --- trees between lots (SOLID, on lawn edges — outside the drivable lane)
   if(idx%2===0){
@@ -696,6 +697,7 @@ function dropChunk(idx){
   const rec=world.chunks.get(idx); if(!rec) return;
   world.grp.remove(rec.grp);
   rec.grp.traverse(o=>{ if(o.geometry&&o.geometry!==G.box&&o.geometry!==G.cyl&&o.geometry!==G.sph&&o.geometry!==G.cone&&o.geometry!==G.prism) o.geometry.dispose(); });
+  if(rec.lhz!==undefined) world.lhouses=world.lhouses.filter(z=>z!==rec.lhz);
   world.props=world.props.filter(p=>!rec.props.includes(p));
   world.solids=world.solids.filter(s=>!rec.solids.includes(s));
   world.peds=world.peds.filter(p=>!rec.peds.includes(p));
@@ -712,7 +714,7 @@ function ensureChunks(){
 function clearWorld(){
   for(const idx of [...world.chunks.keys()]) dropChunk(idx);
   world.packages.forEach(p=>scene.remove(p.grp)); world.packages.length=0;
-  world.flying.length=0; world.targetQueue.length=0; world.curTarget=null; world.houses.length=0;
+  world.flying.length=0; world.targetQueue.length=0; world.curTarget=null; world.houses.length=0; world.lhouses.length=0;
   houseCounter=0; rampCounter=0;
 }
 
@@ -833,9 +835,11 @@ function updatePopups(dt){
     p.t+=dt; p.pos.y+=dt*1.4;
     if(p.t>1.1){ p.busy=false; p.div.style.opacity=0; continue; }
     _v.copy(p.pos).project(camera);
-    if(_v.z>1){ p.div.style.opacity=0; continue; }
-    p.div.style.left=((_v.x*0.5+0.5)*innerWidth)+'px';
-    p.div.style.top=((-_v.y*0.5+0.5)*innerHeight)+'px';
+    let sx=(_v.x*0.5+0.5)*innerWidth, sy=(-_v.y*0.5+0.5)*innerHeight;
+    if(_v.z>1){ sx=innerWidth-sx; sy=innerHeight*0.8; }              // behind the camera: mirror x, pin low
+    sx=clamp(sx,54,innerWidth-54); sy=clamp(sy,72,innerHeight-150);  // off-screen scores still pop at the edge
+    p.div.style.left=sx+'px';
+    p.div.style.top=sy+'px';
     p.div.style.opacity=p.t<0.85?1:(1-(p.t-0.85)/0.25);
   }
 }
@@ -1039,7 +1043,9 @@ function toss(){
   // forward & right in world space (steering direction bends the throw)
   const fl=Math.hypot(veh.vx,veh.speed)||1;
   const fx=veh.vx/fl, fz=-veh.speed/fl;
-  const rx=-fz, rz=fx;                                     // right = forward rotated -90° about Y
+  // throw side follows the steer: turning right → right, turning left → left, neutral → left
+  const side=(veh.wheel>0.12||(Math.abs(veh.wheel)<=0.12&&veh.vx>1.5))?1:-1;
+  const rx=-fz*side, rz=fx*side;                           // side vector = forward rotated ∓90° about Y
   const px=veh.x+rx*0.6, py=veh.y+1.0, pz=veh.z+rz*0.6;
   grp.position.set(px,py,pz);
   scene.add(grp);
@@ -1102,6 +1108,12 @@ function updatePackages(dt){
       const w=h.zones.wall;
       if(Math.abs(p.z-h.hz)<5.4 && p.x>w.x-t.r && p.y<w.h && p.vx>0){
         p.x=w.x-t.r; p.vx=-Math.abs(p.vx)*0.35; SFX.card();
+        popup(p.x,p.y+0.5,p.z,'BONK','','#ffd0a8');
+      }
+    }
+    for(const lz of world.lhouses){                        // left houses: wall bounce only (no delivery zones)
+      if(Math.abs(p.z-lz)<5.4 && p.x<-(CFG.houseX)+t.r && p.y<3.4 && p.vx<0){
+        p.x=-(CFG.houseX)+t.r; p.vx=Math.abs(p.vx)*0.35; SFX.card();
         popup(p.x,p.y+0.5,p.z,'BONK','','#ffd0a8');
       }
     }
@@ -1270,11 +1282,12 @@ function updateVehicle(dt){
   veh.grp.userData.armR.rotation.x=lerp(veh.grp.userData.armR.rotation.x,-0.9,Math.min(1,8*dt));
   // pose
   veh.grp.position.set(veh.x,veh.y,veh.z);
-  veh.grp.rotation.y=Math.atan2(veh.vx,veh.speed+0.01)*0.9+Math.PI;
+  veh.grp.rotation.y=Math.PI-Math.atan2(veh.vx,veh.speed+0.01)*0.9;  // nose leads INTO the turn
   veh.grp.rotation.z=clamp(veh.vx*0.055,-0.35,0.35);
   veh.grp.rotation.x=veh.air?clamp(-veh.vy*0.03,-0.25,0.3):0;
   const spin=veh.speed*dt/0.3;
   veh.grp.userData.wf.rotation.x-=spin; veh.grp.userData.wr.rotation.x-=spin;
+  veh.grp.userData.wf.rotation.y=-veh.wheel*0.6;                     // front wheel visibly steers
 }
 
 /* ==================================================== input */
@@ -1326,8 +1339,8 @@ function updateCamera(dt){
     tx=veh.x+Math.sin(a)*7.5; ty=3.6; tz=veh.z+Math.cos(a)*7.5;
     lx=veh.x; ly=1.2; lz=veh.z;
   } else {
-    tx=veh.x; ty=6.4+veh.y*0.6; tz=veh.z+8.6;
-    lx=veh.x+veh.vx*0.35; ly=1.1+veh.y*0.4; lz=veh.z-9;   // lead the look into the turn
+    tx=veh.x; ty=7.2+veh.y*0.6; tz=veh.z+9.0;
+    lx=veh.x+veh.vx*0.35; ly=0.9+veh.y*0.4; lz=veh.z-1;   // hero sits mid-screen; world behind him stays visible so throws can be watched
   }
   if(S.state==='menu'){
     const k=Math.min(1,6*dt);
@@ -1369,7 +1382,7 @@ function updateHUD(){
   const cd=1-clamp(veh.cd/CFG.cooldown,0,1);
   $('cdRing').style.setProperty('--cd',cd);
   $('throwBtn').classList.toggle('cooling',veh.cd>0);
-  $('wheelSvg').style.transform='rotate('+(veh.wheel*135)+'deg)';   // wheel visibly turns with the drag
+  $('wheelSvg').style.transform='rotate('+(veh.wheel*90)+'deg)';    // exactly ±90° at full lock
 }
 
 /* ==================================================== states */
