@@ -183,7 +183,7 @@
     </div>
 
     <div id="dbg"></div>
-    <div class="brand" id="brand">CRASHARCADE · STACK MONKEY v0.6.3</div>
+    <div class="brand" id="brand">CRASHARCADE · STACK MONKEY v0.6.4</div>
   </div>
   <audio id="unlockAudio" loop src="data:audio/wav;base64,UklGRigAAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQQAAACAgICA"></audio>
   <audio id="music" src="music.mp3" loop preload="auto"></audio>
@@ -223,6 +223,8 @@ const CFG={
   descentStart:40, descentStartGrow:2.5, descentStartMax:90,
   descentAccel:110, descentCap:460,                    // falls accelerate as they go
   dblTap:0.35,                                         // two quick taps = drop (slam)
+  snapAssist:0.85,                                     // cells of forgiveness toward a clicking column
+  steerMax:1400,                                       // px/s steering speed cap (kills release-flick teleports)
   slamSpeed:900, snapLerp:0.09, tumbleG:1800,
   // scoring
   baseCell:12, heightPts:6, fullClickPts:45, extraPegPts:12, weakClickPts:18,
@@ -431,7 +433,7 @@ function descentStart(){ return Math.min(CFG.descentStart+placements*CFG.descent
 function spawnBrick(){
   const key=drawShape();
   let ci; do{ ci=Math.floor(Math.random()*COLORS.length); }while(ci===lastColor); lastColor=ci;
-  active={ key, rot:0, color:ci, geom:buildGeom(key,0), x:W/2, y:spawnYNow(), vy:descentStart(), vyB:descentStart(),
+  active={ key, rot:0, color:ci, geom:buildGeom(key,0), x:W/2, steerX:W/2, y:spawnYNow(), vy:descentStart(), vyB:descentStart(),
     slam:false, snapT:0, tumble:null };
   state='descend';
   setCtl();
@@ -441,7 +443,7 @@ function rotateActive(){
   if(!active||state!=='descend') return;
   const oldRot=active.rot, oldGeom=active.geom;
   active.rot=(active.rot+1)%4; active.geom=buildGeom(active.key,active.rot);
-  active.x=clampAim(active.x);
+  active.x=clampAim(active.x); active.steerX=clampAim(active.steerX);
   if(!xAllowed(active.x)){ active.rot=oldRot; active.geom=oldGeom; return; }   // no rotating into a wall
   sfx.rotate(); tutDone('move'); tutDone('rotate');
 }
@@ -458,7 +460,7 @@ function xAllowed(nx){
   const rest=Math.max(...cis.map(stackH));
   return CFG.trayY-rest*U >= active.y+activeHalfH()-6;
 }
-function steerTo(nx){ nx=clampAim(nx); if(xAllowed(nx)) active.x=nx; }
+function steerTo(nx){ if(active) active.steerX=clampAim(nx); }   // sets a target; tick eases toward it
 function dropActive(){                      // SLAM = fast-forward the descent; the click itself is the landing
   if(!active||state!=='descend'||active.slam) return;
   active.slam=true; active.vy=CFG.slamSpeed;
@@ -602,6 +604,17 @@ function tick(dt){
   if(state==='descend'&&active){
     aimCand=aimCandidate(active.x,active.rot);
     if(aimCand&&!aimCand.matches.length) tutDoneShow('miss','No pegs there — it would fall!');
+    // steering eases toward the target at a capped speed, checking walls along the way —
+    // a release-flick can't teleport the brick anymore
+    if(active.steerX!==active.x){
+      const sd=Math.sign(active.steerX-active.x);
+      let left=Math.min(Math.abs(active.steerX-active.x), CFG.steerMax*sdt);
+      while(left>0){
+        const sub=Math.min(left,6), nx=active.x+sd*sub;
+        if(!xAllowed(nx)){ active.steerX=active.x; break; }
+        active.x=nx; left-=sub;
+      }
+    }
     active.vyB=Math.min(active.vyB+CFG.descentAccel*sdt, CFG.descentCap);                  // gravity feel
     active.vy=active.slam?CFG.slamSpeed:active.vyB;
     active.y+=active.vy*sdt;
@@ -671,26 +684,41 @@ function tick(dt){
 function aimCandidate(x,rot){
   const g=buildGeom(active.key,rot), f=gridFrame();
   const gp=worldToGrid({x, y:CFG.trayY},f);
-  const frac=gp.gx+g.cells[0].off.x/U;
-  const fracErr=frac-Math.round(frac);                       // signed column misalignment, in cells
   const maxOffY=Math.max(...g.cells.map(c=>c.off.y));        // bottom row of the shape
-  const cis=[...new Set(g.cells.map(c=>Math.round(gp.gx+c.off.x/U)))];
-  if(cis.some(i=>i<-GRID_HALF||i>GRID_HALF)) return null;
-  const rest=Math.max(...cis.map(stackH));                   // row the bottom of the shape lands on
-  const cellsG=g.cells.map(c=>({ i:Math.round(gp.gx+c.off.x/U), j:rest+Math.round((maxOffY-c.off.y)/U),
-    pegUp:c.peg?c.peg.y<-0.7:false, pegDown:c.peg?c.peg.y>0.7:false }));
-  if(cellsG.some(c=>c.j>=CFG.platRows||occ.has(c.i+','+c.j))) return null;
-  const set=new Set(cellsG.map(c=>c.i+','+c.j));
-  const matches=[];
-  if(!(SHAPES[active.key].wedge&&rot!==0)){
-    for(const c of cellsG){
-      if(set.has(c.i+','+(c.j-1))) continue;
-      if(c.pegDown) continue;
-      if(c.j===0&&Math.abs(c.i)<=HALF) matches.push(c);      // tray studs stop at the tray edge
-      else if(c.j>0&&pegAt(c.i,c.j-1)) matches.push(c);
+  const evalAt=(s)=>{                                        // candidate with the shape shifted s columns
+    const gx=gp.gx+s;
+    const frac=gx+g.cells[0].off.x/U;
+    const fracErr=frac-Math.round(frac);                     // signed column misalignment, in cells
+    const cis=[...new Set(g.cells.map(c=>Math.round(gx+c.off.x/U)))];
+    if(cis.some(i=>i<-GRID_HALF||i>GRID_HALF)) return null;
+    const rest=Math.max(...cis.map(stackH));                 // row the bottom of the shape lands on
+    const cellsG=g.cells.map(c=>({ i:Math.round(gx+c.off.x/U), j:rest+Math.round((maxOffY-c.off.y)/U),
+      pegUp:c.peg?c.peg.y<-0.7:false, pegDown:c.peg?c.peg.y>0.7:false }));
+    if(cellsG.some(c=>c.j>=CFG.platRows||occ.has(c.i+','+c.j))) return null;
+    const set=new Set(cellsG.map(c=>c.i+','+c.j));
+    const matches=[];
+    if(!(SHAPES[active.key].wedge&&rot!==0)){
+      for(const c of cellsG){
+        if(set.has(c.i+','+(c.j-1))) continue;
+        if(c.pegDown) continue;
+        if(c.j===0&&Math.abs(c.i)<=HALF) matches.push(c);    // tray studs stop at the tray edge
+        else if(c.j>0&&pegAt(c.i,c.j-1)) matches.push(c);
+      }
     }
+    return {cellsG, matches, fracErr, restY:CFG.trayY-rest*U};
+  };
+  const prim=evalAt(0);
+  if(prim&&prim.matches.length) return prim;
+  // forgiveness: the straight reading misses — lean one column toward the player's fractional
+  // aim (within snapAssist cells). A brick that LOOKS like it's on a peg should click onto it.
+  const fr0=gp.gx+g.cells[0].off.x/U, fe=fr0-Math.round(fr0);
+  const dir=fe>=0?1:-1;
+  for(const s of [dir,-dir]){
+    if(Math.abs(fe-s)>CFG.snapAssist) continue;
+    const alt=evalAt(s);
+    if(alt&&alt.matches.length) return alt;
   }
-  return {cellsG, matches, fracErr, restY:CFG.trayY-rest*U};
+  return prim;
 }
 
 /* ================================================================= particles / popups */
@@ -1319,7 +1347,11 @@ app.addEventListener('pointerup',e=>{
   const was=dragging; dragging=false;
   if(!was||state!=='descend') return;
   const p=evXY(e);
-  if(p.y-downY>60&&t-downT<0.45){ dropActive(); return; }        // quick downward swipe = slam
+  if(p.y-downY>60&&t-downT<0.45){                                // quick downward swipe = slam…
+    if(active) active.steerX=brickX0;                            // …and the flick doesn't steer
+    dropActive(); return;
+  }
+  if(active) active.steerX=active.x;                             // release = stop; no post-flick drift
   if(moved<8&&t-downT<0.3){                                      // a clean tap…
     if(t-lastTapT<CFG.dblTap){ lastTapT=-1; dropActive(); }      // …twice quickly = drop
     else lastTapT=t;
@@ -1338,8 +1370,8 @@ $('againBtn').addEventListener('click',()=>resetRun());
 window.addEventListener('keydown',e=>{
   if(e.repeat) return;
   if(state==='descend'){
-    if(e.key==='ArrowLeft'||e.key==='a') steerTo(active.x-U/2);
-    if(e.key==='ArrowRight'||e.key==='d') steerTo(active.x+U/2);
+    if(e.key==='ArrowLeft'||e.key==='a') steerTo(active.steerX-U/2);
+    if(e.key==='ArrowRight'||e.key==='d') steerTo(active.steerX+U/2);
     if(e.key==='ArrowUp'||e.key==='r'||e.key==='w') rotateActive();
     if(e.key===' '||e.key==='ArrowDown'||e.key==='s') dropActive();
   }
