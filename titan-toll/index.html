@@ -309,7 +309,7 @@
       <div id="dbgLog"></div>
     </div>
 
-    <div id="brand">CRASHARCADE · TITAN GUARD v0.26.2</div>
+    <div id="brand">CRASHARCADE · TITAN GUARD v0.26.3</div>
   </div>
 </div>
 
@@ -540,7 +540,7 @@ renderer.setPixelRatio(Math.min(devicePixelRatio||1,1.75));
 renderer.outputColorSpace=THREE.SRGBColorSpace;
 const scene=new THREE.Scene();
 scene.background=new THREE.Color(0x8fc4f0);
-scene.fog=new THREE.Fog(0xbfe0f5, 40, 165);
+// (no scene fog — it hazed out the backdrop; the painting carries its own atmosphere)
 
 const camera=new THREE.PerspectiveCamera(41, cw/ch, 0.1, 600);
 // quarter-profile: orbited ~22.5° off the lane axis, zoomed out, low — shows the depth/distance
