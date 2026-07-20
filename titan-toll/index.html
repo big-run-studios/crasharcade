@@ -309,7 +309,7 @@
       <div id="dbgLog"></div>
     </div>
 
-    <div id="brand">CRASHARCADE · TITAN GUARD v0.36.0</div>
+    <div id="brand">CRASHARCADE · TITAN GUARD v0.37.0</div>
   </div>
 </div>
 
@@ -342,8 +342,8 @@ const rf=(a,b)=>a+Math.random()*(b-a);   // cosmetic only (never gameplay)
    CFG — every adjustable value
    ========================================================================= */
 const CFG={
-  playerHP:100,
-  enemyDmgScale:[0.55,0.68,0.96], // per-enemy incoming-damage multiplier (E1 forgiving -> E3 lethal)
+  playerHP:1000,          // x10 (v0.37.0, with 10x enemy damage — bigger numbers, same ratio)
+  enemyDmgScale:[5.5,6.8,9.6],    // per-enemy incoming-damage multiplier x10 (E1 forgiving -> E3 lethal)
   actionFill:2.7,          // s to fill the action bar
   introDur:6.1,            // hero intro stance plays FULLY before battle starts (Axe_Stance clip length)
   // dodge — asymmetric: anticipatory dodging (before the hit) is natural, so the early side is wider
@@ -934,8 +934,8 @@ function heroAttackCue(action, lead){
   const a=heroFreshAction(spec.clip); if(!a) return;
   a.reset(); a.setLoop(THREE.LoopOnce,1); a.clampWhenFinished=true;
   a.timeScale=ts; a.time=Math.max(0, I-ts*lead);     // …too-short gaps start mid-wind-up instead
-  a.enabled=true; a.setEffectiveWeight(1); a.fadeIn(0.16); a.play();
-  if(heroAction && heroAction!==a) heroAction.fadeOut(0.16);
+  a.enabled=true; a.setEffectiveWeight(1); a.fadeIn(0.32); a.play();
+  if(heroAction && heroAction!==a) heroAction.fadeOut(0.32);
   heroAction=a; heroCurName=spec.clip;
 }
 const HERO_LOOP=[HERO_CLIP.idle,HERO_CLIP.blitz,'Running'];   // clips that loop
@@ -953,8 +953,8 @@ function heroDodgeRoll(){
     const a=heroFreshAction(HERO_CLIP.dodge);
     a.reset(); a.setLoop(THREE.LoopOnce,1); a.clampWhenFinished=true;
     a.timeScale=clamp(c.duration/avail, 1.0, 2.0);
-    a.enabled=true; a.setEffectiveWeight(1); a.fadeIn(0.16); a.play();
-    if(heroAction && heroAction!==a) heroAction.fadeOut(0.16);
+    a.enabled=true; a.setEffectiveWeight(1); a.fadeIn(0.32); a.play();
+    if(heroAction && heroAction!==a) heroAction.fadeOut(0.32);
     heroAction=a; heroCurName=HERO_CLIP.dodge;
   }
   heroRollT=avail;
@@ -975,7 +975,7 @@ function updateHero(rdt){
   else if(introT>0) want=HERO_CLIP.intro;                       // pre-battle stance (sim-gated, plays fully)
   else if(heroOneShotT>0) want=heroOneShot;                     // hit flinch
   else want=HERO_CLIP.idle;
-  playHeroClip(want, HERO_LOOP.includes(want), 0.22, want===HERO_CLIP.blitz?0.75: want===HERO_CLIP.idle?0.5:1);   // idle at half speed (calmer stance); 0.22 crossfade tween between states
+  playHeroClip(want, HERO_LOOP.includes(want), 0.44, want===HERO_CLIP.blitz?0.75: want===HERO_CLIP.idle?0.5:1);   // idle at half speed (calmer stance); 0.22 crossfade tween between states
   // chained-roll facing: spin to the accumulated CCW offset while rolling, ease home after
   if(heroModel){
     const ty = heroRollT>0 ? HERO_YAW+heroRollYawOff : HERO_YAW;
@@ -1165,7 +1165,7 @@ const ENEMY_ANIM=[
 const ENEMY_ROT=[
   { Hit_Reaction:80 },   // Cliffhorn — hit reaction faces ~80° off; rotate it back to face the player
   {},                    // Gale
-  { Roundhouse_Kick:80, Kung_Fu_Punch:105, Lunge_Spin_Kick:335, Sweep_Kick:320 },   // Sky Titan — kick/punch clips are authored facing off; rotate back (lab FACE export 2026-07-19)
+  { Roundhouse_Kick:80, Kung_Fu_Punch:105, Lunge_Spin_Kick:305, Sweep_Kick:320 },   // Lunge 335->305: aim the (now in-place) kick at the hero — 305 points the clip's authored lunge direction at him   // Sky Titan — kick/punch clips are authored facing off; rotate back (lab FACE export 2026-07-19)
 ];
 // ANIMATION-DRIVEN DODGE TIMING (Animation Lab DEFEND export). Per boss: clip -> { taps:[sec…] }.
 // Each authored tap marks the clip's IMPACT FRAME. The dodge timing game ENDS there: the window close
@@ -1366,7 +1366,9 @@ ENEMY_GLB.forEach((f,i)=>{ new GLTFLoader().load(f, g=>{ bossGLTF[i]=g;
   stripClipTravelXZ(g.animations.find(c=>c.name===ENEMY_ANIM[i].hit));   // stagger stays planted (once, at load)
   alignClipBaseXZ(g.animations.find(c=>c.name===ENEMY_ANIM[i].idle),
                   g.animations.find(c=>c.name===ENEMY_ANIM[i].hit));     // idle rests on the same spot the other clips play from
-  if(i===2) stripClipTravelXZ(g.animations.find(c=>c.name==='Lunge_Spin_Kick'));   // spin kick: authored travel + the FACE yaw fix carried him off to the RIGHT in-game — spin in place
+  if(i===2){ const lsk=g.animations.find(c=>c.name==='Lunge_Spin_Kick');
+    stripClipTravelXZ(lsk);                                              // spin kick: authored travel carried him off to the RIGHT in-game — spin in place…
+    alignClipBaseXZ(lsk, g.animations.find(c=>c.name===ENEMY_ANIM[i].hit)); }  // …AT the character's base (its own frame-0 root was off-origin => warp)
   swapEnemyToGLB(i);   // upgrade the fallback if this boss loaded mid-fight
   if(i===0){ const b=document.getElementById('startBtn'); if(b)b.textContent='ENTER BATTLE';
     if(_pendingStart!=null){ const s=_pendingStart; _pendingStart=null; startRun(s); } }   // player already clicked ENTER BATTLE -> start now
@@ -2005,7 +2007,7 @@ function landHit(hit){
   resolveLockT=CFG.resolveLock;
   hitPauseT=CFG.hitPause*1.4; shake(0.6+hit.dmg*0.01,0.4); camPunch(-0.18-hit.dmg*0.004);   // recoil pull-back when the hero takes it
   sfx('hurt');
-  addFloater(playerMesh.position.clone().setY(2.6), '-'+dmg, '#ff5a6e', 1.05, 24);
+  if(dmg>0) addDmgFloater(playerMesh.position.clone().setY(0.35), dmg, '#ff5a6e', false);   // staggered damage digits AT THE FEET — same treatment as enemy damage
   hitLog.push({t:+T.toFixed(3),kind:'HIT',grade:'took '+dmg,err:null});
   if(hitLog.length>60)hitLog.shift();
   if(hp<=0){ die(); }
@@ -2376,7 +2378,7 @@ function animateEnemy(rdt){
         if(clip){ const lastH=atk.hits[atk.hits.length-1]; const winLen=Math.max(0.35, lastH.at + dwin(lastH.sp));   // attack start -> last dodge window closes
           spd=clamp(clip.duration/winLen, 0.25, 4); } }                      // stretch/squeeze so one play == the window
     }
-    playEnemyClip(u, want, loop, 0.14, spd);
+    playEnemyClip(u, want, loop, 0.28, spd);
   }
   // projectile VFX: spawn one per hit when a new attack begins (cosmetic; off the deterministic sim)
   if(atk && atk.startT!==_fxStartT){ _fxStartT=atk.startT;
