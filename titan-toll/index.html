@@ -309,7 +309,7 @@
       <div id="dbgLog"></div>
     </div>
 
-    <div id="brand">CRASHARCADE · TITAN GUARD v0.27.1</div>
+    <div id="brand">CRASHARCADE · TITAN GUARD v0.27.2</div>
   </div>
 </div>
 
@@ -619,15 +619,15 @@ const GROUND_REPEAT=32;   // tiles across the 340u plane => ~10.6u per tile; rai
 (function(){
   const tex=new THREE.TextureLoader().load('assets/backdrop.webp');
   tex.colorSpace=THREE.SRGBColorSpace;
-  const W=520, H=W/2;                                       // art is 2:1 (1774x887)
+  tex.anisotropy=Math.min(8, renderer.capabilities.getMaxAnisotropy());   // plane is viewed ~22.5° oblique — keeps the art crisp
+  const W=400, H=W/2;                                       // art is 2:1 (1774x887)
   const m=new THREE.Mesh(new THREE.PlaneGeometry(W,H),
     new THREE.MeshBasicMaterial({map:tex, fog:false, toneMapped:false}));  // painting carries its own light + haze — keep game fog/ACES off it
-  // Centered on the camera's VIEW AXIS at this depth (the quarter-profile orbit hits z=-142 at
-  // x≈-57 — a 0-centred plane sat visibly off to the right in landscape windows), scaled up
-  // 1.44x (W 360->520) to cover wide/tall windows. y=80 — raised halfway toward "bottom edge on
-  // the ground line" (Andrew) so the painting's bright-green grass foreground shows above the
-  // terrain horizon instead of hiding below it.
-  m.position.set(-57, 80, -142);
+  // Size: 1.5x a desktop-view footprint at this depth (16:9 frustum spans ~268 units here) —
+  // W=520 stretched the 1774px art blurry. Centred on the desktop footprint (x≈-87..-65 across
+  // aspects -> -80). y keeps the art's bright-grass band meeting the terrain horizon (~y=5 sits
+  // 21% up from the plane bottom, Andrew's v0.27.1 placement).
+  m.position.set(-80, 63, -142);
   scene.add(m);
 })();
 
