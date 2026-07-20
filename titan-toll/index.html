@@ -309,7 +309,7 @@
       <div id="dbgLog"></div>
     </div>
 
-    <div id="brand">CRASHARCADE · TITAN GUARD v0.38.0</div>
+    <div id="brand">CRASHARCADE · TITAN GUARD v0.39.0</div>
   </div>
 </div>
 
@@ -790,7 +790,7 @@ function updateBlitzRibbons(rdt){
 let heroFlashT=0;
 const heroLight=new THREE.PointLight(0xffd76a,0,16); scene.add(heroLight);
 // enemy anger glow — ramps red with rage phase
-const enemyRageLight=new THREE.PointLight(0xff3020,0,34); scene.add(enemyRageLight);
+// (rage core light removed v0.39.0 — it hot-spotted the elbows/pelvis; rage now lives in the EYES)
 
 /* =========================================================================
    PLAYER — low-poly warrior with a transforming pike
@@ -971,7 +971,8 @@ function updateHero(rdt){
   let want;
   if(heroDead) want=HERO_CLIP.dead;                              // death
   else if(state==='result') want=HERO_CLIP.victory;             // cash-out / full clear
-  else if(off){ want= off._cued ? (HERO_CLIP[off.action]||HERO_CLIP.idle) : (off.action==='strike'?'Running':HERO_CLIP.idle); heroRollT=0; }  // dash/ready-beat, then attack (blitz interrupt cancels a roll)
+  else if(off){ want= off._cued ? (HERO_CLIP[off.action]||HERO_CLIP.idle)
+    : (off.action==='strike' && (off.startT-T)<=CFG.heroDashT ? 'Running' : HERO_CLIP.idle); heroRollT=0; }  // ready-beat (idle) -> run-in -> attack; no running in place during the fade
   else if(heroRollT>0) want=HERO_CLIP.dodge;                    // mid roll — let the full clip run
   else if(introT>0) want=HERO_CLIP.intro;                       // pre-battle stance (sim-gated, plays fully)
   else if(heroOneShotT>0) want=heroOneShot;                     // hit flinch
@@ -1209,6 +1210,13 @@ const ENEMY_FX=[
   { 'mage_soell_cast':'lightning','mage_soell_cast_6':'lightning','mage_soell_cast_2':'windbeam','mage_soell_cast_4':'beam' },  // Gale — A1/8 & A4/7 sky-lightning; A2/5 wind beam; A3/6 solid beam
   { 'Shrug':'meteor','Neck_Slashing_Gesture':'slash' /* red force-push */,'Angry_Ground_Stomp_2':'crack' },                           // Sky Titan — A1 meteor, A2 red slash, A3 ground crack
 ];
+// EYE GLOWS — two red embers on each boss's face (menace; brighten with rage).
+// {fx: half eye spacing, fy: height, fz: forward} as fractions of the boss height h.
+const ENEMY_EYE=[
+  {fx:0.030, fy:0.845, fz:0.055, s:0.055},   // Cliffhorn
+  {fx:0.026, fy:0.870, fz:0.045, s:0.045},   // Gale
+  {fx:0.024, fy:0.875, fz:0.045, s:0.045},   // Sky Titan
+];
 // TAP-WINDOW SPARKLE — a character-anchored twinkle on each boss's signature body part,
 // lit only while the dodge tap window is open (brightest at the perfect-tap instant).
 const ENEMY_SPARK=[
@@ -1304,6 +1312,21 @@ muzzleSpark.renderOrder=999; muzzleSpark.visible=false; scene.add(muzzleSpark);
 const muzzleCore=new THREE.Sprite(new THREE.SpriteMaterial({ map:makeSparkTexture(), color:0xffffff, transparent:true, opacity:0, depthTest:false, depthWrite:false, blending:THREE.AdditiveBlending }));
 muzzleCore.renderOrder=1000; muzzleCore.visible=false; scene.add(muzzleCore);
 const MUZ_FLASH=0.35; const _muzV=new THREE.Vector3();
+// impact FLASH pool — a bright starburst popped at the hit anchor (hero hits read too subtle)
+const _impPool=[]; for(let i=0;i<4;i++){ const sp=new THREE.Sprite(new THREE.SpriteMaterial({ map:makeSparkTexture(), color:0xffffff, transparent:true, opacity:0, depthTest:false, depthWrite:false, blending:THREE.AdditiveBlending }));
+  sp.renderOrder=998; sp.visible=false; scene.add(sp); _impPool.push({sp, t:1e9}); }
+let _impIdx=0;
+function impactFlash(worldPos, colorHex, scale){
+  const it=_impPool[_impIdx++ % _impPool.length];
+  it.sp.position.copy(worldPos); it.sp.material.color.setHex(colorHex); it.sp.material.rotation=rf(0,Math.PI*2);
+  it.t=0; it.base=scale; it.sp.visible=true;
+}
+function updateImpactFlashes(rdt){
+  for(const it of _impPool){ if(it.t>0.3) { it.sp.visible=false; continue; }
+    it.t+=rdt; const f=clamp(1-it.t/0.3,0,1);
+    it.sp.scale.setScalar(it.base*(0.7+0.6*(1-f)));
+    it.sp.material.opacity=f; it.sp.visible=f>0; }
+}
 function muzzleFlash(big){
   const u=playerMesh&&playerMesh.userData; if(!u||!u.muzzleAnchor) return;
   u.muzzleFlashT=MUZ_FLASH; u.muzzleFlashBig=big?1.4:1;
@@ -1443,6 +1466,25 @@ function buildEnemyGLB(i){
     }
     mixer.stopAllAction();
     g.userData.groundOffs=groundOffs; g.userData.modelBaseY=model.position.y;
+  }
+  // two glowing EYES (menace read; replaces the old rage core-light that hot-spotted the
+  // elbows/pelvis): red additive sprites parented to the HEAD BONE so they ride every
+  // animation. Position estimated in enemy-group space and converted to bone-local at bind.
+  { const E=ENEMY_EYE[i]||{fx:0.03,fy:0.85,fz:0.05,s:0.05};
+    const nb=g.userData.nodBone;
+    if(nb){
+      const eyeGlows=[]; g.updateMatrixWorld(true);
+      const ws=new THREE.Vector3(); nb.getWorldScale(ws);
+      for(const sgn of [-1,1]){
+        const sp=new THREE.Sprite(new THREE.SpriteMaterial({ map:makeSparkTexture(), color:0xff2418, transparent:true, opacity:0.5, depthTest:true, depthWrite:false, blending:THREE.AdditiveBlending }));
+        const pg=new THREE.Vector3(sgn*E.fx*h, E.fy*h, E.fz*h);
+        g.localToWorld(pg); nb.worldToLocal(pg);
+        sp.position.copy(pg);
+        sp.scale.setScalar(E.s*h/(ws.x||1));
+        nb.add(sp); eyeGlows.push(sp);
+      }
+      g.userData.eyeGlows=eyeGlows;
+    }
   }
   playEnemyClip(g.userData, ENEMY_ANIM[i].idle, true, 0);
   return g;
@@ -1813,8 +1855,8 @@ function resolveTarget(tg, grade, err){
   if(dmg>0) resolveLockT=CFG.resolveLock;   // only lock cashout while real damage resolves (not a 0-dmg auto-miss)
   const anchor=off._anchorPos?off._anchorPos(tg):enemyMesh.userData.anchors.core.getWorldPosition(new THREE.Vector3());
   if(off.action==='shoot' && !isMiss) muzzleFlash(grade==='perfect'||crit);   // the bazooka end fires
-  if(grade==='perfect'){ sfx(crit?'crit':'perfect'); addFloater(anchor,crit?'CRITICAL':'PERFECT',crit?'#ff4fd8':'#ffe14d',crit?1.2:1.0,crit?30:24); hitPauseT=CFG.hitPause*(crit?1.6:1); shake(crit?0.5:0.28,0.28); camPunch(crit?0.30:0.16); burst(anchor,crit?'#ff4fd8':'#ffe14d',crit?18:10);}
-  else if(grade==='good'){ sfx(crit?'crit':'good'); addFloater(anchor,crit?'CRITICAL':'GOOD',crit?'#ff4fd8':'#8fe9ff',crit?1.1:0.85,crit?28:20); if(crit){hitPauseT=CFG.hitPause*1.4;shake(0.4,0.24);} camPunch(crit?0.24:0.09); burst(anchor,crit?'#ff4fd8':'#8fe9ff',crit?14:7);}
+  if(grade==='perfect'){ sfx(crit?'crit':'perfect'); addFloater(anchor,crit?'CRITICAL':'PERFECT',crit?'#ff4fd8':'#ffe14d',crit?1.2:1.0,crit?30:24); hitPauseT=CFG.hitPause*(crit?1.6:1); shake(crit?0.5:0.28,0.28); camPunch(crit?0.30:0.16); burst(anchor,crit?'#ff4fd8':'#ffe14d',crit?30:20); impactFlash(anchor, crit?0xff9ae0:0xffe89a, crit?3.6:2.6);}
+  else if(grade==='good'){ sfx(crit?'crit':'good'); addFloater(anchor,crit?'CRITICAL':'GOOD',crit?'#ff4fd8':'#8fe9ff',crit?1.1:0.85,crit?28:20); if(crit){hitPauseT=CFG.hitPause*1.4;shake(0.4,0.24);} camPunch(crit?0.24:0.09); burst(anchor,crit?'#ff4fd8':'#8fe9ff',crit?24:14); impactFlash(anchor, crit?0xff9ae0:0xbfeeff, crit?3.2:2.1);}
   else { sfx('miss'); addFloater(anchor,'MISS','#8a99b8',0.8,18); }
   if(dmg>0) addDmgFloater(anchor.clone().add(new THREE.Vector3(0,-0.6,0)), dmg, crit?'#ff9ae0':'#ffffff', crit);
   hitLog.push({t:+T.toFixed(3),kind:'atk:'+off.action,grade,err:err==null?null:+err.toFixed(3)});
@@ -2225,7 +2267,7 @@ function animatePlayer(rdt){
   if(playerPose==='idle'){ armRX=-0.4; armRZ=0.2; tipInt.intensity=lerp(tipInt.intensity,0.2,0.1); }
   else if(playerPose==='strike'){ const p=clamp(poseT/0.18,0,1); armRX=lerp(-1.6,-2.6,smooth(p)); bodyLean=0.25*smooth(p); playerMesh.position.z=bz-0.4*smooth(p); tipInt.intensity=1.2; }
   else if(playerPose==='shoot'){ armRX=-1.3; armRZ=-0.9; bodyLean=-0.1; const rec=Math.sin(poseT*30)*Math.max(0,0.3-poseT)*2; playerMesh.position.z=PHOME.z+rec*0.3; tipInt.intensity=1.4; }
-  else if(playerPose==='cast'){ armRX=-2.2; armRZ=0; bodyLean=-0.05; tipInt.intensity=1.6+Math.sin(t*10)*0.3; }
+  else if(playerPose==='cast'){ armRX=-2.2; armRZ=0; bodyLean=-0.05; tipInt.intensity=3.4+Math.sin(t*10)*0.8; }
   else if(playerPose==='blitz'){ armRX=-2.0+Math.sin(t*18)*0.4; bodyLean=0.15; tipInt.intensity=2.0; }
   else if(playerPose==='dodge'){ const p=clamp(poseT/0.24,0,1); const s=Math.sin(p*Math.PI); playerMesh.position.x=PHOME.x+s*0.9; bodyLean=s*0.4; playerMesh.rotation.y=PHOME.ry-s*0.5; if(poseT>0.24)playerPose='idle'; }
   // jump back home after a strike: fast ballistic arc (overrides the walk-home lerp)
@@ -2285,8 +2327,12 @@ function animatePlayer(rdt){
   }
   if(u.realLance){ // base lance: violet surge while casting, else gold glow ramping with the charge
     for(const m of u.pikeMats){ if(!m.emissive) continue;
-      if(castGlow){ m.emissive.setRGB(0.75,0.4,1.5); m.emissiveIntensity=1+castGlow*2.4; }   // stronger — it carries the cast read alone now
-      else { m.emissive.setRGB(1+bf*1.1, 1+bf*0.6, 1); m.emissiveIntensity=1+bf*0.9; } }
+      if(castGlow){                              // WHOLE-LANCE violet: the authored emissive map is ~black
+        if(!m._castMode){ m._castMode=true; m._em=m.emissiveMap; m.emissiveMap=null; m.needsUpdate=true; }   // outside its accents — bypass it while casting
+        m.emissive.setRGB(0.62,0.30,1.25); m.emissiveIntensity=0.9+castGlow*1.6; }
+      else {
+        if(m._castMode){ m._castMode=false; m.emissiveMap=m._em; m.needsUpdate=true; }
+        m.emissive.setRGB(1+bf*1.1, 1+bf*0.6, 1); m.emissiveIntensity=1+bf*0.9; } }
   }
   else if(u.pikeMats){ const ge=Math.max(bf*0.85, castGlow*0.6); for(const m of u.pikeMats){ if(m.emissive) m.emissive.setRGB(ge*(castGlow?0.75:1), ge*(castGlow?0.4:0.72), ge*(castGlow?1.5:0.12)); } }
   u.tipLight.intensity = Math.max(tipInt.intensity, bf*2.2 + (bf>=1?0.9+Math.sin(t*11)*0.5:0), mf*8);
@@ -2526,9 +2572,10 @@ function frame(nw){
   const rdt=Math.min((nw-last)/1000,1/30); last=nw;
   if(cw!==app.clientWidth||ch!==app.clientHeight) resize();
   try{ update(rdt); }catch(err){ console.error('update',err); }
-  try{ if(playerMesh)animatePlayer(rdt); if(enemyMesh)animateEnemy(rdt); updateHero(rdt); updateBlitzRibbons(rdt); updateEnemySpark(); updateWaveFx(); }catch(err){ console.error('anim',err); }
+  try{ if(playerMesh)animatePlayer(rdt); if(enemyMesh)animateEnemy(rdt); updateHero(rdt); updateBlitzRibbons(rdt); updateEnemySpark(); updateWaveFx(); updateImpactFlashes(rdt); }catch(err){ console.error('anim',err); }
   if(playerMesh){ heroLight.position.set(playerMesh.position.x,1.7,playerMesh.position.z); heroLight.intensity = heroFlashT>0 ? (heroFlashT/0.5)*14 : 0; }
-  if(enemyMesh && ragePhase>0){ enemyMesh.userData.anchors.core.getWorldPosition(enemyRageLight.position); enemyRageLight.intensity=(ragePhase===1?1.4:2.8)*(0.8+0.2*Math.sin(performance.now()/140)); } else enemyRageLight.intensity=0;
+  if(enemyMesh && enemyMesh.userData.eyeGlows){ const k=(0.45+ragePhase*0.35)*(0.85+0.15*Math.sin(performance.now()/140));
+    for(const e of enemyMesh.userData.eyeGlows) e.material.opacity=k; }
   // camera director: cinematic base shot + additive layers (punch / sway / shake)
   try{ directCamera(rdt); }catch(err){ console.error('cam',err); }
   // 3d particles
@@ -2851,8 +2898,8 @@ function overlayDraw(){
   // dodge is now the fill-up shield button in the lower-right (updated in syncHud), not an on-hero cue
 
   // offensive timing targets (thin ring -> thick success band; only the NEXT one is "live")
-  if(off && T>=off.startT-CFG.offLeadIn-0.02){   // visible through the get-ready beat (after the strike run-in)
-    const introF=smooth(clamp(1-(off.startT-T)/CFG.offLeadIn,0,1));
+  if(off){   // visible from COMMIT: fade in over the ready beat, stay through the strike run-in
+    const introF=smooth(clamp((T-(off.startT-CFG.offLeadIn-(off.action==='strike'?CFG.heroDashT:0)))/CFG.offLeadIn,0,1));
     if(introF<1) octx.filter='opacity('+Math.round(25+introF*75)+'%)';   // whole timing UI fades in (filter stacks with the internal alphas)
     let firstUnres=-1; for(let i=0;i<off.targets.length;i++){ if(!off.targets[i].resolved){firstUnres=i;break;} }
     // hi-vis canvas variants of the action palette (hotter/more saturated than the :root DOM colors — these fight the field art)
