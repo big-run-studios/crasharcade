@@ -309,7 +309,7 @@
       <div id="dbgLog"></div>
     </div>
 
-    <div id="brand">CRASHARCADE · TITAN GUARD v0.28.0</div>
+    <div id="brand">CRASHARCADE · TITAN GUARD v0.28.1</div>
   </div>
 </div>
 
@@ -612,15 +612,19 @@ const GROUND_REPEAT=32;   // tiles across the 340u plane => ~10.6u per tile
   // split vertices, then bake per-tile rotated UVs (tile chosen from each triangle's centroid)
   const ng=geo.toNonIndexed(); geo.dispose();
   const p2=ng.attributes.position, uv=new Float32Array(p2.count*2);
-  const rotOf=(ix,iz)=>(((ix*73856093)^(iz*19349663))>>>3)&3;      // deterministic per-tile 0..3
+  // per-tile variant: 3 bits = rotation (0/90/180/270) + horizontal MIRROR -> 8 orientations.
+  // 4 rotations alone left the art's features (and the rocks) on a 4-position lattice that
+  // perspective compressed into visible rows; mirroring + a scrambled hash breaks the ranks.
+  const varOf=(ix,iz)=>{ let h=ix*374761393 + iz*668265263; h^=h>>>13; h=Math.imul(h,1274126177); h^=h>>>16; return h>>>0; };
+  const fwdUV=(u,v,vr)=>{ if(vr&4) u=1-u; const r=vr&3;
+    return r===0?[u,v] : r===1?[v,1-u] : r===2?[1-u,1-v] : [1-v,u]; };
   for(let t=0;t<p2.count;t+=3){
     const cx=(p2.getX(t)+p2.getX(t+1)+p2.getX(t+2))/3, cz=(p2.getZ(t)+p2.getZ(t+1)+p2.getZ(t+2))/3;
-    const ix=Math.floor((cx+size/2)/tileSz), iz=Math.floor((cz+size/2)/tileSz), r=rotOf(ix,iz);
+    const ix=Math.floor((cx+size/2)/tileSz), iz=Math.floor((cz+size/2)/tileSz), vr=varOf(ix,iz)&7;
     for(let k=0;k<3;k++){
       const u=(p2.getX(t+k)+size/2)/tileSz-ix, v=1-((p2.getZ(t+k)+size/2)/tileSz-iz);
-      let ru,rv;
-      if(r===0){ru=u;rv=v;} else if(r===1){ru=v;rv=1-u;} else if(r===2){ru=1-u;rv=1-v;} else {ru=1-v;rv=u;}
-      uv[(t+k)*2]=ru; uv[(t+k)*2+1]=rv;
+      const ruv=fwdUV(u,v,vr);
+      uv[(t+k)*2]=ruv[0]; uv[(t+k)*2+1]=ruv[1];
     }
   }
   ng.setAttribute('uv',new THREE.BufferAttribute(uv,2));
@@ -637,13 +641,17 @@ const GROUND_REPEAT=32;   // tiles across the 340u plane => ~10.6u per tile
   //      rotation so every rock lands on its painted stone ----
   const BLOBS=[[0.215,0.475,0.032],[0.755,0.792,0.026],[0.855,0.149,0.017],[0.250,0.934,0.015],[0.733,0.738,0.012]];
   const rr=mulberry32(4242), items=[];
+  const invUV=(tu,tv,vr)=>{ const r=vr&3; let u,v;        // inverse of fwdUV: un-rotate, then un-mirror
+    if(r===0){u=tu;v=tv;} else if(r===1){u=1-tv;v=tu;} else if(r===2){u=1-tu;v=1-tv;} else {u=tv;v=1-tu;}
+    if(vr&4) u=1-u; return [u,v]; };
   for(let iz=0;iz<tiles;iz++) for(let ix=0;ix<tiles;ix++){
-    const r=rotOf(ix,iz);
-    for(const [tu,tv,br] of BLOBS){
-      let u,v;                                             // inverse of the UV rotation above
-      if(r===0){u=tu;v=tv;} else if(r===1){u=1-tv;v=tu;} else if(r===2){u=1-tu;v=1-tv;} else {u=tv;v=1-tu;}
+    const h=varOf(ix,iz), vr=h&7;
+    for(let bi=0;bi<BLOBS.length;bi++){
+      const [tu0,tv0,br]=BLOBS[bi];
+      const ju=rr(), jv=rr(), jr=rr(), jy=rr(), js=rr(), jt=rr();   // consume rng deterministically before culls
+      if(bi>=2 && ((h>>>(3+bi*2))&7)<3) continue;          // thin the pebble blobs ~38% — kills the residual lattice
+      const [u,v]=invUV(tu0+(ju-0.5)*br*0.8, tv0+(jv-0.5)*br*0.8, vr);   // slight jitter, stays on the painted patch
       const x=(ix+u)*tileSz-size/2, z=(iz+1-v)*tileSz-size/2;
-      const jr=rr(), jy=rr(), js=rr(), jt=rr();            // consume rng deterministically before culls
       if(z>18 || x>70 || x<-176) continue;                 // outside anything the camera shows
       if(Math.hypot(x-0.8,z-2.2)<14) continue;             // keep the combat clearing clean
       let y=Math.sin(x*0.12)*0.25+Math.cos(z*0.1)*0.3;     // deterministic part of the terrain height
