@@ -309,7 +309,7 @@
       <div id="dbgLog"></div>
     </div>
 
-    <div id="brand">CRASHARCADE · TITAN GUARD v0.28.1</div>
+    <div id="brand">CRASHARCADE · TITAN GUARD v0.28.2</div>
   </div>
 </div>
 
@@ -649,7 +649,7 @@ const GROUND_REPEAT=32;   // tiles across the 340u plane => ~10.6u per tile
     for(let bi=0;bi<BLOBS.length;bi++){
       const [tu0,tv0,br]=BLOBS[bi];
       const ju=rr(), jv=rr(), jr=rr(), jy=rr(), js=rr(), jt=rr();   // consume rng deterministically before culls
-      if(bi>=2 && ((h>>>(3+bi*2))&7)<3) continue;          // thin the pebble blobs ~38% — kills the residual lattice
+      if(bi>=2 && ((h>>>(3+bi*3))&15)<11) continue;        // thin the pebble blobs ~69% (halved again from v0.28.1's 62.5% keep)
       const [u,v]=invUV(tu0+(ju-0.5)*br*0.8, tv0+(jv-0.5)*br*0.8, vr);   // slight jitter, stays on the painted patch
       const x=(ix+u)*tileSz-size/2, z=(iz+1-v)*tileSz-size/2;
       if(z>18 || x>70 || x<-176) continue;                 // outside anything the camera shows
