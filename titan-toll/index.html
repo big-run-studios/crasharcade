@@ -309,7 +309,7 @@
       <div id="dbgLog"></div>
     </div>
 
-    <div id="brand">CRASHARCADE · TITAN GUARD v0.27.3</div>
+    <div id="brand">CRASHARCADE · TITAN GUARD v0.28.0</div>
   </div>
 </div>
 
@@ -582,10 +582,14 @@ function unlit(c,o){return new THREE.MeshBasicMaterial(Object.assign({color:c},o
   scene.add(new THREE.Mesh(g,m));
 })();
 
-/* ---- ground: painted grass/rock texture (Andrew's art) over the low-poly terrain ---- */
-const GROUND_REPEAT=32;   // tiles across the 340u plane => ~10.6u per tile; raise for finer detail
+/* ---- ground: painted grass/rock texture (Andrew's art) over the low-poly terrain.
+        Each texture tile is ROTATED 0/90/180/270° by a per-tile hash (baked into split-vertex
+        UVs) so the art doesn't read as a repeating pattern, and real 3D rocks are planted on
+        the art's gray stone patches (positions from offline blob analysis of ground.webp),
+        mapped through each tile's rotation so they sit exactly on the painted stones. ---- */
+const GROUND_REPEAT=32;   // tiles across the 340u plane => ~10.6u per tile
 (function(){
-  const seg=48, size=340;
+  const seg=64, size=340, tiles=GROUND_REPEAT, tileSz=size/tiles;   // seg is a multiple of tiles => triangles never straddle a tile edge
   const geo=new THREE.PlaneGeometry(size,size,seg,seg);
   geo.rotateX(-Math.PI/2);
   const pos=geo.attributes.position; const col=[];
@@ -605,14 +609,60 @@ const GROUND_REPEAT=32;   // tiles across the 340u plane => ~10.6u per tile; rai
     col.push(c.r,c.g,c.b);
   }
   geo.setAttribute('color',new THREE.Float32BufferAttribute(col,3));
-  geo.computeVertexNormals();
+  // split vertices, then bake per-tile rotated UVs (tile chosen from each triangle's centroid)
+  const ng=geo.toNonIndexed(); geo.dispose();
+  const p2=ng.attributes.position, uv=new Float32Array(p2.count*2);
+  const rotOf=(ix,iz)=>(((ix*73856093)^(iz*19349663))>>>3)&3;      // deterministic per-tile 0..3
+  for(let t=0;t<p2.count;t+=3){
+    const cx=(p2.getX(t)+p2.getX(t+1)+p2.getX(t+2))/3, cz=(p2.getZ(t)+p2.getZ(t+1)+p2.getZ(t+2))/3;
+    const ix=Math.floor((cx+size/2)/tileSz), iz=Math.floor((cz+size/2)/tileSz), r=rotOf(ix,iz);
+    for(let k=0;k<3;k++){
+      const u=(p2.getX(t+k)+size/2)/tileSz-ix, v=1-((p2.getZ(t+k)+size/2)/tileSz-iz);
+      let ru,rv;
+      if(r===0){ru=u;rv=v;} else if(r===1){ru=v;rv=1-u;} else if(r===2){ru=1-u;rv=1-v;} else {ru=1-v;rv=u;}
+      uv[(t+k)*2]=ru; uv[(t+k)*2+1]=rv;
+    }
+  }
+  ng.setAttribute('uv',new THREE.BufferAttribute(uv,2));
+  ng.computeVertexNormals();
   const tex=new THREE.TextureLoader().load('assets/ground.webp');
   tex.colorSpace=THREE.SRGBColorSpace; tex.wrapS=tex.wrapT=THREE.RepeatWrapping;
-  tex.repeat.set(GROUND_REPEAT,GROUND_REPEAT);
   tex.anisotropy=Math.min(8, renderer.capabilities.getMaxAnisotropy());   // low camera = glancing angle; keeps distant tiles crisp
-  const gnd=new THREE.Mesh(geo,new THREE.MeshLambertMaterial({map:tex,vertexColors:true,flatShading:true}));
+  const gnd=new THREE.Mesh(ng,new THREE.MeshLambertMaterial({map:tex,vertexColors:true,flatShading:true}));
   gnd.receiveShadow=true;                                  // catches the hero/titan afternoon shadows
   scene.add(gnd);
+
+  // ---- real rocks on the painted gray patches (blob centres measured from ground.webp;
+  //      [u, v, radius] in texture space, v bottom-up) — placed through each tile's INVERSE
+  //      rotation so every rock lands on its painted stone ----
+  const BLOBS=[[0.215,0.475,0.032],[0.755,0.792,0.026],[0.855,0.149,0.017],[0.250,0.934,0.015],[0.733,0.738,0.012]];
+  const rr=mulberry32(4242), items=[];
+  for(let iz=0;iz<tiles;iz++) for(let ix=0;ix<tiles;ix++){
+    const r=rotOf(ix,iz);
+    for(const [tu,tv,br] of BLOBS){
+      let u,v;                                             // inverse of the UV rotation above
+      if(r===0){u=tu;v=tv;} else if(r===1){u=1-tv;v=tu;} else if(r===2){u=1-tu;v=1-tv;} else {u=tv;v=1-tu;}
+      const x=(ix+u)*tileSz-size/2, z=(iz+1-v)*tileSz-size/2;
+      const jr=rr(), jy=rr(), js=rr(), jt=rr();            // consume rng deterministically before culls
+      if(z>18 || x>70 || x<-176) continue;                 // outside anything the camera shows
+      if(Math.hypot(x-0.8,z-2.2)<14) continue;             // keep the combat clearing clean
+      let y=Math.sin(x*0.12)*0.25+Math.cos(z*0.1)*0.3;     // deterministic part of the terrain height
+      if(z<-30) y+=(-z-30)*0.06;
+      const s=br*tileSz*(0.85+js*0.5);                     // match the PAINTED stone's footprint — a little rock, not a boulder
+      items.push({x, y:y+s*0.12, z, s, ry:jr*Math.PI*2, sy:0.55+jy*0.3, tint:0.9+jt*0.25});
+    }
+  }
+  const inst=new THREE.InstancedMesh(new THREE.DodecahedronGeometry(1,0),
+    new THREE.MeshLambertMaterial({color:0xb8b3a8, flatShading:true}), items.length);   // the art's light stone gray
+  const _M=new THREE.Matrix4(), _Q=new THREE.Quaternion(), _E=new THREE.Euler(), _S=new THREE.Vector3(), _P=new THREE.Vector3(), _C=new THREE.Color();
+  items.forEach((it,i)=>{
+    _E.set((rr()-0.5)*0.3, it.ry, (rr()-0.5)*0.3); _Q.setFromEuler(_E);
+    _P.set(it.x,it.y,it.z); _S.set(it.s, it.s*it.sy, it.s*(0.8+rr()*0.4));
+    _M.compose(_P,_Q,_S); inst.setMatrixAt(i,_M);
+    inst.setColorAt(i,_C.setScalar(it.tint));
+  });
+  inst.receiveShadow=true;
+  scene.add(inst);
 })();
 
 /* ---- painted horizon backdrop (Andrew's art) — replaces the procedural hills/mesas ---- */
