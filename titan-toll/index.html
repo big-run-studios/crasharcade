@@ -309,7 +309,7 @@
       <div id="dbgLog"></div>
     </div>
 
-    <div id="brand">CRASHARCADE · TITAN GUARD v0.26.3</div>
+    <div id="brand">CRASHARCADE · TITAN GUARD v0.27.0</div>
   </div>
 </div>
 
@@ -539,7 +539,7 @@ const renderer=new THREE.WebGLRenderer({canvas:glCanvas,antialias:true});
 renderer.setPixelRatio(Math.min(devicePixelRatio||1,1.75));
 renderer.outputColorSpace=THREE.SRGBColorSpace;
 const scene=new THREE.Scene();
-scene.background=new THREE.Color(0x8fc4f0);
+scene.background=new THREE.Color(0x3ba4ef);   // = the backdrop painting's top-edge sky, so the band above the art continues it seamlessly
 // (no scene fog — it hazed out the backdrop; the painting carries its own atmosphere)
 
 const camera=new THREE.PerspectiveCamera(41, cw/ch, 0.1, 600);
@@ -619,31 +619,19 @@ const GROUND_REPEAT=32;   // tiles across the 340u plane => ~10.6u per tile; rai
 (function(){
   const tex=new THREE.TextureLoader().load('assets/backdrop.webp');
   tex.colorSpace=THREE.SRGBColorSpace;
-  const W=360, H=W/2;                                       // art is 2:1 (1774x887)
+  const W=520, H=W/2;                                       // art is 2:1 (1774x887)
   const m=new THREE.Mesh(new THREE.PlaneGeometry(W,H),
     new THREE.MeshBasicMaterial({map:tex, fog:false, toneMapped:false}));  // painting carries its own light + haze — keep game fog/ACES off it
-  m.position.set(0, H/2-70, -142);                          // shifted down so the painting's mountain band + sky sit in the portrait view (its low foreground hides below the terrain)
+  // Centered on the camera's VIEW AXIS at this depth (the quarter-profile orbit hits z=-142 at
+  // x≈-57 — a 0-centred plane sat visibly off to the right in landscape windows), and scaled up
+  // 1.44x about the mountain-band line (world y≈8) so the art keeps its horizon placement while
+  // the top edge reaches y≈155 (no background band above the painting in wide/tall windows).
+  m.position.set(-57, 25, -142);
   scene.add(m);
 })();
 
-/* ---- big readable clouds ---- */
-const clouds=[];
-(function(){
-  const rn=mulberry32(9);
-  for(let i=0;i<9;i++){
-    const g=new THREE.Group();
-    const n=3+Math.floor(rn()*3);
-    for(let j=0;j<n;j++){
-      const s=rf(4,8);
-      const p=new THREE.Mesh(new THREE.IcosahedronGeometry(s,0),new THREE.MeshBasicMaterial({color:0xffffff}));
-      p.position.set((j-n/2)*s*0.9, rf(-1,1)*s*0.3, rf(-1,1)*s*0.3);
-      p.scale.y=0.62; g.add(p);
-    }
-    g.position.set(rf(-120,120), rf(34,70), rf(-160,-40));
-    g.userData.spd=rf(0.4,1.1);
-    clouds.push(g); scene.add(g);
-  }
-})();
+/* (procedural clouds removed — they drifted OVER the painted backdrop's own sky/clouds
+   and read as white smudges applied to the art) */
 
 /* action bar as a ground ring around the hero's feet (fills from the centre out) */
 const actGrp=new THREE.Group(); actGrp.rotation.x=-Math.PI/2; actGrp.position.y=0.05; actGrp.visible=false; scene.add(actGrp);
@@ -2005,7 +1993,6 @@ function update(rdt){
   // cosmetic real-time decay
   shakeT=Math.max(0,shakeT-rdt); if(shakeT<=0)shakeAmt*=0.86;
   dodgeFlash=Math.max(0,dodgeFlash-rdt*3);
-  for(let i=clouds.length-1;i>=0;i--){ clouds[i].position.x+=clouds[i].userData.spd*rdt; if(clouds[i].position.x>140)clouds[i].position.x=-140; }
   for(let i=floaters.length-1;i>=0;i--){ const f=floaters[i]; f.life+=rdt; f.p.y+=f.vy*rdt; if(f.life>=f.max)floaters.splice(i,1); }
   for(let i=particles.length-1;i>=0;i--){ const p=particles[i]; p.life+=rdt; p.v.y-=14*rdt; p.p.addScaledVector(p.v,rdt); if(p.life>=p.max)particles.splice(i,1); }
   for(let i=beamRings.length-1;i>=0;i--){ beamRings[i].life+=rdt; if(beamRings[i].life>=beamRings[i].max)beamRings.splice(i,1); }
