@@ -309,7 +309,7 @@
       <div id="dbgLog"></div>
     </div>
 
-    <div id="brand">CRASHARCADE · TITAN GUARD v0.29.2</div>
+    <div id="brand">CRASHARCADE · TITAN GUARD v0.29.3</div>
   </div>
 </div>
 
@@ -692,6 +692,21 @@ const GROUND_REPEAT=32;   // tiles across the 340u plane => ~10.6u per tile
     const yMid=(( -zNear-30)*0.06 + (-zFar-30)*0.06)/2 + 0.9;   // hover just above the bumpy terrain
     carpet.position.set(-80, yMid, (zNear+zFar)/2);
     scene.add(carpet);
+    // ---- very light mist hovering at the far edge: soft white puffs, ~20% peak alpha ----
+    const mc=document.createElement('canvas'); mc.width=512; mc.height=128;
+    const mx=mc.getContext('2d'); const mrn=mulberry32(31);
+    for(let i=0;i<14;i++){
+      const px=mrn()*512, py=30+mrn()*70, rx=60+mrn()*90, ry=10+mrn()*16;
+      const rg=mx.createRadialGradient(px,py,0,px,py,rx);
+      rg.addColorStop(0,'rgba(255,255,255,0.35)'); rg.addColorStop(1,'rgba(255,255,255,0)');
+      mx.save(); mx.translate(px,py); mx.scale(1,ry/rx); mx.translate(-px,-py);
+      mx.fillStyle=rg; mx.beginPath(); mx.arc(px,py,rx,0,7); mx.fill(); mx.restore();
+    }
+    const mtx=new THREE.CanvasTexture(mc); mtx.colorSpace=THREE.SRGBColorSpace; mtx.wrapS=THREE.RepeatWrapping; mtx.repeat.x=3;
+    const mist=new THREE.Mesh(new THREE.PlaneGeometry(560,13),
+      new THREE.MeshBasicMaterial({map:mtx, transparent:true, opacity:0.55, depthWrite:false, fog:false, toneMapped:false}));
+    mist.position.set(-80, 11, -141);        // hugs the horizon just in front of the painting
+    scene.add(mist);
   }
 })();
 
