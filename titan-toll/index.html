@@ -309,7 +309,7 @@
       <div id="dbgLog"></div>
     </div>
 
-    <div id="brand">CRASHARCADE · TITAN GUARD v0.29.3</div>
+    <div id="brand">CRASHARCADE · TITAN GUARD v0.29.4</div>
   </div>
 </div>
 
@@ -1150,7 +1150,7 @@ const _EY=HERO_YAW+Math.PI;                      // enemy faces back toward the 
 const ENEMY_YAW=[_EY,_EY,_EY];                   // per-boss facing (tune live via __game.enemyTune)
 // clip roles per boss (names verified against the merged-animation GLBs)
 const ENEMY_ANIM=[
-  { idle:'Angry_Ground_Stomp', hit:'Hit_Reaction', attacks:['Punch_Combo_1','Punch_Combo_3','Punch_Combo_4','Punch_Combo_5','Punch_Combo_4','Punch_Combo_2','Punch_Combo','Punch_Pose'] },  // Cliffhorn (lab map)
+  { idle:'Angry_Ground_Stomp', idleSpd:0.5, hit:'Hit_Reaction', attacks:['Punch_Combo_1','Punch_Combo_3','Punch_Combo_4','Punch_Combo_5','Punch_Combo_4','Punch_Combo_2','Punch_Combo','Punch_Pose'] },  // Cliffhorn (lab map; idle at half speed — full-rate stomp read too frantic)
   { idle:'Checkout_Gesture', hit:'Hit_Reaction_with_Bow', attacks:['mage_soell_cast','mage_soell_cast_2','mage_soell_cast_4','mage_soell_cast_6','mage_soell_cast_2','mage_soell_cast_4','mage_soell_cast_6','mage_soell_cast'] },  // Gale (lab map)
   { idle:'Combat_Stance',   hit:'Hit_Reaction_1', attacks:['Shrug','Neck_Slashing_Gesture','Angry_Ground_Stomp_2','Lunge_Spin_Kick','Sweep_Kick','Roundhouse_Kick','Lunge_Spin_Kick','Kung_Fu_Punch'] },  // Sky Titan (lab map)
 ];
@@ -2269,8 +2269,8 @@ function animateEnemy(rdt){
   if(u.mixer){
     u.mixer.update(rdt);
     if(u.boneFix){ for(const f of u.boneFix){ if(f.bone) f.bone.quaternion.premultiply(f.q); } }   // corrective bone rotations on top of the animation
-    const map=u.animMap; let want=map.idle, loop=true, spd=1;
-    if(enemyHurtT>0 || enemyState==='stagger'){ want=map.hit; loop=false; }
+    const map=u.animMap; let want=map.idle, loop=true, spd=map.idleSpd||1;   // per-boss idle pace (Cliffhorn 0.5)
+    if(enemyHurtT>0 || enemyState==='stagger'){ want=map.hit; loop=false; spd=1; }
     else if(atk && (enemyState==='telegraph'||enemyState==='active')){       // attack: fit the clip to the dodge-game window
       want=map.attacks[(atk.setIdx||0)%map.attacks.length]; loop=false;
       if(atk.animTimed){ spd=1; }                                            // animation-driven: play natural so the swing aligns with the taps
