@@ -309,7 +309,7 @@
       <div id="dbgLog"></div>
     </div>
 
-    <div id="brand">CRASHARCADE · TITAN GUARD v0.42.0</div>
+    <div id="brand">CRASHARCADE · TITAN GUARD v0.42.1</div>
   </div>
 </div>
 
@@ -1515,8 +1515,11 @@ function buildEnemyGLB(i){
   let nodBone=model.getObjectByName('Head');                       // pre-attack nod tell (Gale)
   if(!nodBone) model.traverse(o=>{ if(!nodBone && o.isBone && /head/i.test(o.name)) nodBone=o; });
   const handBone=model.getObjectByName('RightHand');   // hand-origin projectile VFX fire from here
+  let fxBone=handBone;                                  // Gale: projectiles fire from the BLUE GEM in the scythe blade
+  if(i===1){ const fb=model.getObjectByName('RightForeArm');
+    if(fb){ fxBone=new THREE.Object3D(); fxBone.name='GemAnchor'; fxBone.position.set(20,0,-40); fb.add(fxBone); } }   // bone-local: the gem at the blade/shaft junction (gemTune-matched 2026-07-20)
   const armDups=ENEMY_ARMS[i]?ENEMY_ARMS[i].map(a=>buildLimbDuplicate(model,a)):null;   // mirrored forearms (Gale, both arms)
-  g.userData={...g.userData, height:h, model, mixer, clips, animMap:ENEMY_ANIM[i], baseYaw:ENEMY_YAW[i], rotMap:ENEMY_ROT[i]||{}, curClip:'', action:null, _rx:0, spark:spk, sparkBone, nodBone, boneFix:resolveBoneFix(model,i), armDups, armIdx:i, handBone};
+  g.userData={...g.userData, height:h, model, mixer, clips, animMap:ENEMY_ANIM[i], baseYaw:ENEMY_YAW[i], rotMap:ENEMY_ROT[i]||{}, curClip:'', action:null, _rx:0, spark:spk, sparkBone, nodBone, boneFix:resolveBoneFix(model,i), armDups, armIdx:i, handBone, fxBone};
   // GROUND OFFSETS PER CLIP — clips are authored at different heights (idle floated, some attacks
   // hover or sink). Measure each mapped clip's FIRST-FRAME skinned min-Y once at build;
   // animateEnemy then lifts/drops the model per playing clip so every animation STARTS on the ground.
@@ -2805,7 +2808,7 @@ function drawFxMuzzle(s0,col,preT,seed,type){
 }
 function drawEnemyFx(){
   if(!enemyMesh||!playerMesh||state!=='combat') return;
-  const u=enemyMesh.userData, bone=u.handBone||u.sparkBone;
+  const u=enemyMesh.userData, bone=u.fxBone||u.handBone||u.sparkBone;
   for(let i=enemyFx.length-1;i>=0;i--){ const fx=enemyFx[i];
     const flight=LD(fx.sp||'med'), tail=FX_TAIL[fx.type]||0.3, dImp=T-fx.impactT;
     if(dImp>tail){ enemyFx.splice(i,1); continue; }
@@ -3169,6 +3172,11 @@ window.__game={
   sparkTune:(dx,dy,dz,scale)=>{ const u=enemyMesh&&enemyMesh.userData; if(!u||!u.spark)return '(no spark)'; if(dx!=null)u.spark.off=[dx,dy,dz]; if(scale!=null)u.spark.scale=scale; return {node:u.spark.node, off:u.spark.off, scale:u.spark.scale, boneFound:!!u.sparkBone}; },
   boneFix:(node,rx=0,ry=0,rz=0)=>{ const u=enemyMesh&&enemyMesh.userData; if(!u||!u.model)return '(no enemy)'; const bone=u.model.getObjectByName(node);
     u.boneFix=[{bone, q:new THREE.Quaternion().setFromEuler(new THREE.Euler(rx,ry,rz)), node}]; return {node, found:!!bone, e:[rx,ry,rz]}; },
+  gemTune:(lx,ly,lz)=>{ const u=enemyMesh&&enemyMesh.userData; if(!u||!u.fxBone||u.fxBone===u.handBone) return '(no gem anchor)';
+    if(lx!=null) u.fxBone.position.set(lx,ly,lz);
+    enemyMesh.updateMatrixWorld(true);
+    const w=new THREE.Vector3(); u.fxBone.getWorldPosition(w);
+    const sc2=toScreen(w); return JSON.stringify({local:u.fxBone.position.toArray().map(v=>+v.toFixed(1)), screen:[Math.round(sc2.x),Math.round(sc2.y)], ok:sc2.ok}); },
   eyeTune:(lx,ly,lz,sc)=>{ const u=enemyMesh&&enemyMesh.userData; if(!u||!u.eyeGlows) return '(no eyes)';
     u.eyeGlows.forEach((sp,k)=>{ sp.position.set((k===0?-1:1)*lx, ly, lz); if(sc!=null) sp.scale.setScalar(sc); });
     return JSON.stringify({lx,ly,lz,sc}); },   // HEAD-BONE-LOCAL units (pose-stable)
