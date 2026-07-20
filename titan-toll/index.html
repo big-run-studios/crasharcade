@@ -309,7 +309,7 @@
       <div id="dbgLog"></div>
     </div>
 
-    <div id="brand">CRASHARCADE · TITAN GUARD v0.34.0</div>
+    <div id="brand">CRASHARCADE · TITAN GUARD v0.35.0</div>
   </div>
 </div>
 
@@ -366,9 +366,9 @@ const CFG={
   multMax:5,
   mGood:0.10, mPerfect:0.20, mDodge:0.15, mPerfDodge:0.32, mClean:0.28,
   // blitz (0..100)
-  blitzMax:100, blitzPerDmg:0.052, blitzCrit:3, blitzDodge:4.5, blitzPerfDodge:8, blitzOnHit:0.06,
+  blitzMax:100, blitzPerDmg:0.0052, blitzCrit:3, blitzDodge:4.5, blitzPerfDodge:8, blitzOnHit:0.06,
   // xp
-  xpPerDmg:0.55, xpAction:6, xpBlitz:48,
+  xpPerDmg:0.055, xpAction:6, xpBlitz:48,
   xpThresh:[95,130,175,225,285,350,420,500,590,690,800,920],  // easier + faster level-ups (12 entries)
   maxLevelUps:12,          // more upgrades per run so milestones/cooldowns/closure come to life
   usageBase:0.55, usageWeight:3.2,       // level-up ability weighting
@@ -383,17 +383,17 @@ const CFG={
   timeScale:2,             // global slowdown for telegraphs + attack/sequence pacing (higher = easier to read)
   timeBonusPerSec:10,      // +10 score for every second survived (at risk until cashout)
   angryAt:60, enrageAt:120,// rage phase thresholds (seconds of total run time)
-  rageTele:[1,0.5,0.375],  // telegraph-lead multiplier:  calm / angry(½) / enraged(−25% more)
-  rageWin:[1,0.75,0.675],  // dodge-window multiplier:     calm / angry(−25%) / enraged(−10% more)
+  rageTele:[1,1,1],        // rage speed-up CUT (v0.35.0, Andrew: too hard to follow) — visuals only
+  rageWin:[1,1,1],         // rage window-shrink CUT (v0.35.0) — same dodge windows in all phases
   dodgeScorePerfect:1000, dodgeScoreGoodHi:750, dodgeScoreGoodLo:300, // dodge score by quality
-  dmgFontMax:300,          // damage >= this draws at the 4x max size
+  dmgFontMax:3000,         // damage >= this draws at the 4x max size (scaled with the x10 damage)
   approachT:0.9,           // Juggernaut walk-in time before a MELEE attack (the dodge game starts on arrival)
   galePreT:2.0,            // Gale's pre-attack tell: two slow head nods (the dodge game starts after)
   heroDashT:0.63,          // hero run-in time before a strike = the Running clip's loop length (travel spans it exactly)
 };
 
 /* action base damage units + per-action character */
-const ABASE={strike:15, shoot:17, cast:22, blitz:20};
+const ABASE={strike:150, shoot:170, cast:220, blitz:200};   // x10 (v0.35.0) — big numbers; enemy HP x5 => hits strip 2x the bar
 // commitment = sum of target gaps; longer for cast (more exposure)
 
 /* per-level numeric scaling */
@@ -431,10 +431,10 @@ const SEQ={
   ],
   // blitz: chosen by number of inputs (blitz level tier)
   blitz:[
-    [{g:.44,an:'coreL',w:1.0,k:'thrust'},{g:.4,an:'coreR',w:1.0,k:'thrust'},{g:.5,an:'core',w:1.1,k:'reticle',mv:'drift'},{g:.44,an:'head',w:1.1,k:'reticle',mv:'drift'},{g:.7,an:'core',w:2.2,k:'detonate',fin:1,mv:'charge'}],
-    [{g:.42,an:'coreL',w:.95,k:'thrust'},{g:.38,an:'coreR',w:.95,k:'thrust'},{g:.38,an:'chest',w:1.0,k:'thrust'},{g:.48,an:'core',w:1.0,k:'reticle',mv:'drift'},{g:.42,an:'head',w:1.05,k:'reticle',mv:'drift'},{g:.5,an:'coreL',w:1.1,k:'glyph'},{g:.78,an:'core',w:2.6,k:'detonate',fin:1,mv:'charge'}],
-    [{g:.4,an:'coreL',w:.9,k:'thrust'},{g:.36,an:'coreR',w:.9,k:'thrust'},{g:.4,an:'core',w:1.0,k:'reticle',mv:'drift'},{g:.38,an:'head',w:1.0,k:'reticle',mv:'drift'},{g:.48,an:'coreL',w:1.0,k:'glyph'},{g:.46,an:'coreR',w:1.0,k:'glyph'},{g:.42,an:'chest',w:1.2,k:'launch',mv:'up'},{g:.82,an:'core',w:3.0,k:'detonate',fin:1,mv:'charge'}],
-    [{g:.38,an:'coreL',w:.9,k:'thrust'},{g:.34,an:'coreR',w:.9,k:'thrust'},{g:.34,an:'chest',w:.95,k:'thrust'},{g:.44,an:'core',w:1.0,k:'reticle',mv:'drift'},{g:.4,an:'head',w:1.0,k:'reticle',mv:'drift'},{g:.46,an:'coreL',w:1.0,k:'glyph'},{g:.44,an:'coreR',w:1.05,k:'glyph'},{g:.42,an:'chest',w:1.3,k:'launch',mv:'up'},{g:.95,an:'core',w:3.6,k:'detonate',fin:1,mv:'charge'}],
+    [{g:.4,an:'coreR',w:1.0,k:'thrust'},{g:.5,an:'core',w:1.1,k:'reticle',mv:'drift'},{g:.44,an:'head',w:1.1,k:'reticle',mv:'drift'},{g:.7,an:'core',w:2.2,k:'detonate',fin:1,mv:'charge'}],
+    [{g:.38,an:'coreR',w:.95,k:'thrust'},{g:.38,an:'chest',w:1.0,k:'thrust'},{g:.48,an:'core',w:1.0,k:'reticle',mv:'drift'},{g:.42,an:'head',w:1.05,k:'reticle',mv:'drift'},{g:.5,an:'coreL',w:1.1,k:'glyph'},{g:.78,an:'core',w:2.6,k:'detonate',fin:1,mv:'charge'}],
+    [{g:.36,an:'coreR',w:.9,k:'thrust'},{g:.4,an:'core',w:1.0,k:'reticle',mv:'drift'},{g:.38,an:'head',w:1.0,k:'reticle',mv:'drift'},{g:.48,an:'coreL',w:1.0,k:'glyph'},{g:.46,an:'coreR',w:1.0,k:'glyph'},{g:.42,an:'chest',w:1.2,k:'launch',mv:'up'},{g:.82,an:'core',w:3.0,k:'detonate',fin:1,mv:'charge'}],
+    [{g:.34,an:'coreR',w:.9,k:'thrust'},{g:.34,an:'chest',w:.95,k:'thrust'},{g:.44,an:'core',w:1.0,k:'reticle',mv:'drift'},{g:.4,an:'head',w:1.0,k:'reticle',mv:'drift'},{g:.46,an:'coreL',w:1.0,k:'glyph'},{g:.44,an:'coreR',w:1.05,k:'glyph'},{g:.42,an:'chest',w:1.3,k:'launch',mv:'up'},{g:.95,an:'core',w:3.6,k:'detonate',fin:1,mv:'charge'}],
   ],
 };
 
@@ -454,7 +454,7 @@ const bankValue=()=>Math.round(score)+Math.floor(runClock*CFG.timeBonusPerSec); 
 const H=(sp,dmg,at)=>({sp,dmg,at});
 
 const ENEMIES=[
- { key:'cliffhorn', name:'Cliffhorn Juggernaut', hp:850, weak:'cast', role:'Armoured — slow, huge tells. Magic pierces stone.',
+ { key:'cliffhorn', name:'Cliffhorn Juggernaut', hp:4250, weak:'cast', role:'Armoured — slow, huge tells.',
    sets:[
     {id:'boulder',  name:'Boulder Overhead', hits:[H('slow',32,0.95)], rec:1.5, track:false, diff:1,
       tel:'Rears both fists overhead, foot plants',aud:'low rising groan',vis:'red shadow blooms under you'},
@@ -478,7 +478,7 @@ const ENEMIES=[
       tel:'Enraged flurry ending in a slow crusher',aud:'frenzied roar',vis:'red body glow (low HP only)', maxHpFrac:0.4},
    ]},
 
- { key:'gale', name:'Gale Reaper', hp:1500, weak:'shoot', role:'Fast & airborne — shots track it best.',
+ { key:'gale', name:'Gale Reaper', hp:7500, weak:'shoot', role:'Fast & airborne.',
    sets:[
     {id:'twinslash',name:'Twin Slash',   hits:[H('fast',10,0.4),H('fast',10,0.75)], rec:0.8, track:true, diff:2,
       tel:'Crosses the twin blades',aud:'two steel zips',vis:'X-slash streaks'},
@@ -502,7 +502,7 @@ const ENEMIES=[
       tel:'Enraged storm ending in a slow crusher',aud:'rising gale to a slam',vis:'green rage aura (low HP only)', maxHpFrac:0.45},
    ]},
 
- { key:'titan', name:'Sky Titan', hp:2800, weak:'shift', role:'Master of all speeds — its weak point shifts each opening.',
+ { key:'titan', name:'Sky Titan', hp:14000, weak:'shift', role:'Master of all speeds.',
    sets:[
     {id:'smite',    name:'Sky Smite',    hits:[H('slow',36,1.0)], rec:1.1, track:false, diff:2,
       tel:'Raises a fist to the sky, light gathers',aud:'celestial hum then crack',vis:'beam column marker'},
@@ -1794,7 +1794,7 @@ function resolveTarget(tg, grade, err){
   // apply
   if(dmg>0){
     enemy.hp-=dmg; score+=dmg*mult;
-    enemyKbV -= Math.min(24, dmg*0.18);   // hit-recoil impulse, shoved back away from the player, ∝ damage
+    enemyKbV -= Math.min(24, dmg*0.018);   // hit-recoil impulse, shoved back away from the player, ∝ damage
     enemyHurtT=0.35;                       // trigger the boss hit-reaction clip (rigged models)
     blitz=Math.min(CFG.blitzMax, blitz + dmg*CFG.blitzPerDmg + (crit?CFG.blitzCrit:0));
     addXP(dmg*CFG.xpPerDmg + CFG.xpAction*0.15 + (off.action==='blitz'?CFG.xpBlitz*0.11:0), off.action, dmg);
@@ -1983,10 +1983,8 @@ function updateEnemy(dt){
     return;
   }
 }
-function pickVuln(){
-  if(enemy.weak!=='shift') return enemy.weak;
-  const opts=['strike','shoot','cast']; return opts[Math.floor(rngDir()*3)];
-}
+function pickVuln(){ return null; }   // weakness/strength system OFF (v0.35.0, Andrew): pick attacks by level/cooldown, not matchup
+
 function landHit(hit){
   if(state!=='combat')return;
   const dmg=godMode?0:Math.round(hit.dmg*(CFG.enemyDmgScale[enemyIdx]||1));
