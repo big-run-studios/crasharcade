@@ -309,7 +309,7 @@
       <div id="dbgLog"></div>
     </div>
 
-    <div id="brand">CRASHARCADE · TITAN GUARD v0.29.4</div>
+    <div id="brand">CRASHARCADE · TITAN GUARD v0.30.0</div>
   </div>
 </div>
 
@@ -387,6 +387,8 @@ const CFG={
   rageWin:[1,0.75,0.675],  // dodge-window multiplier:     calm / angry(−25%) / enraged(−10% more)
   dodgeScorePerfect:1000, dodgeScoreGoodHi:750, dodgeScoreGoodLo:300, // dodge score by quality
   dmgFontMax:300,          // damage >= this draws at the 4x max size
+  approachT:0.9,           // Juggernaut walk-in time before a MELEE attack (the dodge game starts on arrival)
+  heroDashT:0.55,          // hero run-in time before a strike (the timing game starts on arrival)
 };
 
 /* action base damage units + per-action character */
@@ -547,6 +549,7 @@ const camera=new THREE.PerspectiveCamera(41, cw/ch, 0.1, 600);
 // between player (bottom-left) and titan (upper-right).
 const CAM={pos:new THREE.Vector3(7.65,3.6,14.48), look:new THREE.Vector3(0,3.0,-4)};
 const PHOME={x:0.8, z:2.2, ry:-0.55, mirror:false};  // player home: bottom-left; pike reads in the right hand (no mirror)
+const MID_PT={x:0.125, z:-4.4};                      // halfway between hero home and enemy home — melee approach target for BOTH sides
 const ENEMY_Z=-11.0;
 const ENEMY_SCALE=[0.66,0.848,0.86];     // per-enemy on-screen size vs v0.13.2 framing: Cliffhorn 66%, Gale 80% height, Titan unchanged (re-derive per-model when GLBs land)
 camera.position.copy(CAM.pos); camera.lookAt(CAM.look);
@@ -935,7 +938,7 @@ function heroAttackCue(action, lead){
   if(heroAction && heroAction!==a) heroAction.fadeOut(0.16);
   heroAction=a; heroCurName=spec.clip;
 }
-const HERO_LOOP=[HERO_CLIP.idle,HERO_CLIP.blitz];   // clips that loop
+const HERO_LOOP=[HERO_CLIP.idle,HERO_CLIP.blitz,'Running'];   // clips that loop
 // dodge roll: play at (near-)NATURAL speed — it used to be compressed up to ~7x to fit the
 // gap before the next hit, which read as a choppy blur. Now it never runs faster than 2x;
 // if the gap is shorter than the (sped) clip, the roll crossfades out mid-motion instead.
@@ -961,10 +964,13 @@ function updateHero(rdt){
   heroMixer.update(rdt);
   if(heroOneShotT>0) heroOneShotT-=rdt;
   if(heroRollT>0) heroRollT-=rdt;
+  // strike dash arrival: swing wind-up starts only once the run-in completes
+  if(off && !off._cued && T>=off.startT){ off._cued=true; playerPose=off.action; poseT=0;
+    heroAttackCue(off.action, Math.max(0.15,(off.startT+off.targets[0].t)-T)); }
   let want;
   if(heroDead) want=HERO_CLIP.dead;                              // death
   else if(state==='result') want=HERO_CLIP.victory;             // cash-out / full clear
-  else if(off){ want=HERO_CLIP[off.action]||HERO_CLIP.idle; heroRollT=0; }  // attacking (blitz interrupt cancels a roll)
+  else if(off){ want= off._cued ? (HERO_CLIP[off.action]||HERO_CLIP.idle) : 'Running'; heroRollT=0; }  // dash in, then attack (blitz interrupt cancels a roll)
   else if(heroRollT>0) want=HERO_CLIP.dodge;                    // mid roll — let the full clip run
   else if(introT>0) want=HERO_CLIP.intro;                       // pre-battle stance (sim-gated, plays fully)
   else if(heroOneShotT>0) want=heroOneShot;                     // hit flinch
@@ -1442,6 +1448,7 @@ let forcedAttack=-1;
 let godMode=false, paused=false;
 let defeatedT=0;
 let enemyKb=0, enemyKbV=0;                 // enemy hit-recoil spring (knockback away from player, scaled by damage)
+let pendingAtk=-1;                          // attack chosen but waiting on the approach walk-in
 let enemyHurtT=0;                          // >0 => play the boss hit-reaction clip (cosmetic; set when a player hit lands)
 let enemyDeathFx=null;                      // active slow red death dissolve
 const E_DEATH_FREEZE=0.45, E_DEATH_DUR=2.2, E_DEATH_HOLD=0.3, E_DEATH_COL=0xff2a1e, E_DEATH_MOTE='#ff6a4a';
@@ -1654,6 +1661,7 @@ function showResult(dead){
    OFFENSE — commit an action, build & resolve the timing sequence
    ========================================================================= */
 const enemyAttacking=()=> !!atk && (enemyState==='telegraph'||enemyState==='active') && atk.hits.some(h=>!h.resolved);
+const enemyBusy=()=> enemyAttacking() || enemyState==='approach';   // approach = attack committed, dodge game imminent: player actions queue
 function commit(action){
   if(state!=='combat'||off||queuedAction||introT>0) return;   // already attacking / queued / intro still playing
   if(action==='blitz'){ if(blitz<CFG.blitzMax) return; } else { if(actBar<1) return; if(cooldown[action]>0) return; }  // can't pick a cooling ability
@@ -1661,15 +1669,15 @@ function commit(action){
   if(action==='blitz') blitz=0; else actBar=0;
   // Blitz INTERRUPTS: it cancels an in-progress enemy attack outright (panic button), then unleashes now.
   if(action==='blitz'){
-    if(enemyState==='telegraph'||enemyState==='active'){
-      atk=null; enemyState='stagger'; enemyTimer=0;                     // kill the incoming hits, stun the enemy
+    if(enemyState==='telegraph'||enemyState==='active'||enemyState==='approach'){
+      atk=null; enemyState='stagger'; enemyTimer=0;                     // kill the incoming hits (or the walk-in), stun the enemy
       if(enemyMesh) addFloater(enemyMesh.position.clone().setY(6),'INTERRUPT!','#ffc233',1.0,26);
     }
     beginOffense('blitz');
     return;
   }
   // Normal actions never overlap the dodge game: if the enemy is mid-attack, QUEUE to fire after.
-  if(enemyAttacking()){ queuedAction=action; sfx('tele'); }
+  if(enemyBusy()){ queuedAction=action; sfx('tele'); }
   else beginOffense(action);
 }
 function beginOffense(action){
@@ -1687,9 +1695,12 @@ function beginOffense(action){
   }
   if(action==='cast') castStreak++; else castStreak=0;
   if(action!=='blitz'){ const cd=abilityCd(level); cooldown[action]=cd; cooldownMax[action]=cd||1; }  // start the cooldown (L2+)
-  playerPose=action; poseT=0;
+  // strike = melee: run halfway to the enemy first; the timing game starts ONLY on arrival
+  const dash = action==='strike' ? CFG.heroDashT : 0;
+  off.startT=T+dash; off._cued=!dash;
+  playerPose = dash?'dash':action; poseT=0;
   setPikeForm(off.targets[0]?off.targets[0].k:action, action);
-  heroAttackCue(action, off.targets[0]?off.targets[0].t:dur);   // impact frame lands on target 1 (blitz: loops via updateHero)
+  if(!dash) heroAttackCue(action, off.targets[0]?off.targets[0].t:dur);   // impact frame lands on target 1 (blitz: loops via updateHero)
   sfx('tele');
 }
 
@@ -1886,7 +1897,7 @@ function startAttack(idx){
   } else {
     hits = s.hits.map(h=>({...h, at:h.at*CFG.timeScale, dmg:h.dmg, resolved:false, dodged:false, tele:false}));
   }
-  atk={setIdx:idx, set:s, startT:T, animTimed, hits};
+  atk={setIdx:idx, set:s, startT:T, animTimed, hits, approached:enemyState==='approach'};   // approached: walked in — walk back during recovery
   last2Atk=lastAtk; lastAtk=idx;
   recentFast = isFast(s) ? recentFast+1 : 0;
   enemyState='telegraph'; enemyTimer=0;
@@ -1900,7 +1911,18 @@ function updateEnemy(dt){
   if(enemyState==='idle'){
     if(off) return;                          // enemy waits while the player is attacking (never two timing games)
     enemyTimer-=dt;
-    if(enemyTimer<=0 && staggerT<=0){ startAttack(chooseAttack()); }
+    if(enemyTimer<=0 && staggerT<=0){
+      const idx=chooseAttack();
+      const alist=ENEMY_ANIM[enemyIdx].attacks, clip=alist&&alist[idx%alist.length];
+      const melee = enemyIdx===0 && !(ENEMY_FX[enemyIdx]&&ENEMY_FX[enemyIdx][clip]);   // Juggernaut walks in for MELEE attacks; projectiles fire from home
+      if(melee){ pendingAtk=idx; enemyState='approach'; enemyTimer=0; }
+      else startAttack(idx);
+    }
+    return;
+  }
+  if(enemyState==='approach'){
+    enemyTimer+=dt;
+    if(enemyTimer>=CFG.approachT) startAttack(pendingAtk);   // arrive -> the dodge game starts NOW (the walk never eats into it)
     return;
   }
   if(enemyState==='telegraph'||enemyState==='active'){
@@ -2123,7 +2145,7 @@ function step(dt){
   }
   updateEnemy(dt);
   // fire a queued action the instant the enemy is no longer attacking (start of its recovery)
-  if(queuedAction && !off && !enemyAttacking()){ const a=queuedAction; queuedAction=null; beginOffense(a); }
+  if(queuedAction && !off && !enemyBusy()){ const a=queuedAction; queuedAction=null; beginOffense(a); }
 }
 
 /* =========================================================================
@@ -2144,14 +2166,16 @@ const _pikeQT=new THREE.Quaternion(), _pikeAim=new THREE.Vector3(), _pikeDir=new
 function animatePlayer(rdt){
   const u=playerMesh.userData; if(!u.body) return;
   const t=performance.now()/1000;
-  // base facing
+  // base facing + position: strike (melee) fights from the halfway point — run in, fight, run home
+  const dashing = off && off.action==='strike';
+  const bx=dashing?MID_PT.x:PHOME.x, bz=dashing?MID_PT.z:PHOME.z, mk=dashing?0.085:0.1;
   playerMesh.rotation.y=lerp(playerMesh.rotation.y,PHOME.ry,0.2);
-  playerMesh.position.x=lerp(playerMesh.position.x,PHOME.x,0.2);
-  playerMesh.position.z=lerp(playerMesh.position.z,PHOME.z,0.2);
+  playerMesh.position.x=lerp(playerMesh.position.x,bx,mk);
+  playerMesh.position.z=lerp(playerMesh.position.z,bz,mk);
   let armRZ=-0.3, armRX=-0.5, bodyLean=0, bob=Math.sin(t*2)*0.03, pikeRot=0;
   const tipInt=u.tipLight;
   if(playerPose==='idle'){ armRX=-0.4; armRZ=0.2; tipInt.intensity=lerp(tipInt.intensity,0.2,0.1); }
-  else if(playerPose==='strike'){ const p=clamp(poseT/0.18,0,1); armRX=lerp(-1.6,-2.6,smooth(p)); bodyLean=0.25*smooth(p); playerMesh.position.z=PHOME.z-0.4*smooth(p); tipInt.intensity=1.2; }
+  else if(playerPose==='strike'){ const p=clamp(poseT/0.18,0,1); armRX=lerp(-1.6,-2.6,smooth(p)); bodyLean=0.25*smooth(p); playerMesh.position.z=bz-0.4*smooth(p); tipInt.intensity=1.2; }
   else if(playerPose==='shoot'){ armRX=-1.3; armRZ=-0.9; bodyLean=-0.1; const rec=Math.sin(poseT*30)*Math.max(0,0.3-poseT)*2; playerMesh.position.z=PHOME.z+rec*0.3; tipInt.intensity=1.4; }
   else if(playerPose==='cast'){ armRX=-2.2; armRZ=0; bodyLean=-0.05; u.rune.rotation.z+=rdt*3; tipInt.intensity=1.6+Math.sin(t*10)*0.3; }
   else if(playerPose==='blitz'){ armRX=-2.0+Math.sin(t*18)*0.4; bodyLean=0.15; tipInt.intensity=2.0; }
@@ -2238,9 +2262,17 @@ function animateEnemy(rdt){
   // hit-recoil spring: shoved back (−z, away from player) then settles; magnitude set by damage
   enemyKbV += (-enemyKb*120 - enemyKbV*15)*rdt; enemyKb += enemyKbV*rdt;
   enemyHurtT=Math.max(0, enemyHurtT-rdt);
+  // melee approach: slide toward the halfway point during the walk-in, hold there through the
+  // attack, walk home during recovery (cosmetic — the sim's dodge game anchors on arrival)
+  let apT=0;
+  if(enemyState==='approach') apT=clamp(enemyTimer/CFG.approachT,0,1);
+  else if(atk && atk.approached && (enemyState==='telegraph'||enemyState==='active')) apT=1;
+  else if(atk && atk.approached && enemyState==='recovery') apT=1-clamp(enemyTimer/Math.min(recDur||0.8,0.8),0,1);
+  u._apF=lerp(u._apF||0, apT, Math.min(1,rdt*5));
   // feet stay planted (the old sine bob floated the grounded GLBs); keep the small hop when shoved back
+  enemyMesh.position.x=-0.55 + u._apF*(MID_PT.x+0.55);
   enemyMesh.position.y=Math.max(0,-enemyKb)*0.25;
-  enemyMesh.position.z=ENEMY_Z+enemyKb;
+  enemyMesh.position.z=ENEMY_Z+enemyKb + u._apF*(MID_PT.z-ENEMY_Z);
   enemyMesh.rotation.z=lerp(enemyMesh.rotation.z,0,0.1);
   let telAmt=0, strikeAmt=0, curHit=null;
   if(atk && (enemyState==='telegraph'||enemyState==='active')){
@@ -2271,6 +2303,7 @@ function animateEnemy(rdt){
     if(u.boneFix){ for(const f of u.boneFix){ if(f.bone) f.bone.quaternion.premultiply(f.q); } }   // corrective bone rotations on top of the animation
     const map=u.animMap; let want=map.idle, loop=true, spd=map.idleSpd||1;   // per-boss idle pace (Cliffhorn 0.5)
     if(enemyHurtT>0 || enemyState==='stagger'){ want=map.hit; loop=false; spd=1; }
+    else if((enemyState==='approach' || (enemyState==='recovery' && (u._apF||0)>0.08)) && u.clips['Walking']){ want='Walking'; loop=true; spd=1.15; }   // walk in / walk home
     else if(atk && (enemyState==='telegraph'||enemyState==='active')){       // attack: fit the clip to the dodge-game window
       want=map.attacks[(atk.setIdx||0)%map.attacks.length]; loop=false;
       if(atk.animTimed){ spd=1; }                                            // animation-driven: play natural so the swing aligns with the taps
@@ -2551,7 +2584,7 @@ function overlayDraw(){
     octx.restore(); } }
 
   // "READY" on the action ring when it is full
-  if(playerMesh && state==='combat' && !off && !queuedAction && actBar>=1 && !enemyAttacking()){
+  if(playerMesh && state==='combat' && !off && !queuedAction && actBar>=1 && !enemyBusy()){
     const s=toScreen(playerMesh.position.clone().add(new THREE.Vector3(0.4,0.14,0.85)));
     if(s.ok){ octx.save(); octx.font='800 15px Orbitron,sans-serif'; octx.textAlign='center'; octx.textBaseline='middle';
       octx.lineWidth=4; octx.strokeStyle='rgba(0,0,0,.6)'; octx.strokeText('READY',s.x,s.y); octx.fillStyle='#d6ffe8'; octx.fillText('READY',s.x,s.y); octx.restore(); }
@@ -2580,7 +2613,7 @@ function overlayDraw(){
   // dodge is now the fill-up shield button in the lower-right (updated in syncHud), not an on-hero cue
 
   // offensive timing targets (thin ring -> thick success band; only the NEXT one is "live")
-  if(off){
+  if(off && T>=off.startT-0.05){   // rings appear only once the strike run-in has arrived
     let firstUnres=-1; for(let i=0;i<off.targets.length;i++){ if(!off.targets[i].resolved){firstUnres=i;break;} }
     // hi-vis canvas variants of the action palette (hotter/more saturated than the :root DOM colors — these fight the field art)
     const col= off.action==='strike'?'#ff2e55': off.action==='shoot'?'#17e9ff': off.action==='cast'?'#c26bff':'#ffce1e';
@@ -2646,7 +2679,7 @@ function syncHud(){
   { const hf=hp/CFG.playerHP, lo=el('lowhp'); const o = hf<0.5 ? clamp((0.5-hf)/0.5,0,1) : 0;
     lo.style.opacity=(o*0.9).toFixed(2); lo.classList.toggle('crit', hf>0 && hf<0.25); }
   // radial = the 3 core actions (shown when a selection is available / queued); Blitz is its own corner button
-  const canAct=!off&&!queuedAction&&actBar>=1&&state==='combat'&&!enemyAttacking();  // radial clears during the dodge game so you can tap anywhere to dodge
+  const canAct=!off&&!queuedAction&&actBar>=1&&state==='combat'&&!enemyBusy();  // radial clears during the dodge game so you can tap anywhere to dodge
   const blitzReadyNow=!off&&!queuedAction&&blitz>=CFG.blitzMax&&state==='combat';
   el('radial').classList.toggle('show', canAct||!!queuedAction);
   const bid={strike:'btnStrike',shoot:'btnShoot',cast:'btnCast'};
