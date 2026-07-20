@@ -143,11 +143,12 @@
   @keyframes bleedPulse{0%,100%{filter:brightness(.85);}50%{filter:brightness(1.3);}}
 
   /* ---------- level-up flyout ---------- */
-  #levelToast{position:absolute;left:50%;top:40%;transform:translate(-50%,-50%);opacity:0;pointer-events:none;text-align:center;z-index:15;}
+  /* bottom-right + doubled hold (v0.49) — centre-screen got lost in the action; player needs time to read what changed */
+  #levelToast{position:absolute;right:14px;bottom:38%;opacity:0;pointer-events:none;text-align:right;transform-origin:100% 50%;z-index:15;}
   #levelToast .big{font-family:var(--display);font-weight:900;font-size:30px;letter-spacing:1px;color:#ffe89a;text-shadow:0 2px 0 rgba(120,70,0,.5),0 0 24px rgba(255,210,58,.85);}
   #levelToast .sm{font-family:var(--display);font-weight:800;font-size:13px;letter-spacing:3px;color:#fff;margin-top:2px;text-shadow:0 0 10px rgba(255,210,58,.7);}
-  #levelToast.show{animation:levelToast 1.7s ease-out;}
-  @keyframes levelToast{0%{opacity:0;transform:translate(-50%,-45%) scale(.6);}16%{opacity:1;transform:translate(-50%,-54%) scale(1.1);}68%{opacity:1;transform:translate(-50%,-58%) scale(1);}100%{opacity:0;transform:translate(-50%,-70%) scale(1);}}
+  #levelToast.show{animation:levelToast 3.4s ease-out;}
+  @keyframes levelToast{0%{opacity:0;transform:translateY(12px) scale(.6);}10%{opacity:1;transform:translateY(-4px) scale(1.1);}75%{opacity:1;transform:translateY(-8px) scale(1);}100%{opacity:0;transform:translateY(-24px) scale(1);}}
 
   /* ---------- rage escalation flyout ---------- */
   #rageToast{position:absolute;left:50%;top:27%;transform:translate(-50%,-50%);opacity:0;pointer-events:none;text-align:center;z-index:16;}
@@ -311,7 +312,7 @@
       <div id="dbgLog"></div>
     </div>
 
-    <div id="brand">CRASHARCADE · TITAN GUARD v0.48.4</div>
+    <div id="brand">CRASHARCADE · TITAN GUARD v0.49.0</div>
   </div>
 </div>
 
@@ -399,7 +400,7 @@ const ABASE={strike:200, shoot:62, cast:112, blitz:160};
 // commitment = sum of target gaps; longer for cast (more exposure)
 
 /* per-level numeric scaling (v0.46: ONE global player level, all attacks ramp together) */
-function lvDmg(lv){return 1+0.20*(lv-1);}            // +20%/level -> x2.6 at L9 (noticeable ramp)
+function lvDmg(lv){return 1+0.10*(lv-1);}            // +10%/level (v0.49: was 20% — higher tiers already add hits, 6-7 per combo by the end)
 function lvGood(lv){return CFG.goodWin+CFG.winPerLv*(lv-1);}
 function closureSpeed(lv){return CFG.closureBase;}   // flat (v0.45, was 1.25^(lv-1)) — signature kept for the call sites
 function lvCrit(lv){return CFG.critPerLv*(lv-1);}
@@ -1949,7 +1950,8 @@ function resolveTarget(tg, grade, err){
   if(grade==='perfect'){ sfx(crit?'crit':'perfect'); addFloater(anchor,crit?'CRITICAL':'PERFECT',crit?'#ff4fd8':'#ffe14d',crit?1.2:1.0,crit?30:24); hitPauseT=CFG.hitPause*(crit?1.6:1); shake(crit?0.5:0.28,0.28); camPunch(crit?0.30:0.16); burst(anchor,crit?'#ff4fd8':'#ffe14d',crit?30:20); impactFlash(anchor, crit?0xff9ae0:0xffe89a, crit?3.6:2.6);}
   else if(grade==='good'){ sfx(crit?'crit':'good'); addFloater(anchor,crit?'CRITICAL':'GOOD',crit?'#ff4fd8':'#8fe9ff',crit?1.1:0.85,crit?28:20); if(crit){hitPauseT=CFG.hitPause*1.4;shake(0.4,0.24);} camPunch(crit?0.24:0.09); burst(anchor,crit?'#ff4fd8':'#8fe9ff',crit?24:14); impactFlash(anchor, crit?0xff9ae0:0xbfeeff, crit?3.2:2.1);}
   else { sfx('miss'); addFloater(anchor,'MISS','#8a99b8',0.8,18); }
-  if(dmg>0) addDmgFloater(anchor.clone().add(new THREE.Vector3(0,-0.6,0)), dmg, crit?'#ff9ae0':'#ffffff', crit);
+  if(dmg>0){ const dp=anchor.clone(); dp.y=(dp.y-0.6)*0.5;   // halfway down to the ground — centre-screen was too busy to read (Andrew v0.49)
+    addDmgFloater(dp, dmg, crit?'#ff9ae0':'#ffffff', crit); }
   hitLog.push({t:+T.toFixed(3),kind:'atk:'+off.action,grade,err:err==null?null:+err.toFixed(3)});
   if(hitLog.length>60)hitLog.shift();
   poseT=0;
@@ -3198,7 +3200,7 @@ function levelUpFX(level){
   goldBeamBurst(); groundBeams('#ffe08a');
   const milestone=(level===3||level===6||level===9);
   if(playerMesh) addFloater(playerMesh.position.clone().setY(3.6), 'LV '+level+(milestone?' ★':''), milestone?'#ffc233':'#ffe89a', milestone?1.2:1.0, milestone?26:22);
-  const lt=el('levelToast'); lt.innerHTML='<div class="big">LV '+level+(milestone?' ★':'')+'</div><div class="sm">'+(milestone?'NEW COMBO TIER':'ALL ATTACKS +20%')+'</div>';
+  const lt=el('levelToast'); lt.innerHTML='<div class="big">LV '+level+(milestone?' ★':'')+'</div><div class="sm">'+(milestone?'NEW COMBO TIER':'ALL ATTACKS +10%')+'</div>';
   lt.classList.remove('show'); void lt.offsetWidth; lt.classList.add('show');
   const hp2=el('heroPlate'); if(hp2){ hp2.classList.remove('flare'); void hp2.offsetWidth; hp2.classList.add('flare'); }
   for(const a in ICON_ACTS){ const b=el(ICON_ACTS[a]); if(b){ b.classList.remove('lvpop'); void b.offsetWidth; b.classList.add('lvpop'); } }
