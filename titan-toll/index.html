@@ -312,7 +312,7 @@
       <div id="dbgLog"></div>
     </div>
 
-    <div id="brand">CRASHARCADE · TITAN GUARD v0.50.0</div>
+    <div id="brand">CRASHARCADE · TITAN GUARD v0.50.1</div>
   </div>
 </div>
 
@@ -400,7 +400,7 @@ const ABASE={strike:67, shoot:21, cast:37, blitz:53};   // v0.49.1: enemies take
 // commitment = sum of target gaps; longer for cast (more exposure)
 
 /* per-level numeric scaling (v0.46: ONE global player level, all attacks ramp together) */
-function lvDmg(lv){return 1+0.10*(lv-1);}            // +10%/level (v0.49: was 20% — higher tiers already add hits, 6-7 per combo by the end)
+function lvDmg(lv){const m=Math.floor(lv/3); return 1+0.10*((lv-1)-m)+0.25*m;}   // +10%/level, but the L3/6/9 milestones grant +25% (v0.50.1) -> x2.25 at L9
 function lvGood(lv){return CFG.goodWin+CFG.winPerLv*(lv-1);}
 function closureSpeed(lv){return CFG.closureBase;}   // flat (v0.45, was 1.25^(lv-1)) — signature kept for the call sites
 function lvCrit(lv){return CFG.critPerLv*(lv-1);}
@@ -457,7 +457,7 @@ const bankValue=()=>Math.round(score)+Math.floor(runClock*CFG.timeBonusPerSec); 
 const H=(sp,dmg,at)=>({sp,dmg,at});
 
 const ENEMIES=[
- { key:'cliffhorn', name:'Cliffhorn Juggernaut', hp:4250, weak:'cast', role:'Armoured — slow, huge tells.',
+ { key:'cliffhorn', name:'Cliffhorn Juggernaut', hp:2550, weak:'cast', role:'Armoured — slow, huge tells.',
    sets:[
     {id:'boulder',  name:'Boulder Overhead', hits:[H('slow',32,0.95)], rec:1.5, track:false, diff:1,
       tel:'Rears both fists overhead, foot plants',aud:'low rising groan',vis:'red shadow blooms under you'},
@@ -481,7 +481,7 @@ const ENEMIES=[
       tel:'Enraged flurry ending in a slow crusher',aud:'frenzied roar',vis:'red body glow (low HP only)', maxHpFrac:0.4},
    ]},
 
- { key:'gale', name:'Gale Reaper', hp:7500, weak:'shoot', role:'Fast & airborne.',
+ { key:'gale', name:'Gale Reaper', hp:4500, weak:'shoot', role:'Fast & airborne.',
    sets:[
     {id:'twinslash',name:'Twin Slash',   hits:[H('fast',10,0.4),H('fast',10,0.75)], rec:0.8, track:true, diff:2,
       tel:'Crosses the twin blades',aud:'two steel zips',vis:'X-slash streaks'},
@@ -505,7 +505,7 @@ const ENEMIES=[
       tel:'Enraged storm ending in a slow crusher',aud:'rising gale to a slam',vis:'green rage aura (low HP only)', maxHpFrac:0.45},
    ]},
 
- { key:'titan', name:'Sky Titan', hp:14000, weak:'shift', role:'Master of all speeds.',
+ { key:'titan', name:'Sky Titan', hp:8400, weak:'shift', role:'Master of all speeds.',
    sets:[
     {id:'smite',    name:'Sky Smite',    hits:[H('slow',36,1.0)], rec:1.1, track:false, diff:2,
       tel:'Raises a fist to the sky, light gathers',aud:'celestial hum then crack',vis:'beam column marker'},
@@ -3330,7 +3330,7 @@ function levelUpFX(level){
   goldBeamBurst(); groundBeams('#ffe08a');
   const milestone=(level===3||level===6||level===9);
   if(playerMesh) addFloater(playerMesh.position.clone().setY(3.6), 'LV '+level+(milestone?' ★':''), milestone?'#ffc233':'#ffe89a', milestone?1.2:1.0, milestone?26:22);
-  const lt=el('levelToast'); lt.innerHTML='<div class="big">LV '+level+(milestone?' ★':'')+'</div><div class="sm">'+(milestone?'NEW COMBO TIER':'ALL ATTACKS +10%')+'</div>';
+  const lt=el('levelToast'); lt.innerHTML='<div class="big">LV '+level+(milestone?' ★':'')+'</div><div class="sm">'+(milestone?'NEW COMBO TIER · +25% POWER':'ALL ATTACKS +10%')+'</div>';
   lt.classList.remove('show'); void lt.offsetWidth; lt.classList.add('show');
   const hp2=el('heroPlate'); if(hp2){ hp2.classList.remove('flare'); void hp2.offsetWidth; hp2.classList.add('flare'); }
   for(const a in ICON_ACTS){ const b=el(ICON_ACTS[a]); if(b){ b.classList.remove('lvpop'); void b.offsetWidth; b.classList.add('lvpop'); } }
