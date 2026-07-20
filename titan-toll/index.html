@@ -52,19 +52,19 @@
   #multFill{position:absolute;inset:0;width:100%;transform-origin:left;background:linear-gradient(90deg,#ffc233,#ffe89a);}
 
   /* ---------- cash out: green circle, bottom-left ABOVE the hero plate (v0.46) ---------- */
-  #cashBtn{position:absolute;left:16px;bottom:calc(12px + min(22vw,122px) + env(safe-area-inset-bottom));z-index:24;
-    width:78px;height:78px;border-radius:50%;border:none;cursor:pointer;display:flex;flex-direction:column;align-items:center;justify-content:center;line-height:1.02;
+  #cashBtn{position:absolute;left:clamp(6px,1.8vw,16px);bottom:calc(clamp(4px,1.4vw,12px) + min(22vw,122px) + env(safe-area-inset-bottom));z-index:24;
+    width:clamp(62px,19vw,78px);height:clamp(62px,19vw,78px);border-radius:50%;border:none;cursor:pointer;display:flex;flex-direction:column;align-items:center;justify-content:center;line-height:1.02;
     color:#06231a;background:radial-gradient(120% 120% at 50% 26%,#8affc4,#2fd67a 58%,#16ad5e);
     box-shadow:0 4px 16px rgba(0,0,0,.45),0 0 20px rgba(94,255,168,.5),inset 0 0 0 2.5px rgba(255,255,255,.45);
     font-family:var(--display);font-weight:900;letter-spacing:1px;transition:transform .08s,opacity .15s,filter .15s;animation:cashpulse 1.7s ease-in-out infinite;}
-  #cashBtn .ct{font-size:15px;} #cashBtn .cb{font-size:15px;}
+  #cashBtn .ct{font-size:clamp(12px,3.6vw,15px);} #cashBtn .cb{font-size:clamp(12px,3.6vw,15px);}
   #cashBtn:active{transform:scale(.93);}
   #cashBtn.lock{opacity:.4;filter:grayscale(.6);animation:none;}
   @keyframes cashpulse{0%,100%{box-shadow:0 4px 16px rgba(0,0,0,.45),0 0 14px rgba(94,255,168,.4),inset 0 0 0 2.5px rgba(255,255,255,.45);}
     50%{box-shadow:0 4px 16px rgba(0,0,0,.45),0 0 26px rgba(94,255,168,.9),inset 0 0 0 3px rgba(255,255,255,.55);}}
 
   /* ---------- dodge shield: lower-right corner, under the action radial ---------- */
-  #dodgeShield{position:absolute;right:30px;bottom:calc(32px + env(safe-area-inset-bottom));width:98px;height:118px;z-index:24;
+  #dodgeShield{position:absolute;right:clamp(10px,2.6vw,30px);bottom:calc(clamp(12px,2.8vw,32px) + env(safe-area-inset-bottom));width:clamp(80px,25vw,98px);aspect-ratio:98/118;height:auto;z-index:24;
     pointer-events:auto;border:none;background:none;padding:0;cursor:pointer;display:none;
     transition:transform .06s,filter .12s;}
   #dodgeShield.show{display:block;filter:drop-shadow(0 0 8px rgba(120,200,255,.6));}
@@ -97,7 +97,7 @@
   /* ---------- radial action menu (lower-right, shown only when selectable) ---------- */
   #radial{position:absolute;right:0;bottom:0;width:320px;height:360px;pointer-events:none;opacity:0;visibility:hidden;transform:scale(.85);transition:opacity .16s,transform .16s;}
   #radial.show{opacity:1;visibility:visible;transform:scale(1);}   /* hidden radial is fully non-interactive (no descendant eats taps) */
-  .rbtn{position:absolute;width:86px;height:86px;border-radius:50%;border:none;cursor:pointer;pointer-events:auto;color:#fff;
+  .rbtn{position:absolute;width:clamp(64px,19vw,86px);height:clamp(64px,19vw,86px);border-radius:50%;border:none;cursor:pointer;pointer-events:auto;color:#fff;
     display:flex;align-items:center;justify-content:center;background:none;padding:0;
     opacity:.38;filter:grayscale(.6);transition:transform .08s,opacity .12s,filter .12s;}
   /* per-level icon art fills the button (the icon frame escalates L1->L9 = the level indicator) */
@@ -122,14 +122,14 @@
   @keyframes queuedPulse{0%,100%{box-shadow:0 3px 12px rgba(0,0,0,.5),inset 0 0 0 2px rgba(255,255,255,.6);}50%{box-shadow:0 3px 18px rgba(255,255,255,.6),inset 0 0 0 3px #fff;}}
 
   /* ---------- dedicated Blitz button: cool golden emblem, lower-right corner (shown only when charged) ---------- */
-  #blitzBtn{position:absolute;right:30px;bottom:calc(40px + env(safe-area-inset-bottom));width:96px;height:96px;border-radius:50%;
+  #blitzBtn{position:absolute;right:clamp(10px,2.6vw,30px);bottom:calc(clamp(14px,3.4vw,40px) + env(safe-area-inset-bottom));width:clamp(76px,23vw,96px);height:clamp(76px,23vw,96px);border-radius:50%;
     z-index:25;pointer-events:auto;border:none;cursor:pointer;display:none;flex-direction:column;align-items:center;justify-content:center;gap:1px;
     background:radial-gradient(120% 120% at 50% 26%,#fff2b0,#ffce33 46%,#e0951a);
     box-shadow:0 4px 18px rgba(0,0,0,.55),0 0 26px rgba(255,206,51,.6),inset 0 0 0 3px rgba(255,255,255,.5);transition:transform .08s;}
   #blitzBtn.show{display:flex;animation:blitzGlow 1s ease-in-out infinite;}
   #blitzBtn:active{transform:scale(.93);}
-  #blitzBtn .bic{font-size:42px;line-height:1;color:#5a3a00;text-shadow:0 0 10px rgba(255,245,200,.9);}
-  #blitzBtn .blab{font-family:var(--display);font-weight:900;font-size:12px;letter-spacing:2px;color:#4a2f00;margin-top:-2px;}
+  #blitzBtn .bic{font-size:clamp(32px,10vw,42px);line-height:1;color:#5a3a00;text-shadow:0 0 10px rgba(255,245,200,.9);}
+  #blitzBtn .blab{font-family:var(--display);font-weight:900;font-size:clamp(9px,2.8vw,12px);letter-spacing:2px;color:#4a2f00;margin-top:-2px;}
   #blitzBtn .bring{position:absolute;inset:-7px;border-radius:50%;border:2px dashed rgba(255,244,190,.75);animation:blitzRing 3.4s linear infinite;}
   #blitzBtn.queued{animation:none;filter:brightness(1.12);}
   @keyframes blitzGlow{0%,100%{box-shadow:0 4px 18px rgba(0,0,0,.55),0 0 20px rgba(255,206,51,.5),inset 0 0 0 3px rgba(255,255,255,.5);}
@@ -311,7 +311,7 @@
       <div id="dbgLog"></div>
     </div>
 
-    <div id="brand">CRASHARCADE · TITAN GUARD v0.47.0</div>
+    <div id="brand">CRASHARCADE · TITAN GUARD v0.48.0</div>
   </div>
 </div>
 
@@ -1697,6 +1697,7 @@ function startRun(sd){
   heroDead=false; heroCurName=''; heroOneShotT=0; heroRollT=0; heroRollYawOff=0;
   introT=CFG.introDur;          // battle is gated until the hero's full intro stance completes
   resultShowT=0;                // cancel a pending celebration->menu pop from a previous run
+  _introLanded=false;           // arm the sky-fall landing (smoke ring fires once at stanceAt)
   playerPose='idle'; poseT=0;
   setEnemy(0);
   state='combat';
@@ -2241,13 +2242,18 @@ document.getElementById('btnCast').addEventListener('pointerdown',e=>{e.preventD
 document.getElementById('blitzBtn').addEventListener('pointerdown',e=>{e.preventDefault();e.stopPropagation();commit('blitz');});
 document.getElementById('cashBtn').addEventListener('pointerdown',e=>{e.preventDefault();cashOut(false);});
 // lay the 4 radial buttons on a 90° arc in the lower-right (pivot near the bottom-right corner)
-(function layoutRadial(){
-  const pivotR=16, pivotB=56, R=230, D2R=Math.PI/180;   // px from corner; arc radius (3 buttons, clear of the Blitz/shield corner)
+function layoutRadial(){
+  // responsive: the arc radius scales with the viewport so the fan hugs the corner on phones
+  // (fixed R=230 put Strike ~62% across a 375px screen) and the offsets track the live button size.
+  const vw=window.innerWidth||360;
+  const pivotR=Math.round(Math.min(16, vw*0.03)), pivotB=Math.min(56, vw*0.13), R=Math.min(230, vw*0.5), D2R=Math.PI/180;
   const arc=[['btnStrike',72],['btnShoot',45],['btnCast',18]]; // [id, angle: 90=left/low .. 0=up/right]
   for(const [id,a] of arc){ const b=document.getElementById(id);
-    const right=pivotR+R*Math.sin(a*D2R)-43, bottom=pivotB+R*Math.cos(a*D2R)-43;
+    const half=(b.offsetWidth||86)/2;
+    const right=pivotR+R*Math.sin(a*D2R)-half, bottom=pivotB+R*Math.cos(a*D2R)-half;
     b.style.right=right+'px'; b.style.bottom=bottom+'px'; }
-})();
+}
+layoutRadial();
 
 document.getElementById('startBtn').addEventListener('click',()=>{ unlockAudio(); startRun(document.getElementById('seedIn').value.trim()); });
 document.getElementById('rndSeed').addEventListener('click',()=>{ document.getElementById('seedIn').value=String(Math.floor(Math.random()*1e9)); });
@@ -2328,6 +2334,31 @@ function offAnchor(tg){
   return base;
 }
 
+/* ---- landing smoke ring: soft puffs radiate out from the touchdown point and fade (cosmetic) ---- */
+let _introLanded=true, _puffT=-1, _puffX=0, _puffZ=0;
+const _puffs=[], PUFF_N=12, PUFF_DUR=0.95;
+function _puffTex(){ if(_puffTex.t) return _puffTex.t;
+  const c=document.createElement('canvas'); c.width=c.height=64; const g=c.getContext('2d');
+  const r=g.createRadialGradient(32,32,4,32,32,30);
+  r.addColorStop(0,'rgba(238,242,246,0.9)'); r.addColorStop(0.55,'rgba(212,220,230,0.42)'); r.addColorStop(1,'rgba(205,214,224,0)');
+  g.fillStyle=r; g.fillRect(0,0,64,64);
+  _puffTex.t=new THREE.CanvasTexture(c); return _puffTex.t; }
+function spawnLandPuff(x,z){
+  _puffX=x; _puffZ=z; _puffT=0;
+  if(!_puffs.length) for(let i=0;i<PUFF_N;i++){
+    const m=new THREE.Sprite(new THREE.SpriteMaterial({map:_puffTex(),transparent:true,depthWrite:false,opacity:0}));
+    m.visible=false; scene.add(m); _puffs.push(m); }
+}
+function updateLandPuff(rdt){
+  if(_puffT<0) return;
+  _puffT+=rdt; const p=_puffT/PUFF_DUR;
+  if(p>=1){ for(const m of _puffs) m.visible=false; _puffT=-1; return; }
+  const rad=0.5+3.0*(1-Math.pow(1-p,2.2)), op=(1-p)*0.75, sc=0.9+1.3*p;   // ease-out radiate, linear fade, gentle swell
+  for(let i=0;i<_puffs.length;i++){ const m=_puffs[i], a=(i/_puffs.length)*Math.PI*2;
+    m.visible=true; m.position.set(_puffX+Math.cos(a)*rad, 0.28+p*0.5, _puffZ+Math.sin(a)*rad);
+    m.scale.setScalar(sc); m.material.opacity=op; }
+}
+
 const _pikeQT=new THREE.Quaternion(), _pikeAim=new THREE.Vector3(), _pikeDir=new THREE.Vector3(),
       _pikeDown=new THREE.Vector3(0,-1,0), _pikeUp=new THREE.Vector3(0,1,0), _pikeSideE=new THREE.Euler(-Math.PI/2,0,0),
       _pikeQI=new THREE.Quaternion();   // identity = the upright idle grip
@@ -2345,6 +2376,14 @@ function animatePlayer(rdt){
   } else {
     playerMesh.position.x=lerp(playerMesh.position.x,bx,0.1);
     playerMesh.position.z=lerp(playerMesh.position.z,bz,0.1);
+  }
+  // intro sky-fall (cosmetic): drop straight in from off-screen on the idle pose, land EXACTLY as the
+  // stance begins (stanceAt), smoke ring on touchdown. Accelerating fall = 1-p^2.
+  if(state==='combat' && introT>0){
+    const e=CFG.introDur-introT, at=CAMS.intro.stanceAt;
+    if(e<at){ const p=clamp(e/at,0,1); playerMesh.position.y=CAMS.intro.fallH*(1-p*p); _introLanded=false; }
+    else { playerMesh.position.y=0;
+      if(!_introLanded){ _introLanded=true; if(e-at<0.6) spawnLandPuff(playerMesh.position.x, playerMesh.position.z); } }   // no late puff when the harness step()s past the intro
   }
   let armRZ=-0.3, armRX=-0.5, bodyLean=0, bob=Math.sin(t*2)*0.03, pikeRot=0;
   const tipInt=u.tipLight;
@@ -2374,8 +2413,8 @@ function animatePlayer(rdt){
   //      shoot  -> bazooka butt (local -Y) aimed at the titan's midsection
   //      else   -> upright
   if(heroDead) _pikeQT.setFromEuler(_pikeSideE);               // dead: the pike lies flat beside him
-  else if(introT>0){                                           // intro: sideways -> UPRIGHT across the first half (Andrew) so it lands on the idle grip
-    const ip=smooth(clamp((CFG.introDur-introT)/(CFG.introDur*0.5),0,1));
+  else if(introT>0){                                           // intro: sideways -> UPRIGHT across 50%..75% of the gate (Andrew: on camera, after the pull-back)
+    const ip=smooth(clamp(((CFG.introDur-introT)-CFG.introDur*0.5)/(CFG.introDur*0.25),0,1));
     _pikeQT.setFromEuler(_pikeSideE).slerp(_pikeQI, ip);
   }
   else if((playerPose==='shoot'||playerPose==='strike') && enemyMesh && enemyMesh.userData.anchors){
@@ -2557,7 +2596,7 @@ const CAMS={
   // titan reveal -> pull back -> HOME hold while the stance plays (v0.45: reveal shortened — Andrew never saw the
   // stance; hero idles until stanceAt, then Axe_Stance runs at stanceSpeed to end exactly with the 6.1s gate).
   // y0/y1/look1 raised per v0.33.0 — the low shot aimed past the backdrop's top edge into blue.
-  intro:{d:8.0, az:0.5, y0:2.6, y1:3.4, look0:0.10, look1:0.55, rise:0.20, settle:0.38, stanceAt:1.22, stanceSpeed:1.25},
+  intro:{d:8.0, az:0.5, y0:2.6, y1:3.4, look0:0.10, look1:0.55, rise:0.20, settle:0.38, stanceAt:1.22, stanceSpeed:1.25, fallH:16},
   kill:{d0:1.45, d1:0.98, az:0.42, yF:0.42, lookF:0.52},                         // push-in on the dissolve (x titan height)
   victory:{dx:2.2, dy:1.3, dz:5.8, lookDx:0, lookY:1.5, fov:44},   // v0.46: axis-aligned tighter angle — the old 37°-off view caught the backdrop's edge; hero now turns to face it
   crash:{rise:2.6, back:6.0, dur:4.0, lookY:2.0},     // v0.47: flatter pitch — the steep look-down filled the frame with lawn and caught the terrain seam at the top
@@ -2700,7 +2739,7 @@ function frame(nw){
   const rdt=Math.min((nw-last)/1000,1/30); last=nw;
   if(cw!==app.clientWidth||ch!==app.clientHeight) resize();
   try{ update(rdt); }catch(err){ console.error('update',err); }
-  try{ if(playerMesh)animatePlayer(rdt); if(enemyMesh)animateEnemy(rdt); updateHero(rdt); updateBlitzRibbons(rdt); updateEnemySpark(); updateWaveFx(); updateImpactFlashes(rdt); }catch(err){ console.error('anim',err); }
+  try{ if(playerMesh)animatePlayer(rdt); if(enemyMesh)animateEnemy(rdt); updateHero(rdt); updateBlitzRibbons(rdt); updateEnemySpark(); updateWaveFx(); updateImpactFlashes(rdt); updateLandPuff(rdt); }catch(err){ console.error('anim',err); }
   if(playerMesh){ heroLight.position.set(playerMesh.position.x,1.7,playerMesh.position.z); heroLight.intensity = heroFlashT>0 ? (heroFlashT/0.5)*14 : 0; }
   if(enemyMesh && enemyMesh.userData.eyeGlows){ const u2=enemyMesh.userData, fl=u2._eyeFlash||0;
     const k=(0.45+ragePhase*0.35)*(0.85+0.15*Math.sin(performance.now()/140));
@@ -3170,6 +3209,7 @@ function resize(){
   const dpr=Math.min(devicePixelRatio||1,2);
   ov.width=cw*dpr; ov.height=ch*dpr; ov.style.width=cw+'px'; ov.style.height=ch+'px';
   octx.setTransform(dpr,0,0,dpr,0,0); octx.textAlign='center'; octx.textBaseline='middle';
+  try{ layoutRadial(); }catch(e){}   // the action-arc radius + button size are viewport-reactive
 }
 window.addEventListener('resize',resize); resize();
 
@@ -3275,6 +3315,8 @@ window.__game={
   setEnemyScale:(s)=>{ if(enemyMesh)enemyMesh.scale.setScalar(s); },
   setFov:(f)=>{ camera.fov=f; camera.updateProjectionMatrix(); },
   camOn:(v=true)=>{ CAMS.on=!!v; },
+  puffTest:()=>{ if(playerMesh) spawnLandPuff(playerMesh.position.x, playerMesh.position.z); return 'puff'; },   // replay the landing smoke ring
+
   camShot:(name=null,t=null)=>{ _camForce=name; _camForceT=t; return _camForce||'(auto)'; },   // force a shot (+optional shot-time) for posing; camShot() releases
   camTight:(v=null)=>{ _camTightForce=v; return v; },                                          // force the HOME tighten for Law-1 validation
   camDbg:()=>({ shot:_camShotId, t:+_camShotT.toFixed(2), fov:_camCur.fov, punch:+_camPunch.toFixed(3), veto:_camVeto, spends:_camSpends.length,
