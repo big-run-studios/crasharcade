@@ -309,7 +309,7 @@
       <div id="dbgLog"></div>
     </div>
 
-    <div id="brand">CRASHARCADE · TITAN GUARD v0.31.2</div>
+    <div id="brand">CRASHARCADE · TITAN GUARD v0.32.0</div>
   </div>
 </div>
 
@@ -389,7 +389,7 @@ const CFG={
   dmgFontMax:300,          // damage >= this draws at the 4x max size
   approachT:0.9,           // Juggernaut walk-in time before a MELEE attack (the dodge game starts on arrival)
   galePreT:2.0,            // Gale's pre-attack tell: two slow head nods (the dodge game starts after)
-  heroDashT:0.55,          // hero run-in time before a strike (the timing game starts on arrival)
+  heroDashT:0.63,          // hero run-in time before a strike = the Running clip's loop length (travel spans it exactly)
 };
 
 /* action base damage units + per-action character */
@@ -1158,7 +1158,7 @@ const ENEMY_YAW=[_EY,_EY,_EY];                   // per-boss facing (tune live v
 // clip roles per boss (names verified against the merged-animation GLBs)
 const ENEMY_ANIM=[
   { idle:'Angry_Ground_Stomp', idleSpd:0.5, hit:'Hit_Reaction', attacks:['Punch_Combo_1','Punch_Combo_3','Punch_Combo_4','Punch_Combo_5','Punch_Combo_4','Punch_Combo_2','Punch_Combo','Punch_Pose'] },  // Cliffhorn (lab map; idle at half speed — full-rate stomp read too frantic)
-  { idle:'Checkout_Gesture', hit:'Hit_Reaction_with_Bow', attacks:['mage_soell_cast','mage_soell_cast_2','mage_soell_cast_4','mage_soell_cast_6','mage_soell_cast_2','mage_soell_cast_4','mage_soell_cast_6','mage_soell_cast'] },  // Gale (lab map)
+  { idle:'Checkout_Gesture', idleSpd:0.5, hit:'Hit_Reaction_with_Bow', attacks:['mage_soell_cast','mage_soell_cast_2','mage_soell_cast_4','mage_soell_cast_6','mage_soell_cast_2','mage_soell_cast_4','mage_soell_cast_6','mage_soell_cast'] },  // Gale (lab map; everything at half speed — full rate read frantic + too hard)
   { idle:'Combat_Stance',   hit:'Hit_Reaction_1', attacks:['Shrug','Neck_Slashing_Gesture','Angry_Ground_Stomp_2','Lunge_Spin_Kick','Sweep_Kick','Roundhouse_Kick','Lunge_Spin_Kick','Kung_Fu_Punch'] },  // Sky Titan (lab map)
 ];
 // Per-clip facing fix-ups (deg, added to the enemy's base yaw) — some merged clips are authored facing a different way.
@@ -1236,6 +1236,10 @@ function resolveBoneFix(model,i){
 // dupHand = child of dupFore that COPIES the real hand's local transform every frame (animateEnemy),
 // and the verts keep their original forearm/hand weight blend remapped onto that chain. The mirrored
 // scythe articulates in exact lockstep with the real one — they can never scissor.
+// Per-boss ATTACK clip speed. Gale 0.5: full-rate casts read frantic and the taps came too fast
+// (Andrew). Authored tap times are clip-seconds — startAttack divides by this so the dodge game
+// stretches with the clip (windows spread out; the swing still lands ON the tap frame).
+const ENEMY_ATK_SPEED=[1, 0.5, 1];
 const ENEMY_ARMS=[
   null,                                                            // Cliffhorn
   [ { fore:'RightForeArm', hand:'RightHand', flip:[Math.PI,0,0] }, // Gale — mirror BOTH forearms about the elbow
@@ -1441,6 +1445,12 @@ function buildEnemyGLB(i){
   const armDups=ENEMY_ARMS[i]?ENEMY_ARMS[i].map(a=>buildLimbDuplicate(model,a)):null;   // mirrored forearms (Gale, both arms)
   g.userData={...g.userData, height:h, model, mixer, clips, animMap:ENEMY_ANIM[i], baseYaw:ENEMY_YAW[i], rotMap:ENEMY_ROT[i]||{}, curClip:'', action:null, _rx:0, spark:spk, sparkBone, nodBone, boneFix:resolveBoneFix(model,i), armDups, armIdx:i, handBone};
   playEnemyClip(g.userData, ENEMY_ANIM[i].idle, true, 0);
+  // ground-fit to the IDLE pose, not the bind pose — every boss idled floating (idle hips sit
+  // higher than bind): tick the mixer once, measure the SKINNED bbox, drop the feet to y=0
+  mixer.update(0.03); g.updateMatrixWorld(true);
+  { let minY=Infinity; const bb=new THREE.Box3();
+    model.traverse(o=>{ if(o.isSkinnedMesh){ o.computeBoundingBox(); bb.copy(o.boundingBox).applyMatrix4(o.matrixWorld); minY=Math.min(minY,bb.min.y); } });
+    if(isFinite(minY)) model.position.y-=minY; }
   return g;
 }
 
@@ -1563,6 +1573,7 @@ function startRun(sd){
   actBar=0; off=null; queuedAction=null; cooldown={strike:0,shoot:0,cast:0}; cooldownMax={strike:1,shoot:1,cast:1};
   T=0; runClock=0; ragePhase=0; resolveLockT=0; castStreak=0; staggerT=0; forcedAttack=-1;
   hitLog.length=0; floaters.length=0; particles.length=0; enemyFx.length=0; _fxStartT=-1; paused=false;
+  for(const w of waveFx){ if(w.mesh){ scene.remove(w.mesh); w.mesh.traverse(o=>{ if(o.geometry)o.geometry.dispose(); if(o.material)o.material.dispose(); }); } } waveFx.length=0;
   if(!playerMesh){playerMesh=buildPlayer(); scene.add(playerMesh);}
   attachHero();                 // swap in the GLB hero once it (and the player rig) exist
   attachSpear();                // same for the real spear model (art WIP — no-ops until spear.glb exists)
@@ -1922,11 +1933,12 @@ function startAttack(idx){
   const clip = map&&map.attacks ? map.attacks[idx%map.attacks.length] : null;
   const td = clip && ENEMY_TAPS[enemyIdx] ? ENEMY_TAPS[enemyIdx][clip] : null;
   let hits, animTimed=false;
+  const aspd=ENEMY_ATK_SPEED[enemyIdx]||1;   // clip playback rate: tap at clip-second t lands at wall-time t/aspd
   if(td && td.taps && td.taps.length){
     animTimed=true;
-    hits = td.taps.map((t,j)=>{ const src=s.hits[j%s.hits.length]; return {sp:src.sp, dmg:src.dmg, at:Math.max(0.05, t-dwin()), resolved:false, dodged:false, tele:false}; });
+    hits = td.taps.map((t,j)=>{ const src=s.hits[j%s.hits.length]; return {sp:src.sp, dmg:src.dmg, at:Math.max(0.05, t/aspd-dwin()), resolved:false, dodged:false, tele:false}; });
   } else {
-    hits = s.hits.map(h=>({...h, at:h.at*CFG.timeScale, dmg:h.dmg, resolved:false, dodged:false, tele:false}));
+    hits = s.hits.map(h=>({...h, at:h.at*CFG.timeScale/aspd, dmg:h.dmg, resolved:false, dodged:false, tele:false}));
   }
   atk={setIdx:idx, set:s, startT:T, animTimed, hits, approached:enemyState==='approach'&&approachMove};   // approached: walked in — jump home after (Gale's nod doesn't move)
   last2Atk=lastAtk; lastAtk=idx;
@@ -2200,10 +2212,16 @@ function animatePlayer(rdt){
   const t=performance.now()/1000;
   // base facing + position: strike (melee) fights from the halfway point — run in, fight, run home
   const dashing = off && off.action==='strike';
-  const bx=dashing?MID_PT.x:PHOME.x, bz=dashing?MID_PT.z:PHOME.z, mk=dashing?0.085:0.1;
+  const bx=dashing?MID_PT.x:PHOME.x, bz=dashing?MID_PT.z:PHOME.z;
   playerMesh.rotation.y=lerp(playerMesh.rotation.y,PHOME.ry,0.2);
-  playerMesh.position.x=lerp(playerMesh.position.x,bx,mk);
-  playerMesh.position.z=lerp(playerMesh.position.z,bz,mk);
+  if(dashing && T<off.startT){                    // run-in: travel is PARAMETRIC on the dash window — constant run speed, arrives exactly as the timing game starts
+    const p=clamp(1-(off.startT-T)/CFG.heroDashT,0,1);
+    playerMesh.position.x=lerp(PHOME.x,MID_PT.x,p);
+    playerMesh.position.z=lerp(PHOME.z,MID_PT.z,p);
+  } else {
+    playerMesh.position.x=lerp(playerMesh.position.x,bx,0.1);
+    playerMesh.position.z=lerp(playerMesh.position.z,bz,0.1);
+  }
   let armRZ=-0.3, armRX=-0.5, bodyLean=0, bob=Math.sin(t*2)*0.03, pikeRot=0;
   const tipInt=u.tipLight;
   if(playerPose==='idle'){ armRX=-0.4; armRZ=0.2; tipInt.intensity=lerp(tipInt.intensity,0.2,0.1); }
@@ -2357,7 +2375,7 @@ function animateEnemy(rdt){
     else if(enemyState==='approach' && approachMove && u.clips['Walking']){ want='Walking'; loop=true; spd=1.15; }   // walk in (jump home keeps the idle pose — the arc sells it; Stand_Dodge read silly)
     else if(atk && (enemyState==='telegraph'||enemyState==='active')){       // attack: fit the clip to the dodge-game window
       want=map.attacks[(atk.setIdx||0)%map.attacks.length]; loop=false;
-      if(atk.animTimed){ spd=1; }                                            // animation-driven: play natural so the swing aligns with the taps
+      if(atk.animTimed){ spd=ENEMY_ATK_SPEED[enemyIdx]||1; }                 // animation-driven: play at the boss's rate so the swing aligns with the (rescaled) taps
       else { const clip=u.clips[want];
         if(clip){ const winLen=Math.max(0.35, atk.hits[atk.hits.length-1].at + dwin());   // attack start -> last dodge window closes
           spd=clamp(clip.duration/winLen, 0.25, 4); } }                      // stretch/squeeze so one play == the window
@@ -2368,7 +2386,9 @@ function animateEnemy(rdt){
   if(atk && atk.startT!==_fxStartT){ _fxStartT=atk.startT;
     const am=u.animMap, cl=am&&am.attacks?am.attacks[(atk.setIdx||0)%am.attacks.length]:null;
     const ty=cl&&ENEMY_FX[enemyIdx]?ENEMY_FX[enemyIdx][cl]:null;
-    if(ty) for(const h of atk.hits) enemyFx.push({type:ty, impactT:atk.startT+h.at+dwin(), sp:h.sp, seed:rf(0,100)});   // arrive at the window CLOSE = the damage moment (the authored impact frame)
+    if(ty) for(const h of atk.hits){ const impactT=atk.startT+h.at+dwin();   // arrive at the window CLOSE = the damage moment (the authored impact frame)
+      if(ty==='wave') waveFx.push({impactT});                                // Juggernaut force-push: real 3D projectile, not the 2D overlay
+      else enemyFx.push({type:ty, impactT, sp:h.sp, seed:rf(0,100)}); }
   }
 }
 
@@ -2507,7 +2527,7 @@ function frame(nw){
   const rdt=Math.min((nw-last)/1000,1/30); last=nw;
   if(cw!==app.clientWidth||ch!==app.clientHeight) resize();
   try{ update(rdt); }catch(err){ console.error('update',err); }
-  try{ if(playerMesh)animatePlayer(rdt); if(enemyMesh)animateEnemy(rdt); updateHero(rdt); updateBlitzRibbons(rdt); updateEnemySpark(); }catch(err){ console.error('anim',err); }
+  try{ if(playerMesh)animatePlayer(rdt); if(enemyMesh)animateEnemy(rdt); updateHero(rdt); updateBlitzRibbons(rdt); updateEnemySpark(); updateWaveFx(); }catch(err){ console.error('anim',err); }
   if(playerMesh){ heroLight.position.set(playerMesh.position.x,1.7,playerMesh.position.z); heroLight.intensity = heroFlashT>0 ? (heroFlashT/0.5)*14 : 0; }
   if(enemyMesh && ragePhase>0){ enemyMesh.userData.anchors.core.getWorldPosition(enemyRageLight.position); enemyRageLight.intensity=(ragePhase===1?1.4:2.8)*(0.8+0.2*Math.sin(performance.now()/140)); } else enemyRageLight.intensity=0;
   // camera director: cinematic base shot + additive layers (punch / sway / shake)
@@ -2604,6 +2624,46 @@ function drawTiming(shape,cx,cy,R0,dt,win,perfWin,app,col,Rmax,glyph,next){
    hero EXACTLY at its impact moment. Flight time = that hit's telegraph lead (LD: fast flies fast,
    slow lumbers in, rage shortens it), so the approach itself tells the player when to dodge. ---- */
 const enemyFx=[]; let _fxStartT=-1;
+/* ---- Juggernaut 'wave' = 3D FORCE-PUSH projectile: translucent shock-shell + trailing rings,
+        fired from the right hand at the player, arriving exactly at the dodge-window close.
+        (The 2D overlay version read as drawn-on and slow.) Cosmetic — timing reads sim T. ---- */
+const waveFx=[]; const WAVE_FLIGHT=0.55;
+function makeWaveMesh(){
+  const grp=new THREE.Group();
+  const shell=new THREE.Mesh(new THREE.SphereGeometry(0.55,18,14),
+    new THREE.MeshBasicMaterial({color:0xffd88a, transparent:true, opacity:0.5, depthWrite:false, blending:THREE.AdditiveBlending}));
+  grp.add(shell); grp.userData.shell=shell;
+  for(let i=0;i<3;i++){ const r=new THREE.Mesh(new THREE.TorusGeometry(0.6+i*0.34,0.05,8,28),
+      new THREE.MeshBasicMaterial({color:0xffc233, transparent:true, opacity:0.6-i*0.16, depthWrite:false, blending:THREE.AdditiveBlending}));
+    r.position.z=-0.25-i*0.45; grp.add(r); }
+  grp.visible=false; scene.add(grp);
+  return grp;
+}
+function updateWaveFx(){
+  for(let i=waveFx.length-1;i>=0;i--){
+    const w=waveFx[i];
+    const p=1-(w.impactT-T)/WAVE_FLIGHT;
+    if(p<0){ if(w.mesh)w.mesh.visible=false; continue; }         // not launched yet
+    if(!w.from){                                                 // launch: freeze the origin at the hand (flight-path convention)
+      const u=enemyMesh&&enemyMesh.userData;
+      w.from=new THREE.Vector3();
+      if(u&&u.handBone) u.handBone.getWorldPosition(w.from); else w.from.set(MID_PT.x,4,MID_PT.z);
+      w.to=new THREE.Vector3(playerMesh?playerMesh.position.x:PHOME.x, 1.3, playerMesh?playerMesh.position.z:PHOME.z);
+    }
+    if(p>=1 || state!=='combat'){                                // impact (or fight over): burst and retire
+      if(w.to) burst(w.to,'#ffd23a',14);
+      if(w.mesh){ scene.remove(w.mesh); w.mesh.traverse(o=>{ if(o.geometry)o.geometry.dispose(); if(o.material)o.material.dispose(); }); }
+      waveFx.splice(i,1); continue;
+    }
+    if(!w.mesh) w.mesh=makeWaveMesh();
+    const tn=performance.now()/1000, pulse=1+0.16*Math.sin(tn*26);
+    w.mesh.visible=true;
+    w.mesh.position.lerpVectors(w.from,w.to,p);
+    w.mesh.lookAt(w.to);
+    w.mesh.scale.setScalar((0.8+p*0.9)*pulse);                   // swells as it closes in
+    w.mesh.userData.shell.material.opacity=0.5*(1-p*0.3);
+  }
+}
 const FX_TAIL={ wave:0.35, lightning:0.3, windbeam:0.28, beam:0.28, meteor:0.42, slash:0.3, crack:0.42 };   // post-impact time = the explosion's lifetime
 const _fxA=new THREE.Vector3(), _fxB=new THREE.Vector3(), _fxP=new THREE.Vector3(), _METEOR=new THREE.Vector3(1.2,16,-6);
 function fxJag(x0,y0,x1,y1,segs,amp,col,w,alpha,seed){   // jagged polyline; stable jitter if seed given, flicker if not
