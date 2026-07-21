@@ -54,7 +54,7 @@
     background:rgba(8,12,34,.72);border:1.5px solid rgba(95,224,255,.45);border-radius:999px;padding:7px 13px;color:var(--cyan);
     text-shadow:0 1px 3px rgba(0,0,0,.6);}
   .chip b{color:#fff;}
-  #miniRow{display:flex;gap:8px;}
+  #miniRow{display:flex;flex-direction:column;gap:8px;align-items:flex-end;}  /* vertical stack — keeps the scoreboard clear */
   .mini{pointer-events:auto;width:35px;height:35px;border-radius:10px;border:1.5px solid rgba(188,212,255,.35);
     background:rgba(8,12,34,.6);color:#fff;font-size:16px;display:flex;align-items:center;justify-content:center;cursor:pointer;}
 
@@ -105,14 +105,15 @@
   #rerackBtn:active{transform:scale(.92);}
   #rerackBtn.lock{opacity:.35;filter:grayscale(.6);pointer-events:none;}
 
-  /* scoring legend — collapsed to a pill, tap to open */
-  #legendBtn{position:absolute;left:12px;top:clamp(96px,17vh,150px);cursor:pointer;
+  /* scoring legend — pill just above RE-RACK, panel opens UPWARD so it always fits */
+  #legendBtn{position:absolute;left:12px;bottom:calc(clamp(64px,15vw,96px) + 70px + env(safe-area-inset-bottom));cursor:pointer;z-index:24;
     font-family:var(--display);font-weight:900;font-size:10px;letter-spacing:1.5px;color:var(--ice);
     background:rgba(6,9,26,.7);border:1.5px solid rgba(95,224,255,.35);border-radius:999px;padding:7px 12px;}
-  #legend{position:absolute;left:12px;top:calc(clamp(96px,17vh,150px) + 36px);display:flex;flex-direction:column;gap:5px;
-    background:rgba(6,9,26,.85);border:1.5px solid rgba(95,224,255,.3);border-radius:14px;padding:10px 12px;
+  #legend{position:absolute;left:12px;bottom:calc(clamp(64px,15vw,96px) + 108px + env(safe-area-inset-bottom));z-index:24;
+    display:flex;flex-direction:column;gap:5px;
+    background:rgba(6,9,26,.9);border:1.5px solid rgba(95,224,255,.3);border-radius:14px;padding:10px 12px;
     pointer-events:none;transition:opacity .25s,transform .25s;}
-  #legend.hide{opacity:0;transform:translateX(-16px);}
+  #legend.hide{opacity:0;transform:translateY(12px);}
   #legend .lrow{display:flex;justify-content:space-between;gap:14px;font-family:var(--display);font-weight:700;font-size:9.5px;letter-spacing:1px;color:var(--ice);}
   #legend .lrow b{color:var(--orange);font-weight:900;}
   #legend .lrow.p b{color:var(--purple);}
@@ -222,7 +223,6 @@
 
   <div class="ui" id="hud" style="display:none">
     <div id="hudTL">
-      <div class="hlbl">POT · AT RISK</div>
       <div id="scoreVal">0</div>
       <div id="potMultChip">ALL POINTS ×1.5</div>
       <div id="bestVal">BEST 0</div>
@@ -270,7 +270,7 @@
     <div class="secret">Swipe up to throw — speed is power, a curved swipe bends the ball, a soft release floats a drop shot. Every cup feeds the <b style="color:#ffd75e">pot</b>; a lone cup glows purple — an <b style="color:#c98aff">island</b>, worth 3×. Run out of balls and the pot is <b style="color:#ff4b3a">gone</b> — tap <b style="color:#39ffa0">CASH OUT</b> any time to bank it.</div>
     <button id="startBtn">🏓 RACK ’EM</button>
     <div id="menuBest">BEST 0</div>
-    <div class="brand">CRASHARCADE · BEER PONG v0.1.16</div>
+    <div class="brand">CRASHARCADE · BEER PONG v0.1.17</div>
   </div>
 
   <div id="over">
@@ -324,7 +324,7 @@ import * as THREE from './lib/three.module.js';
 
 /* ================================================================== CFG */
 const CFG = {
-  ver:'0.1.16',
+  ver:'0.1.17',
   // --- world scale: 1 unit = 1 cm
   ballR:2.3,
   lane:{ half:50, zFront:44, zBack:-216 },
