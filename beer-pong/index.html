@@ -118,10 +118,10 @@
   #legend .lrow.p b{color:var(--purple);}
   #legend .ltitle{font-size:9px;letter-spacing:2.5px;color:var(--cyan);margin-bottom:2px;font-family:var(--display);font-weight:900;}
 
-  #hint{position:absolute;left:50%;bottom:calc(clamp(120px,26vw,168px) + env(safe-area-inset-bottom));transform:translateX(-50%);
-    font-family:var(--body);font-weight:600;font-size:clamp(12px,3.4vw,14px);color:var(--ice);letter-spacing:.5px;white-space:nowrap;
-    background:rgba(6,9,26,.66);border:1px solid rgba(95,224,255,.35);border-radius:999px;padding:7px 15px;
-    text-shadow:0 1px 3px rgba(0,0,0,.6);pointer-events:none;opacity:0;transition:opacity .3s;}
+  #hint{position:absolute;left:50%;bottom:calc(clamp(195px,26vh,255px) + env(safe-area-inset-bottom));transform:translateX(-50%);
+    font-family:var(--display);font-weight:900;font-size:clamp(17px,5vw,22px);color:#eaf6ff;letter-spacing:2px;white-space:nowrap;
+    background:rgba(6,9,26,.7);border:1.5px solid rgba(95,224,255,.45);border-radius:999px;padding:11px 22px;
+    text-shadow:0 0 14px rgba(95,224,255,.5),0 2px 4px rgba(0,0,0,.7);pointer-events:none;opacity:0;transition:opacity .3s;}
   #hint.show{opacity:1;}
 
   /* ---------- swipe feedback meters ---------- */
@@ -254,7 +254,7 @@
       <div class="lrow"><span>STREAK</span><b>×2·3·5·8</b></div>
     </div>
 
-    <div id="hint">SWIPE UP TO THROW · CURVE THE SWIPE FOR SPIN</div>
+    <div id="hint">👆 SWIPE UP TO THROW</div>
 
     <div id="meters">
       <div class="mrow"><span class="mlbl" style="color:var(--orange)">POWER</span><div class="mtrack"><div class="mfill" id="mPow"></div></div></div>
@@ -270,7 +270,7 @@
     <div class="secret">Swipe up to throw — speed is power, a curved swipe bends the ball, a soft release floats a drop shot. Every cup feeds the <b style="color:#ffd75e">pot</b>; a lone cup glows purple — an <b style="color:#c98aff">island</b>, worth 3×. Run out of balls and the pot is <b style="color:#ff4b3a">gone</b> — tap <b style="color:#39ffa0">CASH OUT</b> any time to bank it.</div>
     <button id="startBtn">🏓 RACK ’EM</button>
     <div id="menuBest">BEST 0</div>
-    <div class="brand">CRASHARCADE · BEER PONG v0.1.10</div>
+    <div class="brand">CRASHARCADE · BEER PONG v0.1.11</div>
   </div>
 
   <div id="over">
@@ -324,7 +324,7 @@ import * as THREE from './lib/three.module.js';
 
 /* ================================================================== CFG */
 const CFG = {
-  ver:'0.1.10',
+  ver:'0.1.11',
   // --- world scale: 1 unit = 1 cm
   ballR:2.3,
   lane:{ half:50, zFront:44, zBack:-216 },
