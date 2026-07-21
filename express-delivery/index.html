@@ -187,7 +187,7 @@
     <div class="tag">Drag anywhere to steer 🛞 &nbsp;Double-tap to throw 📦 &nbsp;Cash out 💰</div>
     <button id="startBtn">START ROUTE</button>
     <div id="menuBest"></div>
-    <div class="brand" id="brand">EXPRESS DELIVERY v0.3.1 · BIG RUN STUDIOS</div>
+    <div class="brand" id="brand">EXPRESS DELIVERY v0.3.2 · BIG RUN STUDIOS</div>
   </div>
 
   <div id="over">
@@ -205,7 +205,7 @@ import * as THREE from './lib/three.module.js';
 
 /* ================================================================== CFG */
 const CFG = {
-  ver:'0.3.1',
+  ver:'0.3.2',
   // --- vehicle
   baseSpeed:8.5,          // forward m/s at run start
   speedGrowth:0.09,       // m/s gained per second
@@ -288,8 +288,8 @@ const CFG = {
   // --- world layout
   CH:26,                  // chunk length (one house lot per chunk per side)
   roadHalf:3.6, walkIn:3.8, walkOut:6.0, houseX:12.8,
-  // --- road wander: gentle yaw (lateral) + pitch (elevation) so a straight line still needs steering
-  curveAmpX:2.2, curveAmpX2:1.1, curveAmpY:0.5,
+  // --- road wander: DISABLED for now (was too choppy) — set amps back up to re-enable yaw/pitch
+  curveAmpX:0, curveAmpX2:0, curveAmpY:0,
   // --- sections: neighborhood → stunt track → wall gap → faster neighborhood → …
   hoodChunks:22, stuntChunks:13,          // cycle = hood + stunt + 1 wall chunk
   wallGapHalf:1.25,                       // ~3 scooters wide
