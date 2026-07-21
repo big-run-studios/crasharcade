@@ -197,6 +197,18 @@
   .ov button{border:none;cursor:pointer;border-radius:999px;padding:12px 34px;font-family:var(--display);font-weight:900;
     font-size:14px;letter-spacing:2px;color:#08223a;background:linear-gradient(180deg,#c4f2ff,#5fe0ff 60%,#1e9be0);
     box-shadow:0 4px 14px rgba(0,0,0,.5),0 0 18px rgba(95,224,255,.45);}
+
+  /* ---------- last-ball decision ---------- */
+  #lastOv h2{color:#ff8a7a;text-shadow:0 0 18px rgba(255,75,58,.6);animation:lastpulse 0.9s ease-in-out infinite;}
+  @keyframes lastpulse{0%,100%{transform:scale(1);}50%{transform:scale(1.06);}}
+  #lastPot{font-family:var(--display);font-weight:900;font-size:clamp(30px,9vw,44px);color:#ffd75e;
+    text-shadow:0 2px 10px rgba(0,0,0,.6),0 0 22px rgba(255,194,51,.55);}
+  #lastSub{font-family:var(--body);font-weight:600;font-size:13px;color:var(--dim);}
+  #lastRow{display:flex;gap:12px;margin-top:6px;}
+  #lastCash{background:radial-gradient(120% 150% at 50% 15%,#ffe9a8,#ffc233 55%,#d9941e);color:#5a3a06;
+    box-shadow:0 4px 14px rgba(0,0,0,.5),0 0 18px rgba(255,194,51,.5);}
+  #lastGo{background:radial-gradient(120% 150% at 50% 15%,#ffb0a0,#ff4b3a 55%,#c02416);color:#fff;
+    box-shadow:0 4px 14px rgba(0,0,0,.5),0 0 18px rgba(255,75,58,.5);animation:btnpulse 1.2s ease-in-out infinite;}
 </style>
 </head>
 <body>
@@ -255,7 +267,7 @@
     <div class="secret">Swipe up to throw — speed is power, a curved swipe bends the ball, a soft release floats a drop shot. Every cup feeds the <b style="color:#ffd75e">pot</b>; a lone cup glows purple — an <b style="color:#c98aff">island</b>, worth 3×. Run out of balls and the pot is <b style="color:#ff4b3a">gone</b> — tap <b style="color:#39ffa0">CASH OUT</b> any time to bank it.</div>
     <button id="startBtn">🏓 RACK ’EM</button>
     <div id="menuBest">BEST 0</div>
-    <div class="brand">CRASHARCADE · BEER PONG v0.1.4</div>
+    <div class="brand">CRASHARCADE · BEER PONG v0.1.5</div>
   </div>
 
   <div id="over">
@@ -292,6 +304,16 @@
     <h2>PAUSED</h2>
     <button id="resumeBtn">RESUME</button>
   </div>
+
+  <div class="ov" id="lastOv">
+    <h2>LAST BALL</h2>
+    <div id="lastPot">0</div>
+    <div id="lastSub">cups still standing — bank the pot, or send it</div>
+    <div id="lastRow">
+      <button id="lastCash">💰 CASH OUT</button>
+      <button id="lastGo">🏓 GO FOR IT</button>
+    </div>
+  </div>
 </div>
 
 <script type="module">
@@ -299,7 +321,7 @@ import * as THREE from './lib/three.module.js';
 
 /* ================================================================== CFG */
 const CFG = {
-  ver:'0.1.4',
+  ver:'0.1.5',
   // --- world scale: 1 unit = 1 cm
   ballR:2.3,
   lane:{ half:50, zFront:44, zBack:-216 },
@@ -406,6 +428,7 @@ const SFX={
   tally:()=>auTone(1100,1400,0.07,'square',0.1),
   cash:()=>{[660,880,1108,1320].forEach((f,i)=>auTone(f,f,0.5,'sine',0.16,i*0.09));},
   crash:()=>{auTone(300,38,0.7,'sawtooth',0.2); auTone(220,32,0.8,'square',0.16);},
+  lastBall:()=>{auTone(440,440,0.16,'square',0.14); auTone(440,440,0.16,'square',0.14,0.22); auTone(660,880,0.3,'sine',0.14,0.44);},
 };
 function setMute(m){
   AU.muted=m; localStorage.bp_mute=m?'1':'0';
@@ -932,7 +955,7 @@ function startRun(){
 function toMenu(){
   S.state='menu'; S.phase='idle'; paused=false;           // quitting banks nothing
   $('menu').style.display=''; $('over').classList.remove('show'); $('hud').style.display='none';
-  $('pauseOv').classList.remove('show'); $('helpOv').classList.remove('show');
+  $('pauseOv').classList.remove('show'); $('helpOv').classList.remove('show'); $('lastOv').classList.remove('show');
   $('cashStack').classList.remove('on'); $('rerackBtn').classList.remove('on');
   $('menuBest').textContent='BEST '+fmt(S.best);
   ball.visible=false; aimGrp.visible=false; bounceMark.visible=false; hidePreview();
@@ -1032,6 +1055,12 @@ function afterShotResolved(){
   if(aliveRack().length===0){ startTally(); return; }
   if(S.balls<=0){ crash(); return; }
   resetBallToTee();
+  if(S.balls===1){        // THE crash-game moment: bank it, or send the last ball
+    $('lastPot').textContent=fmt(S.score);
+    $('lastOv').classList.add('show');
+    paused=true;
+    SFX.lastBall();
+  }
 }
 function startTally(){
   S.phase='tally'; S.tallyT=0; S.tallyFired=0;
@@ -1310,8 +1339,8 @@ function update(dt){
 const app=$('app');
 let dragPts=null;
 app.addEventListener('pointerdown',e=>{
-  if(S.state!=='run'||S.phase!=='aim') return;
-  if(e.target.closest('.mini')||e.target.closest('button')) return;
+  if(S.state!=='run'||S.phase!=='aim'||paused) return;
+  if(e.target.closest('.mini')||e.target.closest('button')||e.target.closest('.ov')) return;
   if(e.clientY<innerHeight*0.4) return;                 // throws start in the lower part of the screen
   auInit();
   dragPts=[{t:performance.now(),x:e.clientX,y:e.clientY}];
@@ -1386,6 +1415,8 @@ $('helpBtn').addEventListener('click',()=>{ $('helpOv').classList.add('show'); p
 $('helpClose').addEventListener('click',()=>{ $('helpOv').classList.remove('show'); paused=false; });
 $('pauseBtn').addEventListener('click',()=>{ $('pauseOv').classList.add('show'); paused=true; });
 $('resumeBtn').addEventListener('click',()=>{ $('pauseOv').classList.remove('show'); paused=false; });
+$('lastCash').addEventListener('click',()=>{ $('lastOv').classList.remove('show'); paused=false; cashOut(false); });
+$('lastGo').addEventListener('click',()=>{ $('lastOv').classList.remove('show'); paused=false; SFX.ui(); showHint(false); });
 setMute(AU.muted);
 let hintT=null;
 function showHint(on){
