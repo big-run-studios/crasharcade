@@ -270,7 +270,7 @@
     <div class="secret">Swipe up to throw — speed is power, a curved swipe bends the ball, a soft release floats a drop shot. Every cup feeds the <b style="color:#ffd75e">pot</b>; a lone cup glows purple — an <b style="color:#c98aff">island</b>, worth 3×. Run out of balls and the pot is <b style="color:#ff4b3a">gone</b> — tap <b style="color:#39ffa0">CASH OUT</b> any time to bank it.</div>
     <button id="startBtn">🏓 RACK ’EM</button>
     <div id="menuBest">BEST 0</div>
-    <div class="brand">CRASHARCADE · BEER PONG v0.1.11</div>
+    <div class="brand">CRASHARCADE · BEER PONG v0.1.12</div>
   </div>
 
   <div id="over">
@@ -324,7 +324,7 @@ import * as THREE from './lib/three.module.js';
 
 /* ================================================================== CFG */
 const CFG = {
-  ver:'0.1.11',
+  ver:'0.1.12',
   // --- world scale: 1 unit = 1 cm
   ballR:2.3,
   lane:{ half:50, zFront:44, zBack:-216 },
@@ -344,6 +344,11 @@ const CFG = {
   elevBase:50, elevAccel:-11, elevSoft:7,    // deg: base + accel·acc + soft·(1−pow)
   aimK:0.55, aimMaxDeg:38,
   assist:0.35, assistR:8,                    // proximity-scaled nudge toward a near-missed mouth — never a snap
+  // --- pity assist: consecutive misses (max 3) escalate help so nobody rage-quits.
+  // Launch assist strengthens/widens, and close shots get steered in FROM THE AIR:
+  // during descent the predicted landing is pulled toward the nearest mouth, capped
+  // so only genuine near-misses convert. Resets to zero on any make.
+  save:{ maxMisses:3, launchBoost:0.5, radiusPerMiss:1.6, capturePerMiss:2.2, pullCap:260 },
   // --- rim roll capture
   roll:{ tangRatio:1.55, maxVy:150, maxVt:330, dropVn:42, decay:1.5 },
   // --- perch resolver: a slow ball resting on the racked rims must never sit there.
@@ -792,7 +797,7 @@ const S={
   state:'menu',            // menu | run | over
   phase:'idle',            // aim | flight | rimroll | sunk | result | rerack | tally
   score:0, potMult:1, round:0, balls:0, reracks:2,
-  throws:0, makes:0, streak:0, bestStreak:0, bestMult:1,
+  throws:0, makes:0, streak:0, bestStreak:0, bestMult:1, missRun:0,
   bounceMakes:0, islandMakes:0, perfectRacks:0, racksCleared:0,
   rackMissed:false,        // any miss this rack → no PERFECT RACK
   vel:new THREE.Vector3(), side:0, top:0, prevY:0,
@@ -868,9 +873,9 @@ function throwBall(sw){
     const d=Math.hypot(land.x-c.x,land.z-c.z);
     if(d<bestD){ bestD=d; bestC=c; }
   }
-  if(bestC&&bestD<CFG.assistR&&bestD>CU.innerR*0.5){
-    // stronger pull the closer you were — tops out ~0.33, fades to nothing at the assist edge
-    const k=CFG.assist*clamp(1.15-bestD/CFG.assistR,0,1);
+  const aR=CFG.assistR+S.missRun*CFG.save.radiusPerMiss;   // pity: misses widen + strengthen the nudge
+  if(bestC&&bestD<aR&&bestD>CU.innerR*0.5){
+    const k=Math.min(0.8,CFG.assist*clamp(1.15-bestD/aR,0,1)*(1+S.missRun*CFG.save.launchBoost));
     const ideal=solveShot(bestC.x,bestC.z,m.elevDeg);
     vx=lerp(vx,ideal.vx,k); vy=lerp(vy,ideal.vy,k); vz=lerp(vz,ideal.vz,k);
   }
@@ -883,7 +888,7 @@ function startFlight(vx,vy,vz,side=0,top=0){
   ball.position.set(CFG.tee.x,CFG.tee.y,CFG.tee.z);
   S.prevY=ball.position.y;
   S.bounces=0; S.rimHit=false; S.cupWallHit=false; S.wallCup=null; S.overCup=false; S.rollIn=false;
-  S.rattleIn=false; S.perchT=0;
+  S.rattleIn=false; S.perchT=0; S.airAssisted=false;
   S.shotClosest=Infinity; S.maxDepthZ=Infinity;
   S.flightT=0; S.settleT=0; S.trailAcc=0;
   S.throws++; S.balls--; hudBalls();
@@ -917,7 +922,7 @@ function startRun(){
   S.state='run'; S.score=0; S.potMult=1;
   S.throws=0; S.makes=0; S.streak=0; S.bestStreak=0; S.bestMult=1;
   S.bounceMakes=0; S.islandMakes=0; S.perfectRacks=0; S.racksCleared=0;
-  S.timeScale=1; S.lastRes=null; S.reracks=CFG.reracks; S.balls=0;
+  S.timeScale=1; S.lastRes=null; S.reracks=CFG.reracks; S.balls=0; S.missRun=0;
   $('menu').style.display='none'; $('over').classList.remove('show'); $('hud').style.display='';
   $('scoreVal').textContent='0'; $('bestVal').textContent='BEST '+fmt(S.best);
   $('legend').classList.add('hide'); $('potMultChip').classList.remove('on');
@@ -981,7 +986,7 @@ function comboShow(){
 function addScore(n){ S.score+=n; $('scoreVal').textContent=fmt(S.score); }
 const potPts=n=>Math.round(n*S.potMult);   // rack boosts multiply every point ahead
 function evaluateMake(c,hd){
-  S.makes++; S.streak++; S.bestStreak=Math.max(S.bestStreak,S.streak);
+  S.makes++; S.streak++; S.bestStreak=Math.max(S.bestStreak,S.streak); S.missRun=0;
   const mult=multFor(S.streak); S.bestMult=Math.max(S.bestMult,mult);
   const P=CFG.pts;
   let base=c.island?CFG.rounds[S.round].islandVal:P.cup;
@@ -989,7 +994,7 @@ function evaluateMake(c,hd){
   if(S.bounces>0){ bonus+=P.bounce+(S.bounces-1)*P.extraBounce; tags.push('BOUNCE'); S.bounceMakes++; }
   if(S.rattleIn) tags.push('RATTLE');
   if(S.rollIn){ bonus+=P.rimRollIn; tags.push('RIM ROLL'); }
-  else if(!S.rimHit&&!S.cupWallHit&&hd<2.1){ bonus+=P.precision; tags.push('DEAD CENTER'); }
+  else if(!S.rimHit&&!S.cupWallHit&&!S.airAssisted&&hd<2.1){ bonus+=P.precision; tags.push('DEAD CENTER'); }
   if(S.wallCup&&S.wallCup!==c){ bonus+=P.bank; tags.push('BANK'); }
   if(c.island) S.islandMakes++;
   const total=potPts((base+bonus)*mult);
@@ -1015,6 +1020,7 @@ function evaluateMiss(reason){
     else{ label='AIRBALL'; SFX.miss(); }
   }
   S.rackMissed=true;
+  S.missRun=Math.min(S.missRun+1,CFG.save.maxMisses);
   if(pts) addScore(pts);
   pop(ball.position.clone().setY(Math.max(ball.position.y,6)+6),(pts?`<span class="plbl">${label}</span>+${pts}`:label),cls);
   comboShow();
@@ -1096,6 +1102,32 @@ function subStep(dt){
   v.y-=S.top*CFG.magnusTop*(sp/400)*dt;
   p.addScaledVector(v,dt);
   if(p.z<S.maxDepthZ) S.maxDepthZ=p.z;
+
+  // --- pity guidance: after misses, bend a descending near-miss toward the nearest
+  // mouth. The pull only ever closes the predicted gap (capped per miss level), so
+  // wild shots stay wild and it reads as a lucky arc, not a snap.
+  if(S.missRun>0&&v.y<0){
+    const rimY0=CU.h*(CFG.rounds[S.round]?.cupScale||1);
+    if(p.y>rimY0+1&&p.y<rimY0+30){
+      const tHit=(v.y+Math.sqrt(v.y*v.y+2*g*(p.y-rimY0)))/g;
+      if(tHit>0.03&&tHit<0.6){
+        const lx=p.x+v.x*tHit, lz=p.z+v.z*tHit;
+        let bc=null,bd=1e9;
+        for(const c of aliveAll()){ const d=Math.hypot(lx-c.x,lz-c.z); if(d<bd){bd=d;bc=c;} }
+        if(bc){
+          const capture=CU.innerR*bc.scale+S.missRun*CFG.save.capturePerMiss;
+          if(bd<capture&&bd>0.3){
+            const need=2/(tHit*tHit), cap=CFG.save.pullCap*S.missRun;
+            let ax=(bc.x-lx)*need, az=(bc.z-lz)*need;
+            const al=Math.hypot(ax,az);
+            if(al>cap){ ax*=cap/al; az*=cap/al; }
+            v.x+=ax*dt; v.z+=az*dt;
+            S.airAssisted=true;                     // guided makes don't earn DEAD CENTER
+          }
+        }
+      }
+    }
+  }
 
   // --- cups
   for(const c of aliveAll()){
@@ -1457,7 +1489,7 @@ console.log('BEER PONG v'+CFG.ver);
 /* ==================================================== headless harness */
 window.__game={
   get s(){ return { state:S.state,phase:S.phase,score:S.score,potMult:S.potMult,best:S.best,round:S.round+1,balls:S.balls,
-    throws:S.throws,makes:S.makes,streak:S.streak,mult:multFor(S.streak),bestStreak:S.bestStreak,bestMult:S.bestMult,
+    throws:S.throws,makes:S.makes,streak:S.streak,mult:multFor(S.streak),bestStreak:S.bestStreak,bestMult:S.bestMult,missRun:S.missRun,
     bounces:S.bounces,rimHit:S.rimHit,cupWallHit:S.cupWallHit,overCup:S.overCup,rollIn:S.rollIn,
     bounceMakes:S.bounceMakes,islandMakes:S.islandMakes,perfectRacks:S.perfectRacks,racksCleared:S.racksCleared,
     rackAlive:aliveRack().length,reracks:S.reracks,
