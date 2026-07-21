@@ -91,6 +91,15 @@
   #throwBtn .ic{font-size:clamp(30px,9vw,42px);line-height:1;filter:drop-shadow(0 2px 3px rgba(0,0,0,.3));}
   #throwBtn .tl{font-size:clamp(11px,3vw,14px);text-shadow:0 1px 3px rgba(0,0,0,.5);}
   #throwBtn.cooling{filter:saturate(.45) brightness(.8);}
+  /* next-up preview: what the next throw will hurl */
+  #nextUp{position:absolute;right:clamp(12px,3.6vw,28px);
+    bottom:calc(clamp(14px,3.5vw,30px) + clamp(96px,26vw,132px) + 10px + env(safe-area-inset-bottom));
+    max-width:44vw;pointer-events:none;display:flex;align-items:center;gap:6px;
+    font-family:var(--display);font-weight:700;font-size:clamp(10px,2.9vw,12.5px);letter-spacing:.6px;color:#fff;
+    background:rgba(24,14,6,.68);border:1.5px solid rgba(255,194,51,.55);border-radius:999px;padding:6px 12px;
+    text-shadow:0 1px 3px rgba(0,0,0,.5);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  #nextUp .nu{font-size:15px;line-height:1;}
+  #nextUp.empty{border-color:rgba(255,110,90,.7);color:#ffb0a0;}
   #cdRing{position:absolute;inset:-5px;border-radius:50%;pointer-events:none;
     background:conic-gradient(rgba(255,255,255,.95) calc(var(--cd,1)*360deg), rgba(0,0,0,.38) 0);
     -webkit-mask:radial-gradient(farthest-side,transparent calc(100% - 6px),#000 calc(100% - 5px));
@@ -174,6 +183,7 @@
         <circle cx="50" cy="14" r="5.5" fill="#ffc233"/>
       </svg>
     </div>
+    <div id="nextUp"><span class="nu">📦</span><span id="nextUpTxt">ENVELOPE · 5 LEFT</span></div>
     <button id="throwBtn"><span class="ic">📦</span><span class="tl">THROW</span><div id="cdRing"></div></button>
   </div>
 
@@ -187,7 +197,7 @@
     <div class="tag">Drag anywhere to steer 🛞 &nbsp;Double-tap to throw 📦 &nbsp;Cash out 💰</div>
     <button id="startBtn">START ROUTE</button>
     <div id="menuBest"></div>
-    <div class="brand" id="brand">EXPRESS DELIVERY v0.3.3 · BIG RUN STUDIOS</div>
+    <div class="brand" id="brand">EXPRESS DELIVERY v0.3.4 · BIG RUN STUDIOS</div>
   </div>
 
   <div id="over">
@@ -205,7 +215,7 @@ import * as THREE from './lib/three.module.js';
 
 /* ================================================================== CFG */
 const CFG = {
-  ver:'0.3.3',
+  ver:'0.3.4',
   // --- vehicle
   baseSpeed:8.5,          // forward m/s at run start
   speedGrowth:0.09,       // m/s gained per second
@@ -221,6 +231,7 @@ const CFG = {
   stuckTime:2.6,          // immobilized this long = run over
   minorSlow:0.55,         // speed multiplier on a minor solid bump
   // --- throwing
+  startBoxes:5,           // boxed packages per run — after that, throws come from what you pick up
   cooldown:1.0,
   inherit:0.62,           // fraction of vehicle velocity a package inherits
   throwFwd:1.0,           // small fixed forward push
@@ -1253,7 +1264,7 @@ function updateStack(dt){
     it.pos.lerpVectors(it.start,it.target,k);
     it.mesh.position.copy(it.pos);
   }
-  if(veh.rackMesh) veh.rackMesh.visible=pickups.length===0;    // stack replaces the boxed package visually
+  if(veh.rackMesh) veh.rackMesh.visible=pickups.length===0&&S.boxes>0;   // stack (or an empty rack) replaces the boxed package
 }
 function setRackPackage(tier){
   const r=veh.grp.userData.rack;
@@ -1578,6 +1589,13 @@ function groundYPkg(x,z){
 }
 function toss(){
   if(S.state!=='run'||veh.cd>0||veh.dead) return false;
+  if(!pickups.length && S.boxes<=0){
+    // out of boxes and nothing on the rack — go smash something
+    popup(0,0,0,'OUT OF PACKAGES — GRAB STUFF!','','#ffb0a0');
+    SFX.bump();
+    veh.cd=0.35;                                           // brief lockout so the toast doesn't spam
+    return false;
+  }
   veh.cd=CFG.cooldown;
   const t=CFG.tiers[veh.tier];
   let grp,kind='package',itH=0.4,specialName=null;
@@ -1592,6 +1610,7 @@ function toss(){
     retargetStack();
   } else {
     grp=buildPackageMesh(veh.tier);
+    S.boxes--;
   }
   // forward & right in world space (steering direction bends the throw)
   const fl=Math.hypot(veh.vx,veh.speed)||1;
@@ -2066,7 +2085,31 @@ function updateCamera(dt){
 }
 
 /* ==================================================== HUD */
+const KIND_ICON={package:'📦',can:'🗑️',bin:'♻️',news:'📰',toy:'🧸',cone:'🚧',gnome:'🧝',flamingo:'🦩',
+  birdbath:'⛲',bike:'🚲',mailbox:'📮',hedge:'🌳',fence:'🪵',sign:'🪧',sprinkler:'💦',barrier:'🚧',
+  bench:'🪑',doghouse:'🏠',ped:'🧍',dog:'🐶',special:'⭐'};
+let _nextUpCache='';
+function updateNextUp(){
+  let icon,txt,empty=false;
+  if(pickups.length){
+    const it=pickups[0];
+    icon=KIND_ICON[it.kind]||'❔';
+    txt=(it.kind==='special'?it.specialName:it.kind.toUpperCase())+(pickups.length>1?' +'+(pickups.length-1):'');
+  } else if(S.boxes>0){
+    icon='📦'; txt=CFG.tiers[veh.tier].name+' · '+S.boxes+' LEFT';
+  } else {
+    icon='❌'; txt='GRAB STUFF TO THROW'; empty=true;
+  }
+  const key=icon+txt;
+  if(key!==_nextUpCache){
+    _nextUpCache=key;
+    $('nextUp').querySelector('.nu').textContent=icon;
+    $('nextUpTxt').textContent=txt;
+    $('nextUp').classList.toggle('empty',empty);
+  }
+}
 function updateHUD(){
+  updateNextUp();
   $('scoreVal').textContent=fmt(S.pot);
   const cr=$('comboRow');
   if(S.comboMult>1){
@@ -2088,7 +2131,7 @@ function startRun(){
   clearWorld();
   Object.assign(S,{state:'run',pot:0,deliveryScore:0,destroyScore:0,combo:0,comboT:0,comboMult:1,bestCombo:1,
     perfects:0,deliveries:0,biggestTier:-1,dist:0,banked:0,timeScale:1,slowT:0,shake:0,runT:0,
-    boosts:0,specialRoll:0,legends:0,
+    boosts:0,specialRoll:0,legends:0,boxes:CFG.startBoxes,
     mailboxInCombo:false,decorInCombo:0,lastDestroyT:-9});
   Object.assign(veh,{x:0,y:0,z:0,vx:0,vy:0,speed:CFG.baseSpeed,air:false,wheel:0,cd:0,tier:0,
     stuckT:0,airT:0,dead:false,prevGy:0,prevSlope:0,crashT:0});
@@ -2197,7 +2240,7 @@ window.__game={
   get s(){ return {state:S.state,pot:S.pot,delivery:S.deliveryScore,destroy:S.destroyScore,
     combo:S.combo,comboMult:S.comboMult,tier:veh.tier,speed:veh.speed,dist:S.dist,
     x:veh.x,y:veh.y,z:veh.z,air:veh.air,cd:veh.cd,dead:veh.dead,
-    pickups:pickups.length,
+    pickups:pickups.length,boxes:S.boxes,
     packages:world.packages.length,props:world.props.length,peds:world.peds.length,
     dogs:world.dogs.length,ramps:world.ramps.length,pits:world.pits.length,
     specials:world.specials.length,tboards:world.tboards.length,walls:world.walls.length,boosts:S.boosts,
