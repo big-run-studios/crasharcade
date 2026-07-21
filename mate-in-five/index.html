@@ -204,7 +204,7 @@
       <button class="gbtn" id="btnPlay">PLAY</button>
       <div id="best">BEST <b id="bestV">0</b></div>
       <button class="sbtn" id="btnArcade">← ARCADE</button>
-      <div id="brand">CRASHARCADE · MATE IN FIVE v0.1.2</div>
+      <div id="brand">CRASHARCADE · MATE IN FIVE v0.1.3</div>
     </div>
   </div>
 
@@ -250,7 +250,7 @@ window.THREE=THREE; // console diagnostics
 /* =========================================================================
    CFG — all balance values
    ========================================================================= */
-const VERSION='0.1.2';
+const VERSION='0.1.3';
 const CFG={
   roundTime:120,          // seconds
   maxMoves:5,
@@ -896,6 +896,7 @@ function updateHUD(){
   ui.timerV.textContent=`${Math.floor(t/60)}:${String(Math.floor(t%60)).padStart(2,'0')}`;
   ui.timerP.classList.toggle('low',roundActive&&t<=CFG.lowTime);
   ui.multV.textContent='×'+curMult();
+  updateUndoBtn();
 }
 function updateDangerRing(){
   clearAttackLines();
@@ -917,8 +918,9 @@ function clearSelection(){
   selRing.visible=false;
   legalMarkers.forEach(mk=>mk.visible=false);
   hoverSq.material.opacity=0;
-  ui.btnUndo.disabled=true;
+  updateUndoBtn();
 }
+function updateUndoBtn(){ui.btnUndo.disabled=!(state==='play'&&(selected>=0||movesMade>0));}
 function select(s){
   clearSelection();
   selected=s;
@@ -935,7 +937,7 @@ function select(s){
   }
   const mesh=pieces.get(s);
   if(mesh)addAnim(0.14,k=>{mesh.position.y=k*0.14;});
-  ui.btnUndo.disabled=false;
+  updateUndoBtn();
   sfx('select');
   camGo(poseToward(s,CFG.cam.selPush,0.99),0.5);
 }
@@ -1226,7 +1228,21 @@ ui.btnArcade.addEventListener('pointerdown',e=>{e.preventDefault();location.href
 ui.btnMenu.addEventListener('pointerdown',e=>{e.preventDefault();sfx('ui');toMenu();});
 ui.btnNext.addEventListener('pointerdown',e=>{e.preventDefault();sfx('ui');startRound();});
 ui.btnBack.addEventListener('pointerdown',e=>{e.preventDefault();sfx('ui');toMenu();});
-ui.btnUndo.addEventListener('pointerdown',e=>{e.preventDefault();if(state==='play'&&selected>=0){clearSelection();sfx('ui');}});
+function undoMove(){
+  if(state!=='play')return false;
+  if(selected>=0){clearSelection();sfx('ui');return true;}  // first press cancels an active selection
+  if(movesMade<1||g.hist.length<2)return false;
+  g.unmake();g.unmake();                                    // AI reply + player move
+  movesMade--;
+  spawnPieces(g);
+  clearSelection();updateDangerRing();
+  hintRingA.visible=hintRingB.visible=false;hintT=0;
+  updatePips();updateHUD();statusForPlay();
+  camGo(planPose(),0.4);
+  sfx('capture');
+  return true;
+}
+ui.btnUndo.addEventListener('pointerdown',e=>{e.preventDefault();undoMove();});
 ui.btnHint.addEventListener('pointerdown',e=>{e.preventDefault();doHint();});
 function muteIcon(){
   ui.muteIco.innerHTML=muted
@@ -1310,6 +1326,7 @@ window.__game={
   },
   setT:t=>{timeLeft=t;updateHUD();return timeLeft;},
   hintNow:()=>doHint(),
+  undo:()=>undoMove(),
   fast:v=>{fastMode=v!==false;return fastMode;},
   step:d=>{stepSim(d||0.016);renderer.render(scene,camera);},
   refLine:()=>curPuzzle?curPuzzle.line.slice():[],
