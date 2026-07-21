@@ -203,7 +203,7 @@
     <div class="tag">Drag anywhere to steer 🛞 &nbsp;Double-tap to throw 📦 &nbsp;Cash out 💰</div>
     <button id="startBtn">START ROUTE</button>
     <div id="menuBest"></div>
-    <div class="brand" id="brand">EXPRESS DELIVERY v0.3.5 · BIG RUN STUDIOS</div>
+    <div class="brand" id="brand">EXPRESS DELIVERY v0.3.6 · BIG RUN STUDIOS</div>
   </div>
 
   <div id="over">
@@ -221,7 +221,7 @@ import * as THREE from './lib/three.module.js';
 
 /* ================================================================== CFG */
 const CFG = {
-  ver:'0.3.5',
+  ver:'0.3.6',
   // --- vehicle
   baseSpeed:8.5,          // forward m/s at run start
   speedGrowth:0.09,       // m/s gained per second
@@ -1071,7 +1071,7 @@ function genChunk(idx){
       grp.add(loop);
     }
     const nT=rndi(1,2);
-    for(let i=0;i<nT;i++) addTarget(pick([2,3,5]),pick([-1,1])*rnd(5.5,8),zc+rnd(-9,9));
+    for(let i=0;i<nT;i++) addTarget(pick([2,3,5]),rnd(5.5,8),zc+rnd(-9,9));   // right side only — that's where throws go
     for(let i=0;i<3;i++) addProp(pick(['can','cone','toy','news','bin']),pick([-1,1])*rnd(3.5,6.5),zc+rnd(-10,10));
   }
 
@@ -1093,7 +1093,7 @@ function genChunk(idx){
     const arr=cone(st,0.55,1.0,gapX,wy+5.2,wz); arr.rotation.x=Math.PI; grp.add(arr);
     const wallRec={z:wz,passed:false};
     rec.walls.push(wallRec); world.walls.push(wallRec);
-    addTarget(5,pick([-1,1])*rnd(6,8),zc+9);
+    addTarget(5,rnd(6,8),zc+9);
   }
 
   // --- ramps, each with a car/truck parked just past the lip — the hop clears it
