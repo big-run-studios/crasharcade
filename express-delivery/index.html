@@ -187,7 +187,7 @@
     <div class="tag">Drag anywhere to steer 🛞 &nbsp;Double-tap to throw 📦 &nbsp;Cash out 💰</div>
     <button id="startBtn">START ROUTE</button>
     <div id="menuBest"></div>
-    <div class="brand" id="brand">EXPRESS DELIVERY v0.1.7 · BIG RUN STUDIOS</div>
+    <div class="brand" id="brand">EXPRESS DELIVERY v0.2.0 · BIG RUN STUDIOS</div>
   </div>
 
   <div id="over">
@@ -205,7 +205,7 @@ import * as THREE from './lib/three.module.js';
 
 /* ================================================================== CFG */
 const CFG = {
-  ver:'0.1.7',
+  ver:'0.2.0',
   // --- vehicle
   baseSpeed:8.5,          // forward m/s at run start
   speedGrowth:0.075,      // m/s gained per second
@@ -229,13 +229,35 @@ const CFG = {
   rampBoost:1.45,         // vy = speed * slope * boost
   rampEveryChunks:5,      // one ramp roughly every N chunks (after rampStartChunk)
   rampStartChunk:8,
+  rampHopAt:0.72,         // auto-hop this far up the ramp — clears the car/truck parked past the lip
+  rampHopBoost:1.8,
+  // --- sidewalk pits (taped-off dug-outs; driving in = crash, filling one = points)
+  pitStart:120, pitChance:0.3,
+  windowPenalty:2500,     // breaking a house window costs this
   // --- delivery zone base points: ANY touch on the door = full score; porch = half door
   zonePts:{ property:250, walkway:500, porch:5000, door:10000 },
   tierUpAt:1000,          // deliveries scoring >= this base advance the package tier
   // --- destruction base points
   propPts:{ gnome:750, flamingo:750, birdbath:750, can:500, bin:500, mailbox:1000, cone:250,
-            hedge:200, bike:400, news:150, toy:100, sprinkler:500, barrier:2500, fence:200, sign:250 },
+            hedge:200, bike:400, news:150, toy:100, sprinkler:500, barrier:2500, fence:200, sign:250,
+            bench:400, doghouse:400 },
   pedPts:1500, dogPts:2000,
+  // --- affinity: every throwable connects with ~3 receptors for bonus points.
+  //     Discovering these odd couples is the run-to-run scoring metagame.
+  affinity:{
+    package: { mailbox:['POSTED!',5000],      ped:['WRONG ADDRESS',2500],  dog:['CHEW TOY',1000] },
+    ped:     { bench:['TAKE A SEAT',7500],    porch:['SENT HOME',5000],    hedge:['SOFT LANDING',2500] },
+    dog:     { doghouse:['IN THE HOUSE!',7500], bench:['PARK PUP',5000],   ped:['PUPPY LOVE',2500] },
+    can:     { pit:['HOLE FILLED',5000],      bin:['SORTED',2500],         mailbox:['JUNK MAIL',2500] },
+    bin:     { pit:['HOLE FILLED',5000],      can:['SORTED',2500],         hedge:['COMPOST',2500] },
+    gnome:   { porch:['GNOME HOME',5000],     birdbath:['GNOME BATH',5000], bench:['LITTLE GUY',2500] },
+    flamingo:{ birdbath:['FLOCKED',5000],     hedge:['NESTED',2500],       porch:['LAWN ART',2500] },
+    birdbath:{ pit:['PLANTED',5000],          hedge:['GARDEN SET',2500],   porch:['FANCY',2500] },
+    cone:    { pit:['CONED OFF',5000],        car:['TOWED',5000],          barrier:['SAFETY FIRST',2500] },
+    news:    { mailbox:['HEADLINE',5000],     ped:['EXTRA! EXTRA!',2500],  dog:['FETCHED',2500] },
+    toy:     { dog:['FETCH!',5000],           ped:['PLAYTIME',2500],       bench:['LOST TOY',2500] },
+    bike:    { car:['BIKE RACK',5000],        ped:['FREE BIKE',2500],      hedge:['DITCHED',1000] },
+  },
   // --- combo
   comboDur:3.2,           // seconds without a scoring event before combo drops
   comboSteps:[[10,5],[7,4],[4,3],[2,2]],  // [actions, multiplier]
@@ -332,6 +354,8 @@ const SFX={
   crash:()=>{auNoise(0.7,900,0.7,0.5); auTone(300,50,0.7,'sawtooth',0.3); auNoise(0.5,2400,1,0.3,0.08);},
   cash:()=>{[784,988,1175,1568].forEach((f,i)=>auTone(f,f,0.25,'sine',0.22,i*0.07));},
   spray:()=>auNoise(0.5,4000,0.8,0.06),
+  glass:()=>{auNoise(0.28,3400,1.1,0.42); auTone(1800,600,0.22,'square',0.12);},
+  connect:()=>{auTone(700,1050,0.14,'sine',0.22); auTone(1050,1400,0.18,'sine',0.18,0.09);},
 };
 function setMute(m){
   AU.muted=m; localStorage.ed_mute=m?'1':'0';
@@ -374,6 +398,7 @@ const M={
   matGlow:new THREE.MeshLambertMaterial({color:0xff5a3c,emissive:0xff3b1a,emissiveIntensity:0.55}),
   porch:new THREE.MeshLambertMaterial({color:0xcfc4ae}),
   window:new THREE.MeshLambertMaterial({color:0xbfe6ff,emissive:0x87b8d8,emissiveIntensity:0.25}),
+  winBroken:new THREE.MeshLambertMaterial({color:0x141c26}),
   metal:new THREE.MeshLambertMaterial({color:0xb8bec8}),
   red:new THREE.MeshLambertMaterial({color:0xd8362a}),
   redDark:new THREE.MeshLambertMaterial({color:0xa32218}),
@@ -491,6 +516,16 @@ function buildProp(kind){
       for(let i=0;i<5;i++) g.add(bx(fm,0.1,0.65,0.04,-0.68+i*0.34,0.33,0));
       g.add(bx(fm,1.6,0.07,0.04,0,0.5,0)); g.add(bx(fm,1.6,0.07,0.04,0,0.22,0));
       h=0.68; rad=0.8; sfx='wood'; break; }
+    case 'bench':{ const wood=new THREE.MeshLambertMaterial({color:0x9a6b3e});
+      g.add(bx(wood,1.5,0.09,0.45,0,0.5,0));                       // seat
+      g.add(bx(wood,1.5,0.4,0.08,0,0.85,-0.2));                    // backrest
+      g.add(bx(M.metal,0.08,0.5,0.4,-0.6,0.25,0)); g.add(bx(M.metal,0.08,0.5,0.4,0.6,0.25,0));
+      h=1.05; rad=0.8; sfx='wood'; break; }
+    case 'doghouse':{ const wd=new THREE.MeshLambertMaterial({color:0xb8552e});
+      g.add(bx(wd,1.0,0.75,0.9,0,0.38,0));
+      g.add(prism(new THREE.MeshLambertMaterial({color:0x6a3a1e}),1.2,0.45,1.05,0,0.75,0));
+      g.add(bx(new THREE.MeshLambertMaterial({color:0x1a0e06}),0.06,0.45,0.4,-0.5,0.3,0,false));  // door hole (faces street)
+      h=1.2; rad=0.65; sfx='wood'; break; }
   }
   g.userData.kind=kind; g.userData.h=h; g.userData.rad=rad; g.userData.sfx=sfx;
   return g;
@@ -535,8 +570,10 @@ function buildHouse(hz,side,isLot){
   const rf=prism(roof,D+1.1,rnd(1.8,2.4),W+1.1,cx,H,0); rf.rotation.y=0; g.add(rf);
   // door + windows on street face
   g.add(bx(new THREE.MeshLambertMaterial({color:pick([0xb84a2e,0x2e6a9a,0x5a7a3a,0x8a4a8a])}),0.1,1.7,1.0,CFG.houseX-0.02,0.85+0.45,0));
-  g.add(bx(M.window,0.1,0.9,1.1,CFG.houseX-0.02,1.9,-W*0.28,false));
-  g.add(bx(M.window,0.1,0.9,1.1,CFG.houseX-0.02,1.9,W*0.28,false));
+  const win1=bx(M.window,0.1,0.9,1.1,CFG.houseX-0.02,1.9,-W*0.28,false);
+  const win2=bx(M.window,0.1,0.9,1.1,CFG.houseX-0.02,1.9,W*0.28,false);
+  g.add(win1); g.add(win2);
+  g.userData.wins=[{mesh:win1,dz:-W*0.28},{mesh:win2,dz:W*0.28}];
   // porch: slab + steps + posts + awning
   const porch=bx(M.porch,2.0,0.45,3.6,CFG.houseX-1.0,0.225,0);
   porch.receiveShadow=true; g.add(porch);
@@ -565,6 +602,23 @@ function houseZones(hz){
     porchRect:{x0:hx-2.0,x1:hx,z0:hz-1.8,z1:hz+1.8,h:0.45},
     wall:{x:hx,z0:hz-5.2,z1:hz+5.2,h:3.4},
   };
+}
+
+/* ==================================================== sidewalk pits */
+function buildPit(x,z){
+  const g=new THREE.Group();
+  const W=2.2,D=2.6;
+  g.add(bx(new THREE.MeshLambertMaterial({color:0x17120c}),W,0.02,D,0,0.075,0,false));       // the hole
+  g.add(bx(M.soil,W+0.5,0.05,D+0.5,0,0.055,0,false));                                        // dug-up rim
+  const tapeM=new THREE.MeshLambertMaterial({color:0xffd82e});
+  const tape=new THREE.Group();
+  for(const [px,pz] of [[-W/2,-D/2],[W/2,-D/2],[-W/2,D/2],[W/2,D/2]])
+    tape.add(bx(M.tire,0.07,0.62,0.07,px,0.31,pz));                                          // corner posts
+  tape.add(bx(tapeM,W,0.09,0.04,0,0.5,-D/2)); tape.add(bx(tapeM,W,0.09,0.04,0,0.5,D/2));
+  tape.add(bx(tapeM,0.04,0.09,D,-W/2,0.5,0)); tape.add(bx(tapeM,0.04,0.09,D,W/2,0.5,0));
+  g.add(tape);
+  g.position.set(x,0,z);
+  return {grp:g,tape,x,z,w:W,d:D,filled:false};
 }
 
 /* ==================================================== ramps */
@@ -598,7 +652,7 @@ const world={
   houses:[],                    // right-side houses: {hz, zones, grp, scored, isTarget, chunkIdx}
   lhouses:[],                   // left-side house z centers (wall bounce only)
   targetQueue:[], curTarget:null,
-  props:[], solids:[], peds:[], dogs:[], ramps:[], flying:[], packages:[],
+  props:[], solids:[], peds:[], dogs:[], ramps:[], pits:[], flying:[], packages:[],
 };
 scene.add(world.grp);
 let houseCounter=0, rampCounter=0;
@@ -610,7 +664,7 @@ function genChunk(idx){
   const grp=new THREE.Group();
   const zc=-(idx+0.5)*CFG.CH;                 // chunk center (travel is -Z)
   const CH=CFG.CH;
-  const rec={grp,props:[],solids:[],peds:[],dogs:[],ramps:[],house:null};
+  const rec={grp,props:[],solids:[],peds:[],dogs:[],ramps:[],pits:[],house:null};
 
   // --- ground slabs
   const road=bx(M.asphalt,CFG.roadHalf*2,0.05,CH,0,-0.02,zc,false); road.receiveShadow=true; grp.add(road);
@@ -628,7 +682,8 @@ function genChunk(idx){
   const houseR=buildHouse(hzR,1,true); grp.add(houseR);
   houseCounter++;
   const isTarget=idx>=0 && ((houseCounter%2===0) || dist>700);   // every other house early, every house late; never behind the start
-  const hrec={hz:hzR,zones:houseZones(hzR),grp:houseR,scored:false,missed:false,isTarget,chunkIdx:idx,tier:0};
+  const hrec={hz:hzR,zones:houseZones(hzR),grp:houseR,scored:false,missed:false,isTarget,chunkIdx:idx,tier:0,
+    wins:houseR.userData.wins.map(w=>({mesh:w.mesh,z:hzR+w.dz,broken:false}))};
   world.houses.push(hrec); rec.house=hrec;
   if(isTarget) world.targetQueue.push(hrec);
   if(idx%3!==2){ const houseL=buildHouse(zc+rnd(-3,3),-1,false); grp.add(houseL); rec.lhz=houseL.position.z; world.lhouses.push(rec.lhz); }
@@ -658,20 +713,29 @@ function genChunk(idx){
     rec.props.push(pr); world.props.push(pr);
     return pr;
   };
+  // RIGHT side: delivery land — receptors, sparse pickups (throw from here)
   addProp('mailbox',rnd(6.2,6.6),hzR+rnd(2.5,4));                     // by the curb at every house
-  if(Math.random()<0.75) addProp(pick(['can','bin']),rnd(4.2,5.4),hzR+rnd(-7,-5));
-  if(Math.random()<0.5+dT*0.4) addProp(pick(['can','bin','news']),rnd(4.2,5.4),hzR+rnd(5,8));
-  const nDecor=rndi(0,1+Math.round(dT*2));
+  if(Math.random()<0.4) addProp(pick(['can','bin']),rnd(4.2,5.4),hzR+rnd(-7,-5));
+  const nDecor=rndi(0,1+Math.round(dT*1.5));
   for(let i=0;i<nDecor;i++) addProp(pick(['gnome','flamingo','birdbath','toy']),rnd(6.5,10.5),hzR+rnd(-6,6));
   if(Math.random()<0.4) addProp('hedge',rnd(7,8),hzR+rnd(-8,-6.5));
   if(Math.random()<0.3) addProp('fence',rnd(6.8,7.4),hzR+rnd(6.5,8.5));
-  if(Math.random()<0.25+dT*0.2) addProp('bike',rnd(4.3,5.5),zc+rnd(-9,9));
+  if(Math.random()<0.35) addProp('bench',rnd(4.6,5.2),hzR+rnd(6,9));
+  if(Math.random()<0.35) addProp('doghouse',rnd(8,10),hzR+rnd(-6,-3));
   if(dist>150 && Math.random()<0.25+dT*0.35) addProp('cone',rnd(-2.5,3),zc+rnd(-9,9));
   if(dist>250 && Math.random()<0.2+dT*0.3) addProp('barrier',rnd(-1.5,2.5),zc+rnd(-9,9));
-  if(dist>200 && Math.random()<0.25) addProp('sign',rnd(-5.2,-4.4),zc+rnd(-8,8));
   if(dist>180 && Math.random()<0.3){ const s=addProp('sprinkler',rnd(6.6,9),hzR+rnd(-5,5)); s.sprk={t:rnd(0,4)}; }
-  // left-sidewalk clutter
-  if(Math.random()<0.4) addProp(pick(['can','bin','news','toy']),-rnd(4.2,5.5),zc+rnd(-9,9));
+  // LEFT side: pickup land — lots of ammo, so you weave left to load up, right to throw
+  const nLeft=rndi(2,3+Math.round(dT*2));
+  for(let i=0;i<nLeft;i++) addProp(pick(['can','bin','news','toy','cone','gnome','bike','flamingo']),-rnd(4.2,5.6),zc+rnd(-11,11));
+  if(Math.random()<0.35) addProp('bench',-rnd(4.6,5.2),zc+rnd(-9,9));
+  if(Math.random()<0.3) addProp('sign',rnd(-5.2,-4.4),zc+rnd(-8,8));
+  // taped-off dug-out sidewalk sections (crash if you drive in — or fill them for points)
+  if(dist>CFG.pitStart && Math.random()<CFG.pitChance){
+    const side=Math.random()<0.6?1:-1;
+    const pit=buildPit(side*rnd(4.4,5.3),zc+rnd(-8,8));
+    grp.add(pit.grp); rec.pits.push(pit); world.pits.push(pit);
+  }
 
   // --- pedestrians & dogs
   const nPed=dist<CFG.pedStart?0:rndi(0,1+Math.round(dT*1.6));
@@ -692,12 +756,17 @@ function genChunk(idx){
     rec.dogs.push(dog); world.dogs.push(dog);
   }
 
-  // --- ramps
+  // --- ramps, each with a car/truck parked just past the lip — the hop clears it
   if(idx>=CFG.rampStartChunk && idx%CFG.rampEveryChunks===2){
     rampCounter++;
     const rx=rampCounter%2===0?rnd(1.4,2.4):rnd(-2.2,-0.5);
     const ramp=buildRamp(rx,zc+6);
     grp.add(ramp.grp); rec.ramps.push(ramp); world.ramps.push(ramp);
+    const truck=rampCounter%2===1;
+    const car=buildCar(truck);
+    car.position.set(rx,0,ramp.z0-ramp.len-(truck?rnd(5.5,6.5):rnd(2.5,4))); car.rotation.y=truck?Math.PI:0;
+    grp.add(car);
+    addSolid(rec,{kind:truck?'truck':'car',x:rx,z:car.position.z,rad:truck?1.6:1.3,halfZ:truck?3.2:2.2,grp:car});
   }
 
   world.grp.add(grp);
@@ -717,6 +786,7 @@ function dropChunk(idx){
   world.peds=world.peds.filter(p=>!rec.peds.includes(p));
   world.dogs=world.dogs.filter(d=>!rec.dogs.includes(d));
   world.ramps=world.ramps.filter(r=>!rec.ramps.includes(r));
+  world.pits=world.pits.filter(p=>!rec.pits.includes(p));
   if(rec.house){ world.houses=world.houses.filter(h=>h!==rec.house); world.targetQueue=world.targetQueue.filter(h=>h!==rec.house); }
   world.chunks.delete(idx);
 }
@@ -728,7 +798,7 @@ function ensureChunks(){
 function clearWorld(){
   for(const idx of [...world.chunks.keys()]) dropChunk(idx);
   world.packages.forEach(p=>scene.remove(p.grp)); world.packages.length=0;
-  world.flying.length=0; world.targetQueue.length=0; world.curTarget=null; world.houses.length=0; world.lhouses.length=0;
+  world.flying.length=0; world.targetQueue.length=0; world.curTarget=null; world.houses.length=0; world.lhouses.length=0; world.pits.length=0;
   houseCounter=0; rampCounter=0;
 }
 
@@ -824,6 +894,22 @@ function pickupProp(pr){
   const start=stackGrp.worldToLocal(wp.clone());
   const it={kind:pr.kind,h:pr.h,scl,sfx:pr.sfx,mesh,pos:start.clone(),start:start.clone(),target:slotPos(pickups.length),t:0};
   pickups.push(it);
+}
+function pickupChar(c,isDog){
+  // people & animals get scooped onto the stack just like props
+  const pts=award(isDog?CFG.dogPts:CFG.pedPts,'destroy');
+  popupPts(pts,null,isDog?'#ffb0d8':'#ffe14d');
+  comboAction(); (isDog?SFX.yelp:SFX.oof)(); S.lastDestroyT=S.t;
+  c.dead=true;
+  if(isDog) world.dogs=world.dogs.filter(d=>d!==c); else world.peds=world.peds.filter(x=>x!==c);
+  const mesh=c.grp, wp=new THREE.Vector3(); mesh.getWorldPosition(wp);
+  if(mesh.parent) mesh.parent.remove(mesh);
+  const scl=Math.min(1,0.55/c.h);
+  mesh.scale.setScalar(scl); mesh.rotation.set(0,rnd(-0.4,0.4),0);
+  stackGrp.add(mesh);
+  stackGrp.updateWorldMatrix(true,false);
+  const start=stackGrp.worldToLocal(wp.clone());
+  pickups.push({kind:isDog?'dog':'ped',h:c.h,scl,sfx:'wood',mesh,pos:start.clone(),start:start.clone(),target:slotPos(pickups.length),t:0});
 }
 function clearStack(){
   for(const it of pickups) stackGrp.remove(it.mesh);
@@ -999,9 +1085,11 @@ function updateFlying(dt){
 function tumbleChar(c,vel,pts,isDog){
   if(c.dead) return;
   c.dead=true; c.state='fly'; c.t=0;
-  const p=award(pts,'destroy');
-  popupPts(p,null,isDog?'#ffb0d8':'#ffe14d');
-  comboAction();
+  if(pts>0){
+    const p=award(pts,'destroy');
+    popupPts(p,null,isDog?'#ffb0d8':'#ffe14d');
+    comboAction();
+  }
   isDog?SFX.yelp():SFX.oof();
   S.lastDestroyT=S.t;
   const sp=Math.max(3.5,Math.hypot(vel.x,vel.z)*0.75);
@@ -1134,6 +1222,22 @@ function updateMarker(){
 }
 
 /* ==================================================== packages */
+/* a thrown thing found its receptor: award, celebrate, and park it there for keeps */
+function connectPkg(p,aff,x,y,z,parent){
+  const pts=award(aff[1],'destroy');
+  popupPts(pts,aff[0],'#8affc4');
+  comboAction(); SFX.connect(); S.lastDestroyT=S.t;
+  scene.remove(p.grp);
+  p.grp.rotation.set(0,0,0); p.grp.position.set(x,y,z);
+  (parent&&parent.parent?parent:scene).add(p.grp);         // chunk groups sit at the origin, so world coords carry over
+  const child=p.grp.children[0];
+  if(child&&child.userData&&child.userData.legs&&p.kind==='ped')
+    child.userData.legs.forEach(l=>l.rotation.x=-1.5);     // people SIT where they land
+  const idx=world.packages.indexOf(p);
+  if(idx>=0) world.packages.splice(idx,1);
+}
+const CONNECT_Y={bench:0.75,doghouse:0.55,mailbox:1.3,birdbath:0.8,hedge:0.95,can:0.95,bin:0.9,
+  porch:0.75,pit:0.12,barrier:1.0,ped:0.3,dog:0.3};
 function groundYPkg(x,z){
   for(const h of world.houses){
     const p=h.zones.porchRect;
@@ -1145,7 +1249,7 @@ function toss(){
   if(S.state!=='run'||veh.cd>0||veh.dead) return false;
   veh.cd=CFG.cooldown;
   const t=CFG.tiers[veh.tier];
-  let grp;
+  let grp,kind='package',itH=0.4;
   if(pickups.length){
     // throw the OLDEST pickup instead of a boxed package; the tower re-sorts with tweens
     const it=pickups.shift();
@@ -1153,6 +1257,7 @@ function toss(){
     grp=new THREE.Group();
     it.mesh.position.set(0,-it.h*it.scl*0.5,0); it.mesh.rotation.set(0,0,0);
     grp.add(it.mesh);
+    kind=it.kind; itH=it.h*it.scl;
     retargetStack();
   } else {
     grp=buildPackageMesh(veh.tier);
@@ -1173,7 +1278,7 @@ function toss(){
     vy:t.up,
     vz:-veh.speed*CFG.inherit + dz*t.lat + fz*CFG.throwFwd,
     ax:rnd(-5,5),ay:rnd(-3,3),az:rnd(-5,5),
-    tier:veh.tier,target:world.curTarget,thrownAir:veh.air,hits:0,settleT:0,done:false,t:0};
+    tier:veh.tier,kind,itH,target:world.curTarget,thrownAir:veh.air,hits:0,settleT:0,done:false,t:0};
   world.packages.push(pkg);
   // rack empties + arm swing
   if(veh.rackMesh) veh.rackMesh.scale.setScalar(0.01);
@@ -1226,12 +1331,19 @@ function updatePackages(dt){
     p.x+=p.vx*dt; p.y+=p.vy*dt; p.z+=p.vz*dt;
     const gy=groundYPkg(p.x,p.z), rest=gy+t.h*0.5;
     const sp=Math.hypot(p.vx,p.vz);
-    // house wall bounce — but ANY touch on the target's door scores full marks
+    // house wall — windows break (costly!), the target's door scores, the rest BONK
     for(const h of world.houses){
       const w=h.zones.wall;
       if(Math.abs(p.z-h.hz)<5.4 && p.x>w.x-t.r && p.y<w.h && p.vx>0){
-        if(h===p.target && !h.scored && !h.missed && Math.abs(p.z-h.hz)<0.9 && p.y<2.7){
-          scoreDelivery(p,'door');                         // touched the door itself
+        let win=null;
+        for(const wn of h.wins) if(!wn.broken && Math.abs(p.z-wn.z)<0.8 && p.y>1.3 && p.y<2.5) win=wn;
+        if(win){
+          win.broken=true; win.mesh.material=M.winBroken;
+          S.pot=Math.max(0,S.pot-CFG.windowPenalty);
+          popupPts(-CFG.windowPenalty,'WINDOW!','#ff6a5a');
+          SFX.glass(); S.shake=Math.min(S.shake+0.25,0.7);
+        } else if(p.kind==='package' && h===p.target && !h.scored && !h.missed && Math.abs(p.z-h.hz)<0.9 && p.y<2.7){
+          scoreDelivery(p,'door');                         // packages connect with doors
         } else {
           SFX.card();
           popup(p.x,p.y+0.5,p.z,'BONK','','#ffd0a8');
@@ -1257,31 +1369,60 @@ function updatePackages(dt){
       } else { p.vy=0; }
     }
     const grounded=p.y<=rest+0.01;
-    // hit things
+    // hit things — affinity connections first, smashes otherwise
     if(sp>2 || Math.abs(p.vy)>2){
+      const AFF=CFG.affinity[p.kind]||{};
+      let connected=false;
       for(const pr of world.props){
         if(pr.dead) continue;
         if(Math.abs(pr.z-p.z)<pr.rad+t.r && Math.abs(pr.x-p.x)<pr.rad+t.r && p.y-t.r<pr.h){
+          const aff=AFF[pr.kind];
+          if(aff){ connectPkg(p,aff,pr.x,CONNECT_Y[pr.kind]||pr.h+0.2,pr.z,pr.grp.parent); connected=true; break; }
           smash(pr,new THREE.Vector3(p.vx*t.impact,0,p.vz*t.impact),'pkg');
           p.vx*=0.7; p.vz*=0.7; p.hits++;
           if(p.hits===3){ slowMo(); popup(p.x,p.y+1,p.z,'MULTI-HIT!','big','#ff8af0'); namedBonus('CHAOS COURIER'); }
           break;
         }
       }
+      if(connected) continue;
+      for(const pit of world.pits){
+        if(pit.filled) continue;
+        if(Math.abs(pit.z-p.z)<pit.d/2 && Math.abs(pit.x-p.x)<pit.w/2 && p.y<0.8){
+          const aff=AFF.pit;
+          if(aff){ pit.filled=true; pit.tape.visible=false; connectPkg(p,aff,pit.x,CONNECT_Y.pit,pit.z,pit.grp.parent); connected=true; }
+          break;
+        }
+      }
+      if(connected) continue;
+      for(const s of world.solids){
+        const aff=AFF.car;
+        if(!aff) break;
+        const hz=s.halfZ||s.rad;
+        if(Math.abs(s.z-p.z)<hz && Math.abs(s.x-p.x)<s.rad+t.r && p.y<(s.kind==='truck'?2.6:1.5)){
+          connectPkg(p,aff,s.x,s.kind==='truck'?2.65:1.5,s.z,s.grp.parent); connected=true; break;
+        }
+      }
+      if(connected) continue;
       for(const c of world.peds){
         if(c.dead) continue;
         if(Math.hypot(c.grp.position.x-p.x,c.grp.position.z-p.z)<c.rad+t.r && p.y<c.h+t.r){
-          tumbleChar(c,new THREE.Vector3(p.vx,0,p.vz),CFG.pedPts,false);
-          namedBonus('WRONG ADDRESS'); p.vx*=0.6; p.vz*=0.6; p.hits++;
-        }
-      }
-      for(const c of world.dogs){
-        if(c.dead) continue;
-        if(Math.hypot(c.x-p.x,c.z-p.z)<c.rad+t.r && p.y<c.h+t.r){
-          tumbleChar(c,new THREE.Vector3(p.vx,0,p.vz),CFG.dogPts,true);
+          const aff=AFF.ped;
+          tumbleChar(c,new THREE.Vector3(p.vx,0,p.vz),aff?0:CFG.pedPts,false);
+          if(aff){ connectPkg(p,aff,c.grp.position.x+0.4,CONNECT_Y.ped,c.grp.position.z,c.grp.parent); connected=true; break; }
           p.vx*=0.6; p.vz*=0.6; p.hits++;
         }
       }
+      if(connected) continue;
+      for(const c of world.dogs){
+        if(c.dead) continue;
+        if(Math.hypot(c.x-p.x,c.z-p.z)<c.rad+t.r && p.y<c.h+t.r){
+          const aff=AFF.dog;
+          tumbleChar(c,new THREE.Vector3(p.vx,0,p.vz),aff?0:CFG.dogPts,true);
+          if(aff){ connectPkg(p,aff,c.x+0.4,CONNECT_Y.dog,c.z,c.grp.parent); connected=true; break; }
+          p.vx*=0.6; p.vz*=0.6; p.hits++;
+        }
+      }
+      if(connected) continue;
     }
     p.grp.position.set(p.x,p.y,p.z);
     p.grp.rotation.x+=p.ax*dt; p.grp.rotation.y+=p.ay*dt; p.grp.rotation.z+=p.az*dt;
@@ -1292,7 +1433,15 @@ function updatePackages(dt){
         p.done=true; p.t=0;
         p.grp.rotation.x=Math.round(p.grp.rotation.x/(Math.PI/2))*(Math.PI/2);
         p.grp.rotation.z=Math.round(p.grp.rotation.z/(Math.PI/2))*(Math.PI/2);
-        resolveDelivery(p);
+        if(p.kind==='package'){ resolveDelivery(p); }
+        else {
+          // settling on any porch can be a connection too (people get SENT HOME, gnomes find HOMES…)
+          const aff=CFG.affinity[p.kind]&&CFG.affinity[p.kind].porch;
+          if(aff) for(const h of world.houses){
+            const r=h.zones.porchRect;
+            if(p.x>=r.x0&&p.x<=r.x1&&p.z>=r.z0&&p.z<=r.z1){ connectPkg(p,aff,p.x,CONNECT_Y.porch,p.z,h.grp.parent); break; }
+          }
+        }
       }
     } else p.settleT=0;
     if(p.y<-5||p.t>8){ p.done=true; p.t=3; }               // safety net
@@ -1304,9 +1453,9 @@ function rampGroundY(x,z){
   for(const r of world.ramps){
     if(Math.abs(x-r.x)>r.wid/2) continue;
     const p=(r.z0-z)/r.len;                                 // 0 at the lip, 1 at the top
-    if(p>=0&&p<=1) return {y:r.h*p,slope:r.slope};
+    if(p>=0&&p<=1) return {y:r.h*p,slope:r.slope,p};
   }
-  return {y:0,slope:0};
+  return {y:0,slope:0,p:-1};
 }
 function doCrash(){
   if(veh.dead) return;
@@ -1346,14 +1495,18 @@ function updateVehicle(dt){
   if(veh.air){
     veh.vy-=CFG.gravity*dt; veh.y+=veh.vy*dt; veh.airT+=dt;
     if(veh.y<=g.y){
-      veh.y=g.y; veh.air=false;
+      veh.y=g.y; veh.air=false; veh.pump=false;
       if(veh.vy<-4){ SFX.land(); S.shake=Math.min(S.shake+0.35,0.8); }
       if(veh.airT>1.15) slowMo();
       veh.vy=0;
     }
   } else {
-    if(veh.prevGy-g.y>0.3){                                 // flew off a ramp top
-      veh.air=true; veh.airT=0;
+    if(g.p>=CFG.rampHopAt){                                 // the hop: launch just before the ramp end
+      veh.air=true; veh.airT=0; veh.pump=true;
+      veh.vy=veh.speed*g.slope*CFG.rampBoost*CFG.rampHopBoost;
+      SFX.ramp(); S.shake=Math.min(S.shake+0.15,0.6);
+    } else if(veh.prevGy-g.y>0.3){                          // fallback: rolled off a ramp side/top
+      veh.air=true; veh.airT=0; veh.pump=true;
       veh.vy=veh.speed*veh.prevSlope*CFG.rampBoost;
       SFX.ramp(); S.shake=Math.min(S.shake+0.15,0.6);
     } else veh.y=g.y;
@@ -1380,26 +1533,32 @@ function updateVehicle(dt){
     for(const c of world.peds){
       if(c.dead) continue;
       if(Math.hypot(c.grp.position.x-veh.x,c.grp.position.z-veh.z)<c.rad+0.7){
-        tumbleChar(c,new THREE.Vector3(veh.vx*0.5,0,-veh.speed),CFG.pedPts,false);
-        veh.speed*=0.86; S.shake=Math.min(S.shake+0.25,0.7);
+        pickupChar(c,false);                                // people get scooped onto the stack too
+        veh.speed*=0.9; S.shake=Math.min(S.shake+0.2,0.7);
       }
     }
     for(const c of world.dogs){
       if(c.dead) continue;
       if(Math.hypot(c.x-veh.x,c.z-veh.z)<c.rad+0.7){
-        tumbleChar(c,new THREE.Vector3(veh.vx*0.5,0,-veh.speed),CFG.dogPts,true);
-        veh.speed*=0.86; S.shake=Math.min(S.shake+0.25,0.7);
+        pickupChar(c,true);
+        veh.speed*=0.9; S.shake=Math.min(S.shake+0.2,0.7);
       }
     }
-    for(const s of world.solids){
+    // ONLY cars/trucks (and open pits) can crash you
+    if(!veh.air) for(const s of world.solids){
       const hz=s.halfZ||s.rad;
       if(Math.abs(s.z-veh.z)<hz+0.8 && Math.abs(s.x-veh.x)<s.rad+0.55){
-        if(veh.speed>CFG.crashSpeed){ doCrash(); break; }
+        const canCrash=s.kind==='car'||s.kind==='truck';
+        if(canCrash && veh.speed>CFG.crashSpeed){ doCrash(); break; }
         // minor: shove out sideways, bleed speed, break combo
         veh.x=s.x+(veh.x>s.x?1:-1)*(s.rad+0.6); veh.vx=0;
         veh.speed*=CFG.minorSlow; S.shake=Math.min(S.shake+0.3,0.8);
         SFX.bump(); comboBreak();
       }
+    }
+    if(!veh.air) for(const pit of world.pits){
+      if(pit.filled) continue;
+      if(Math.abs(pit.z-veh.z)<pit.d/2 && Math.abs(pit.x-veh.x)<pit.w/2+0.2){ doCrash(); break; }
     }
   }
   // immobilized failsafe
@@ -1415,7 +1574,8 @@ function updateVehicle(dt){
     }
     if(veh.cd<=0){ veh.cd=0; SFX.ready(); if(veh.rackMesh) veh.rackMesh.scale.setScalar(veh.rackScale); }
   }
-  veh.grp.userData.armR.rotation.x=lerp(veh.grp.userData.armR.rotation.x,-0.9,Math.min(1,8*dt));
+  if(veh.pump&&veh.air) veh.grp.userData.armR.rotation.x=-2.6+Math.sin(S.t*20)*0.35;   // fist pump!
+  else veh.grp.userData.armR.rotation.x=lerp(veh.grp.userData.armR.rotation.x,-0.9,Math.min(1,8*dt));
   // pose
   veh.grp.position.set(veh.x,veh.y,veh.z);
   veh.grp.rotation.y=Math.PI-Math.atan2(veh.vx,veh.speed+0.01)*0.9;  // nose leads INTO the turn
@@ -1642,7 +1802,7 @@ window.__game={
     x:veh.x,y:veh.y,z:veh.z,air:veh.air,cd:veh.cd,dead:veh.dead,
     pickups:pickups.length,
     packages:world.packages.length,props:world.props.length,peds:world.peds.length,
-    dogs:world.dogs.length,ramps:world.ramps.length,
+    dogs:world.dogs.length,ramps:world.ramps.length,pits:world.pits.length,
     target:world.curTarget?{hz:world.curTarget.hz,scored:world.curTarget.scored}:null}; },
   step(dt=0.016){ update(dt); },
   pause(v=true){ paused=v; },
@@ -1655,7 +1815,7 @@ window.__game={
   cashNow(){ if(S.state==='run'){ endRun(true); } },
   crashNow(){ doCrash(); },
   target(){ return world.curTarget; },
-  ents(){ return {props:world.props,peds:world.peds,dogs:world.dogs,solids:world.solids,ramps:world.ramps,packages:world.packages,houses:world.houses}; },
+  ents(){ return {props:world.props,peds:world.peds,dogs:world.dogs,solids:world.solids,ramps:world.ramps,pits:world.pits,packages:world.packages,houses:world.houses}; },
   zones(){ return world.curTarget?world.curTarget.zones:null; },
   cfg:CFG,
   input:()=>({active:input.wheelActive,val:input.wheelVal,wheel:veh.wheel}),
