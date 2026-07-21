@@ -68,24 +68,47 @@
   #pips span{width:9px;height:9px;border-radius:50%;background:rgba(255,255,255,.14);border:1px solid rgba(255,157,46,.4);}
   #pips span.lit{background:var(--orange);box-shadow:0 0 8px rgba(255,157,46,.9);}
 
-  /* ---------- always-available cash-out (Beat Rush pattern) ---------- */
-  #cashBtn{position:absolute;right:12px;top:41vh;z-index:24;width:60px;height:60px;border-radius:50%;cursor:pointer;
-    border:2px solid rgba(255,255,255,.6);display:none;flex-direction:column;align-items:center;justify-content:center;
+  /* ---------- cash-out stack: balls left + CASH OUT read as ONE decision ---------- */
+  #cashStack{position:absolute;right:12px;top:38vh;z-index:24;display:none;flex-direction:column;align-items:center;gap:6px;}
+  #cashStack.on{display:flex;}
+  #ballsChip{font-family:var(--display);font-weight:900;font-size:12px;letter-spacing:.5px;color:var(--cyan);
+    background:rgba(8,12,34,.8);border:1.5px solid rgba(95,224,255,.5);border-radius:999px;padding:6px 11px;
+    white-space:nowrap;text-shadow:0 1px 3px rgba(0,0,0,.6);}
+  #ballsChip b{color:#fff;}
+  #ballsChip.low{color:#ff8a7a;border-color:rgba(255,75,58,.65);animation:lowpulse 0.9s ease-in-out infinite;}
+  #ballsChip.low b{color:#ffb0a6;}
+  @keyframes lowpulse{0%,100%{box-shadow:none;}50%{box-shadow:0 0 16px rgba(255,75,58,.8);}}
+  #cashBtn{width:60px;height:60px;border-radius:50%;cursor:pointer;
+    border:2px solid rgba(255,255,255,.6);display:flex;flex-direction:column;align-items:center;justify-content:center;
     font-family:var(--display);font-weight:900;font-size:12px;letter-spacing:0;color:#5a3a06;
     background:radial-gradient(120% 140% at 50% 25%,#ffe9a8,#ffc233 58%,#d9941e);
     box-shadow:0 0 12px rgba(255,194,51,.5),0 4px 12px rgba(0,0,0,.4),inset 0 0 0 2px rgba(255,255,255,.3);
     animation:cashpulse 1.5s ease-in-out infinite;transition:transform .08s,opacity .15s,filter .15s;}
-  #cashBtn.on{display:flex;}
   #cashBtn small{font-size:9px;font-weight:700;color:#5a3a06;margin-top:1px;}
   #cashBtn:active{transform:scale(.92);}
   #cashBtn.lock{opacity:.4;filter:grayscale(.6);animation:none;pointer-events:none;}
   @keyframes cashpulse{0%,100%{box-shadow:0 0 10px rgba(255,194,51,.45),0 4px 12px rgba(0,0,0,.4),inset 0 0 0 2px rgba(255,255,255,.3);}
     50%{box-shadow:0 0 22px rgba(255,194,51,.85),0 4px 14px rgba(0,0,0,.45),inset 0 0 0 2px rgba(255,255,255,.45);}}
 
-  /* scoring legend (rack 1, collapses after you learn it) */
-  #legend{position:absolute;left:12px;top:clamp(96px,17vh,150px);display:flex;flex-direction:column;gap:5px;
-    background:rgba(6,9,26,.78);border:1.5px solid rgba(95,224,255,.3);border-radius:14px;padding:10px 12px;
-    pointer-events:none;transition:opacity .5s,transform .5s;}
+  /* ---------- re-rack (left edge, mirrors cash-out) ---------- */
+  #rerackBtn{position:absolute;left:12px;top:41vh;z-index:24;width:60px;height:60px;border-radius:50%;cursor:pointer;
+    border:2px solid rgba(255,255,255,.55);display:none;flex-direction:column;align-items:center;justify-content:center;
+    font-family:var(--display);font-weight:900;font-size:10.5px;letter-spacing:0;color:#062a3a;
+    background:radial-gradient(120% 140% at 50% 25%,#c4f2ff,#5fe0ff 58%,#1e9be0);
+    box-shadow:0 0 12px rgba(95,224,255,.5),0 4px 12px rgba(0,0,0,.4),inset 0 0 0 2px rgba(255,255,255,.3);
+    transition:transform .08s,opacity .15s,filter .15s;}
+  #rerackBtn.on{display:flex;}
+  #rerackBtn small{font-size:11px;font-weight:900;color:#062a3a;margin-top:1px;}
+  #rerackBtn:active{transform:scale(.92);}
+  #rerackBtn.lock{opacity:.35;filter:grayscale(.6);pointer-events:none;}
+
+  /* scoring legend — collapsed to a pill, tap to open */
+  #legendBtn{position:absolute;left:12px;top:clamp(96px,17vh,150px);cursor:pointer;
+    font-family:var(--display);font-weight:900;font-size:10px;letter-spacing:1.5px;color:var(--ice);
+    background:rgba(6,9,26,.7);border:1.5px solid rgba(95,224,255,.35);border-radius:999px;padding:7px 12px;}
+  #legend{position:absolute;left:12px;top:calc(clamp(96px,17vh,150px) + 36px);display:flex;flex-direction:column;gap:5px;
+    background:rgba(6,9,26,.85);border:1.5px solid rgba(95,224,255,.3);border-radius:14px;padding:10px 12px;
+    pointer-events:none;transition:opacity .25s,transform .25s;}
   #legend.hide{opacity:0;transform:translateX(-16px);}
   #legend .lrow{display:flex;justify-content:space-between;gap:14px;font-family:var(--display);font-weight:700;font-size:9.5px;letter-spacing:1px;color:var(--ice);}
   #legend .lrow b{color:var(--orange);font-weight:900;}
@@ -189,9 +212,12 @@
       <div id="potMultChip">ALL POINTS ×1.5</div>
       <div id="bestVal">BEST 0</div>
     </div>
-    <button id="cashBtn"><span>CASH</span><small>OUT</small></button>
+    <div id="cashStack">
+      <span id="ballsChip">🏓 <b id="ballsVal">14</b></span>
+      <button id="cashBtn"><span>CASH</span><small>OUT</small></button>
+    </div>
+    <button id="rerackBtn"><span>RE-RACK</span><small id="rerackN">×2</small></button>
     <div id="hudTR">
-      <span class="chip">🏓 <b id="ballsVal">14</b></span>
       <span class="chip" id="rackChip">RACK 1/3</span>
       <div id="miniRow">
         <button class="mini" id="helpBtn">❓</button>
@@ -202,11 +228,11 @@
       <div id="comboWrap"><div id="comboBadge">×2</div><div id="pips"><span></span><span></span><span></span><span></span><span></span></div></div>
     </div>
 
-    <div id="legend">
-      <div class="ltitle">SCORING</div>
+    <button id="legendBtn">ⓘ SCORING</button>
+    <div id="legend" class="hide">
       <div class="lrow"><span>CUP</span><b>100</b></div>
+      <div class="lrow p"><span>ISLAND (LONE CUP)</span><b>300</b></div>
       <div class="lrow"><span>BOUNCE IN</span><b>+150</b></div>
-      <div class="lrow p"><span>ISLAND</span><b>300</b></div>
       <div class="lrow"><span>RIM ROLL IN</span><b>+75</b></div>
       <div class="lrow"><span>DEAD CENTER</span><b>+50</b></div>
       <div class="lrow"><span>CLEAR RACK</span><b>1000</b></div>
@@ -226,10 +252,10 @@
   <div id="menu">
     <div class="logo"><span class="l1">BEER</span><span class="l2">PONG</span></div>
     <div class="tag">PHYSICAL · TACTICAL</div>
-    <div class="secret">Swipe up to throw — speed is power, a curved swipe bends the ball, a soft release floats a drop shot. Every cup feeds the <b style="color:#ffd75e">pot</b>. Run out of balls with cups standing and the pot is <b style="color:#ff4b3a">gone</b> — tap <b style="color:#39ffa0">CASH OUT</b> any time to bank it. Each rack you clear boosts all points ahead.</div>
+    <div class="secret">Swipe up to throw — speed is power, a curved swipe bends the ball, a soft release floats a drop shot. Every cup feeds the <b style="color:#ffd75e">pot</b>; a lone cup glows purple — an <b style="color:#c98aff">island</b>, worth 3×. Run out of balls and the pot is <b style="color:#ff4b3a">gone</b> — tap <b style="color:#39ffa0">CASH OUT</b> any time to bank it.</div>
     <button id="startBtn">🏓 RACK ’EM</button>
     <div id="menuBest">BEST 0</div>
-    <div class="brand">CRASHARCADE · BEER PONG v0.1.2</div>
+    <div class="brand">CRASHARCADE · BEER PONG v0.1.3</div>
   </div>
 
   <div id="over">
@@ -247,7 +273,7 @@
     <div class="card">
       <div class="htxt"><em>Swipe up</em> from the bottom of the screen to throw. Swipe <em>speed</em> sets power, swipe <em>direction</em> aims, a <em>curved</em> swipe adds side-spin, <em>snapping</em> at the end throws flat &amp; hard, a <em>soft release</em> lofts a drop shot.</div>
       <div class="hrow"><span>CUP MADE</span><b>100</b></div>
-      <div class="hrow"><span>ISLAND CUP (purple pad)</span><b>300+</b></div>
+      <div class="hrow"><span>ISLAND — CUP TOUCHING NO OTHERS</span><b>300+</b></div>
       <div class="hrow"><span>BOUNCE OFF THE LANE, THEN IN</span><b>+150</b></div>
       <div class="hrow"><span>RIM ROLL DROP</span><b>+75</b></div>
       <div class="hrow"><span>DEAD CENTER (no rim)</span><b>+50</b></div>
@@ -256,6 +282,7 @@
       <div class="hrow"><span>NO-MISS RACK</span><b>+2500</b></div>
       <div class="hrow"><span>LEFTOVER BALLS</span><b>100 EACH</b></div>
       <div class="htxt">Makes build your <em>streak</em>: ×1 → ×2 → ×3 → ×5 → ×8. A miss resets it — a rimmed-out shot only halves it.</div>
+      <div class="htxt">A cup left <em>touching no others</em> glows purple — an <em>island</em>, worth 3× or more. Tap <em>RE-RACK</em> (2 per run) to pull the remaining cups into a tight pyramid — but it erases islands.</div>
       <div class="htxt">Everything you score is a <em>pot at risk</em>. Run out of balls with cups standing = <em>CRASH — pot gone</em>. Tap <em>CASH OUT</em> between throws to bank it. Clear a rack and all points ahead get ×1.5. Quitting banks nothing.</div>
     </div>
     <button id="helpClose">GOT IT</button>
@@ -272,7 +299,7 @@ import * as THREE from './lib/three.module.js';
 
 /* ================================================================== CFG */
 const CFG = {
-  ver:'0.1.2',
+  ver:'0.1.3',
   // --- world scale: 1 unit = 1 cm
   ballR:2.3,
   lane:{ half:50, zFront:44, zBack:-216 },
@@ -294,14 +321,20 @@ const CFG = {
   assist:0.35, assistR:8,                    // proximity-scaled nudge toward a near-missed mouth — never a snap
   // --- rim roll capture
   roll:{ tangRatio:1.55, maxVy:150, maxVt:330, dropVn:42, decay:1.5 },
-  // --- rounds
+  // --- perch resolver: a slow ball resting on the racked rims must never sit there.
+  // Deep in a pocket (the real-pong center shot) it rattles into the nearest cup;
+  // perched on the rack's outer edge it kicks off and resolves as a miss.
+  perch:{ speed:45, minY:6, time:0.25, sinkHd:7.4 },
+  // --- rounds. An ISLAND is any cup left touching no other cup (real-pong rule) — it
+  // glows purple and pays islandVal instead of 100. Regroups consolidate the rack and
+  // kill islands, so take the island shot before the re-rack.
   rounds:[
-    { rackZ:-124, cupScale:1.00, balls:14, islandX:-30, islandVal:300, islandMove:0,  msg:'CLEAR THE RACK!' },
-    { rackZ:-142, cupScale:0.93, balls:12, islandX: 30, islandVal:450, islandMove:0,  msg:'RACK 2 · DEEPER' },
-    { rackZ:-158, cupScale:0.87, balls:10, islandX:-30, islandVal:600, islandMove:12, msg:'FINAL RACK · MOVING ISLAND' },
+    { rackZ:-124, cupScale:1.00, balls:14, islandVal:300, msg:'CLEAR THE RACK!' },
+    { rackZ:-142, cupScale:0.93, balls:12, islandVal:450, msg:'RACK 2 · DEEPER' },
+    { rackZ:-158, cupScale:0.87, balls:10, islandVal:600, msg:'FINAL RACK · TINY CUPS' },
   ],
-  islandDz:50,
-  regroupAt:[6,3],
+  islandThr:1.25,          // isolated = no neighbour within spacing·cupScale·this
+  reracks:2,               // tap re-racks per run (real-pong rule) — compacting erases islands
   // --- scoring
   pts:{ cup:100, bounce:150, extraBounce:50, precision:50, bank:100, rimRollIn:75, rimmedOut:25,
         clear:1000, perfect:2500, ballLeft:100 },
@@ -541,12 +574,6 @@ const L=CFG.lane;
 const rackRing=new THREE.Mesh(new THREE.RingGeometry(25,27,48),
   new THREE.MeshBasicMaterial({color:0xff5030,transparent:true,opacity:0.5,depthWrite:false}));
 rackRing.rotation.x=-Math.PI/2; rackRing.position.y=0.08; world.add(rackRing);
-const isleRing=new THREE.Mesh(new THREE.RingGeometry(10,11.8,40),
-  new THREE.MeshBasicMaterial({color:0xc98aff,transparent:true,opacity:0.95,depthWrite:false}));
-isleRing.rotation.x=-Math.PI/2; isleRing.position.y=0.1; world.add(isleRing);
-const islePad=new THREE.Mesh(new THREE.CylinderGeometry(11,12,1.5,32),
-  new THREE.MeshStandardMaterial({color:0x35256e,roughness:0.28,metalness:0.6,emissive:0x5424c0,emissiveIntensity:0.85}));
-islePad.position.y=0.75; world.add(islePad);
 
 /* ------------------------------------------------ cups */
 const CU=CFG.cup;
@@ -557,6 +584,7 @@ const cupGeo={
   liquid:new THREE.CircleGeometry(CU.innerR-0.4,24),
   base:new THREE.CircleGeometry(CU.baseR,20),
   blob:new THREE.CircleGeometry(CU.rimR*1.3,20),
+  glow:new THREE.RingGeometry(CU.rimR*1.05,CU.rimR*1.45,32),
 };
 const cupMat={
   body:new THREE.MeshStandardMaterial({color:0xe62b18,roughness:0.24,metalness:0.05,envMapIntensity:1.2,emissive:0x4a0a04,emissiveIntensity:0.45}),
@@ -568,18 +596,43 @@ const cupMat={
   blob:new THREE.MeshBasicMaterial({color:0x000000,transparent:true,opacity:0.4,depthWrite:false}),
 };
 let cups=[];   // {x,z,tx,tz,scale,alive,island,grp,wob,wobV,sink,born,liq}
-function makeCupMesh(island){
+function makeCupMesh(){
   const g=new THREE.Group();
-  const body=new THREE.Mesh(cupGeo.body,island?cupMat.bodyIsle:cupMat.body); body.position.y=CU.h/2; g.add(body);
+  const body=new THREE.Mesh(cupGeo.body,cupMat.body); body.position.y=CU.h/2; g.add(body);
   const inner=new THREE.Mesh(cupGeo.inner,cupMat.inner); inner.position.y=CU.h/2; g.add(inner);
-  const rim=new THREE.Mesh(cupGeo.rim,island?cupMat.rimIsle:cupMat.rim); rim.rotation.x=Math.PI/2; rim.position.y=CU.h; g.add(rim);
+  const rim=new THREE.Mesh(cupGeo.rim,cupMat.rim); rim.rotation.x=Math.PI/2; rim.position.y=CU.h; g.add(rim);
   const liq=new THREE.Mesh(cupGeo.liquid,cupMat.liquid); liq.rotation.x=-Math.PI/2; liq.position.y=CU.h*0.62; g.add(liq);
   const base=new THREE.Mesh(cupGeo.base,cupMat.inner); base.rotation.x=-Math.PI/2; base.position.y=0.4; g.add(base);
   const blob=new THREE.Mesh(cupGeo.blob,cupMat.blob); blob.rotation.x=-Math.PI/2; blob.position.y=0.06; g.add(blob);
+  const glow=new THREE.Mesh(cupGeo.glow,
+    new THREE.MeshBasicMaterial({color:0xc98aff,transparent:true,opacity:0.9,depthWrite:false}));
+  glow.rotation.x=-Math.PI/2; glow.position.y=0.1; glow.visible=false; g.add(glow);
+  g.userData={body,rim,glow};
   return g;
 }
+/* an island is any live cup with no touching neighbour — purple glow, pays islandVal */
+function updateIslands(quiet){
+  const live=cups.filter(c=>c.alive);
+  const thr=CU.spacing*(CFG.rounds[S.round]?.cupScale||1)*CFG.islandThr;
+  for(const c of live){
+    const iso=live.length===1||live.every(o=>o===c||Math.hypot(o.x-c.x,o.z-c.z)>thr);
+    if(iso===c.island) continue;
+    c.island=iso;
+    const u=c.grp.userData;
+    u.body.material=iso?cupMat.bodyIsle:cupMat.body;
+    u.rim.material=iso?cupMat.rimIsle:cupMat.rim;
+    u.glow.visible=iso;
+    if(iso&&!quiet){
+      pop(new THREE.Vector3(c.x,CU.h*c.scale+8,c.z),
+        `<span class="plbl">ISLAND</span>${fmt(CFG.rounds[S.round].islandVal)}`,'isle');
+      auTone(880,1320,0.18,'sine',0.14);
+    }
+  }
+}
 function layoutFor(n,rackZ,cs){
-  const rows= n>=10?[1,2,3,4] : n>=6?[1,2,3] : n>=3?[1,2] : [1];
+  // compact pyramid for any count: rows of 1,2,3,4 filled front-to-back (4=diamond, etc.)
+  const rows=[]; let left=n,size=1;
+  while(left>0){ const take=Math.min(size,left); rows.push(take); left-=take; size++; }
   const sp=CU.spacing*cs, rowDz=sp*0.9, R=rows.length, out=[];
   rows.forEach((cnt,i)=>{
     const z=rackZ+((R-1)/2-i)*rowDz;
@@ -593,30 +646,29 @@ function buildRack(r){
   const RD=CFG.rounds[r], cs=RD.cupScale;
   const slots=layoutFor(10,RD.rackZ,cs);
   slots.forEach((s,i)=>{
-    const grp=makeCupMesh(false); grp.scale.setScalar(0.001); world.add(grp);
+    const grp=makeCupMesh(); grp.scale.setScalar(0.001); world.add(grp);
     cups.push({x:s.x,z:s.z,tx:s.x,tz:s.z,scale:cs,alive:true,island:false,grp,wob:0,wobV:0,sink:0,born:-i*0.05});
   });
-  // island cup on its own glowing pad
-  const iz=RD.rackZ+CFG.islandDz;
-  const ig=makeCupMesh(true); ig.scale.setScalar(0.001); world.add(ig);
-  cups.push({x:RD.islandX,z:iz,tx:RD.islandX,tz:iz,scale:cs,alive:true,island:true,grp:ig,wob:0,wobV:0,sink:0,born:-0.55,
-             baseX:RD.islandX,moveAmp:RD.islandMove,moveT:0});
-  islePad.visible=isleRing.visible=true;
-  islePad.position.set(RD.islandX,0.7,iz); isleRing.position.set(RD.islandX,0.12,iz);
   rackRing.position.set(0,0.08,RD.rackZ);
   drawBoard(RD.msg);
+  updateIslands(true);
 }
-const aliveRack=()=>cups.filter(c=>c.alive&&!c.island);
-const aliveAll=()=>cups.filter(c=>c.alive);
-function regroupCheck(){
+const aliveRack=()=>cups.filter(c=>c.alive);
+const aliveAll=aliveRack;
+function requestRerack(){
+  // player-requested, like real pong: 2 per run, only between throws
+  if(S.state!=='run'||S.phase!=='aim'||S.reracks<=0) return false;
   const n=aliveRack().length;
-  if(!CFG.regroupAt.includes(n)) return false;
+  if(n<2||n>=10) return false;
   const RD=CFG.rounds[S.round];
   const slots=layoutFor(n,RD.rackZ,RD.cupScale);
-  const live=aliveRack().sort((a,b)=>(a.z-b.z)||(a.x-b.x));
+  const live=aliveRack().slice().sort((a,b)=>(a.z-b.z)||(a.x-b.x));
   slots.sort((a,b)=>(a.z-b.z)||(a.x-b.x));
   live.forEach((c,i)=>{ c.tx=slots[i].x; c.tz=slots[i].z; });
-  return live.some(c=>Math.abs(c.tx-c.x)>0.5||Math.abs(c.tz-c.z)>0.5);
+  if(!live.some(c=>Math.abs(c.tx-c.x)>0.5||Math.abs(c.tz-c.z)>0.5)) return false;  // already compact — free
+  S.reracks--; hudReracks();
+  S.phase='rerack'; S.rerackT=0; SFX.rerack();
+  return true;
 }
 
 /* ------------------------------------------------ ball + tee + trail */
@@ -708,7 +760,7 @@ function splashAt(x,y,z,big){
 const S={
   state:'menu',            // menu | run | over
   phase:'idle',            // aim | flight | rimroll | sunk | result | rerack | tally
-  score:0, potMult:1, round:0, balls:0,
+  score:0, potMult:1, round:0, balls:0, reracks:2,
   throws:0, makes:0, streak:0, bestStreak:0, bestMult:1,
   bounceMakes:0, islandMakes:0, perfectRacks:0, racksCleared:0,
   rackMissed:false,        // any miss this rack → no PERFECT RACK
@@ -800,6 +852,7 @@ function startFlight(vx,vy,vz,side=0,top=0){
   ball.position.set(CFG.tee.x,CFG.tee.y,CFG.tee.z);
   S.prevY=ball.position.y;
   S.bounces=0; S.rimHit=false; S.cupWallHit=false; S.wallCup=null; S.overCup=false; S.rollIn=false;
+  S.rattleIn=false; S.perchT=0;
   S.shotClosest=Infinity; S.maxDepthZ=Infinity;
   S.flightT=0; S.settleT=0; S.trailAcc=0;
   S.throws++; S.balls--; hudBalls();
@@ -829,25 +882,25 @@ function startRun(){
   S.state='run'; S.score=0; S.potMult=1;
   S.throws=0; S.makes=0; S.streak=0; S.bestStreak=0; S.bestMult=1;
   S.bounceMakes=0; S.islandMakes=0; S.perfectRacks=0; S.racksCleared=0;
-  S.timeScale=1; S.legendMakes=0; S.lastRes=null;
+  S.timeScale=1; S.lastRes=null; S.reracks=CFG.reracks;
   $('menu').style.display='none'; $('over').classList.remove('show'); $('hud').style.display='';
   $('scoreVal').textContent='0'; $('bestVal').textContent='BEST '+fmt(S.best);
-  $('legend').classList.remove('hide'); $('potMultChip').classList.remove('on');
-  $('cashBtn').classList.add('on');
+  $('legend').classList.add('hide'); $('potMultChip').classList.remove('on');
+  $('cashStack').classList.add('on'); $('rerackBtn').classList.add('on'); hudReracks();
   comboShow(); setupRound(0); showHint(true);
 }
 function toMenu(){
   S.state='menu'; S.phase='idle'; paused=false;           // quitting banks nothing
   $('menu').style.display=''; $('over').classList.remove('show'); $('hud').style.display='none';
   $('pauseOv').classList.remove('show'); $('helpOv').classList.remove('show');
-  $('cashBtn').classList.remove('on');
+  $('cashStack').classList.remove('on'); $('rerackBtn').classList.remove('on');
   $('menuBest').textContent='BEST '+fmt(S.best);
   ball.visible=false; aimGrp.visible=false; bounceMark.visible=false;
   S.round=0; buildRack(0);                                // fresh rack as the menu backdrop
 }
 function showOver(kind,title,sub,banked){
   S.state='over'; S.phase='idle';
-  $('hud').style.display='none'; $('cashBtn').classList.remove('on');
+  $('hud').style.display='none'; $('cashStack').classList.remove('on'); $('rerackBtn').classList.remove('on');
   const ov=$('over');
   ov.classList.remove('cash','crash'); ov.classList.add(kind);
   $('overTitle').textContent=title;
@@ -899,6 +952,7 @@ function evaluateMake(c,hd){
   let base=c.island?CFG.rounds[S.round].islandVal:P.cup;
   let bonus=0; const tags=[];
   if(S.bounces>0){ bonus+=P.bounce+(S.bounces-1)*P.extraBounce; tags.push('BOUNCE'); S.bounceMakes++; }
+  if(S.rattleIn) tags.push('RATTLE');
   if(S.rollIn){ bonus+=P.rimRollIn; tags.push('RIM ROLL'); }
   else if(!S.rimHit&&!S.cupWallHit&&hd<2.1){ bonus+=P.precision; tags.push('DEAD CENTER'); }
   if(S.wallCup&&S.wallCup!==c){ bonus+=P.bank; tags.push('BANK'); }
@@ -911,7 +965,6 @@ function evaluateMake(c,hd){
   pop(new THREE.Vector3(c.x,CU.h*c.scale+9,c.z),`<span class="plbl">${label}</span>+${fmt(total)}`,cls);
   if(c.island) SFX.island(); else SFX.splash(S.streak);
   comboShow();
-  S.legendMakes++; if(S.legendMakes>=2) $('legend').classList.add('hide');
   S.lastRes={made:true,pts:total,label,island:c.island,bounces:S.bounces,rollIn:S.rollIn};
 }
 function evaluateMiss(reason){
@@ -938,14 +991,11 @@ function afterShotResolved(){
   if(S.state!=='run') return;
   if(aliveRack().length===0){ startTally(); return; }
   if(S.balls<=0){ crash(); return; }
-  if(regroupCheck()){ S.phase='rerack'; S.rerackT=0; SFX.rerack(); return; }
   resetBallToTee();
 }
 function startTally(){
   S.phase='tally'; S.tallyT=0; S.tallyFired=0;
   S.racksCleared++;
-  islePad.visible=isleRing.visible=false;
-  for(const c of cups){ if(c.alive){ c.alive=false; c.sink=0.001; } }   // unmade island despawns
   const RD=CFG.rounds[S.round];
   ringAt(0,0.4,RD.rackZ,3.2,0x49d6ff);
   SFX.clear();
@@ -1057,14 +1107,6 @@ function subStep(dt){
       SFX.cupHit();
     }
   }
-  // --- island pad (raised disc — a legit bounce surface)
-  if(islePad.visible){
-    const dpx=p.x-islePad.position.x, dpz=p.z-islePad.position.z;
-    if(v.y<0&&p.y-R<=1.5&&p.y-R>-2&&Math.hypot(dpx,dpz)<10){
-      p.y=1.5+R; bounceOff(1.5);
-      return false;
-    }
-  }
   // --- lane surface
   if(p.y-R<=0&&v.y<0&&inLane(p)){
     p.y=R; bounceOff(0);
@@ -1104,8 +1146,27 @@ function flightStep(dt){
   // out of bounds
   if(p.z<L.zBack){ evaluateMiss('long'); return; }
   if(p.z>L.zFront+30||p.y<-40){ evaluateMiss('out'); return; }
-  // settle
   const spd=S.vel.length();
+  // perch resolver — a slow ball sitting on the racked rims (the 3-cup pocket) must
+  // resolve fast: rattle into the nearest cup if it's in a pocket, kick off if it's
+  // balanced on the outer edge. Never let it wedge until the flight timeout.
+  if(p.y>CFG.perch.minY&&spd<CFG.perch.speed){
+    let nc=null,nd=1e9;
+    for(const c of aliveAll()){
+      const d=Math.hypot(p.x-c.x,p.z-c.z);
+      if(d<nd&&d<(CU.rimR+CFG.ballR)*c.scale+1.2&&p.y>CU.h*c.scale-CFG.ballR){ nd=d; nc=c; }
+    }
+    if(nc){
+      S.perchT+=dt;
+      if(S.perchT>=CFG.perch.time){
+        if(nd<CFG.perch.sinkHd*nc.scale){ S.rimHit=true; S.rattleIn=true; trySink(nc,nd); return; }
+        // balanced on the outside lip — roll off away from the rack
+        const ax=p.x-nc.x||0.1, az=p.z-nc.z||0.1, al=Math.hypot(ax,az);
+        S.vel.set(ax/al*70,30,az/al*70+40); S.perchT=0;
+      }
+    } else S.perchT=0;
+  } else S.perchT=0;
+  // settle
   if(p.y<=CFG.ballR+0.15&&spd<14) S.settleT+=dt; else S.settleT=0;
   S.flightT+=dt;
   if(S.settleT>0.4||S.flightT>CFG.flightMax) evaluateMiss('settle');
@@ -1139,7 +1200,7 @@ function sinkStep(dt){
   ball.position.z+=(c.z-ball.position.z)*Math.min(1,dt*8);
   ball.position.y+=((liqY+CFG.ballR*0.4)-ball.position.y)*Math.min(1,dt*6);
   ball.rotation.x+=dt*3;
-  if(S.sinkT>0.5&&c.alive){ c.alive=false; c.sink=0.001; }
+  if(S.sinkT>0.5&&c.alive){ c.alive=false; c.sink=0.001; updateIslands(); }
   if(S.sinkT>=CFG.resultDelayIn){
     ball.visible=false; S.sunkCup=null;
     afterShotResolved();
@@ -1160,11 +1221,6 @@ function update(dt){
       if(c.sink>=1){ world.remove(c.grp); c.sink=0; } }
     c.wobV+=(-c.wob*95-c.wobV*7.5)*dt; c.wob+=c.wobV*dt;
     c.grp.rotation.z=c.wob*0.07; c.grp.rotation.x=c.wob*0.045;
-    if(c.island&&c.alive&&c.moveAmp){
-      c.moveT=(c.moveT||0)+dt;
-      c.x=c.baseX+Math.sin(c.moveT*1.05)*c.moveAmp; c.tx=c.x;
-      islePad.position.x=c.x; isleRing.position.x=c.x;
-    }
     if(S.phase==='rerack'){
       c.x+=(c.tx-c.x)*Math.min(1,dt*6); c.z+=(c.tz-c.z)*Math.min(1,dt*6);
     }
@@ -1205,7 +1261,7 @@ function update(dt){
   }
   else if(S.phase==='rerack'){
     S.rerackT+=dt;
-    if(S.rerackT>=0.6){ for(const c of aliveRack()){ c.x=c.tx; c.z=c.tz; } resetBallToTee(); }
+    if(S.rerackT>=0.6){ for(const c of aliveRack()){ c.x=c.tx; c.z=c.tz; } updateIslands(true); resetBallToTee(); }
   }
   else if(S.phase==='tally') tallyStep(dt);
 }
@@ -1275,6 +1331,10 @@ function updateAimFX(){
 
 $('cashBtn').addEventListener('pointerdown',e=>{ e.preventDefault(); e.stopPropagation();
   if(S.state==='run'&&S.phase==='aim'&&!paused) cashOut(false); });
+$('rerackBtn').addEventListener('pointerdown',e=>{ e.preventDefault(); e.stopPropagation();
+  if(!paused&&requestRerack()) SFX.ui(); });
+$('legendBtn').addEventListener('pointerdown',e=>{ e.preventDefault(); e.stopPropagation();
+  $('legend').classList.toggle('hide'); SFX.ui(); });
 $('startBtn').addEventListener('click',()=>{ auInit(); SFX.ui(); startRun(); });
 $('againBtn').addEventListener('click',()=>{ auInit(); SFX.ui(); startRun(); });
 $('menuBtn2').addEventListener('click',toMenu);
@@ -1302,7 +1362,11 @@ function pop(worldPos,html,cls=''){
   $('pops').appendChild(el);
   setTimeout(()=>el.remove(),1200);
 }
-function hudBalls(){ $('ballsVal').textContent=S.balls; }
+function hudBalls(){
+  $('ballsVal').textContent=S.balls;
+  $('ballsChip').classList.toggle('low',S.balls<=2);   // last balls: the chip screams "cash or one more?"
+}
+function hudReracks(){ $('rerackN').textContent='×'+S.reracks; }
 
 /* ==================================================== camera + loop */
 function resize(){
@@ -1339,6 +1403,7 @@ function frame(now){
   }
   if(S.shake>0.001) S.shake*=Math.exp(-CFG.shakeDecay*dtReal);
   $('cashBtn').classList.toggle('lock',S.phase!=='aim');   // pot can only be banked between throws
+  $('rerackBtn').classList.toggle('lock',S.phase!=='aim'||S.reracks<=0||aliveRack().length<2||aliveRack().length>=10);
   renderer.render(scene,camera);
 }
 toMenu();
@@ -1351,8 +1416,9 @@ window.__game={
     throws:S.throws,makes:S.makes,streak:S.streak,mult:multFor(S.streak),bestStreak:S.bestStreak,bestMult:S.bestMult,
     bounces:S.bounces,rimHit:S.rimHit,cupWallHit:S.cupWallHit,overCup:S.overCup,rollIn:S.rollIn,
     bounceMakes:S.bounceMakes,islandMakes:S.islandMakes,perfectRacks:S.perfectRacks,racksCleared:S.racksCleared,
-    rackAlive:aliveRack().length,island:cups.filter(c=>c.island&&c.alive).map(c=>({x:+c.x.toFixed(1),z:+c.z.toFixed(1)}))[0]||null,
-    cups:aliveRack().map(c=>({x:+c.x.toFixed(1),z:+c.z.toFixed(1)})),
+    rackAlive:aliveRack().length,reracks:S.reracks,
+    islands:cups.filter(c=>c.island&&c.alive).map(c=>({x:+c.x.toFixed(1),z:+c.z.toFixed(1)})),
+    cups:aliveRack().map(c=>({x:+c.x.toFixed(1),z:+c.z.toFixed(1),island:c.island})),
     ballPos:{x:+ball.position.x.toFixed(2),y:+ball.position.y.toFixed(2),z:+ball.position.z.toFixed(2)},
     vel:{x:+S.vel.x.toFixed(1),y:+S.vel.y.toFixed(1),z:+S.vel.z.toFixed(1)},
     side:S.side,top:S.top,shotClosest:+(S.shotClosest===Infinity?-1:S.shotClosest.toFixed(2)),
@@ -1369,6 +1435,7 @@ window.__game={
   },
   sinkIsland(){ const c=cups.find(c=>c.island&&c.alive); if(!c) return;
     const v=solveShot(c.x,c.z,54); startFlight(v.vx,v.vy,v.vz,0,0); },
+  rerackNow(){ return requestRerack(); },
   skip(){ if(S.phase==='result') S.resT=99; if(S.phase==='sunk') S.sinkT=99; if(S.phase==='tally') S.tallyT=99; },
   cashNow(){ cashOut(false); }, crashNow(){ crash(); },
   setBalls(n){ S.balls=n; hudBalls(); },
