@@ -80,16 +80,23 @@
     width:26%;height:72%;border-radius:50%;background:#7a2a3a;}  /* stained end marks which way it leans */
   .knobLbl{position:absolute;left:50%;transform:translateX(-50%);bottom:-20px;pointer-events:none;
     font-family:var(--display);font-weight:700;font-size:10px;letter-spacing:2.5px;color:#d8bf98;text-shadow:0 1px 3px rgba(0,0,0,.6);}
-  #zoneRing,#pwRing{position:absolute;inset:-9px;border-radius:50%;pointer-events:none;
-    -webkit-mask:radial-gradient(farthest-side,transparent calc(100% - 9px),#000 calc(100% - 8px));
-    mask:radial-gradient(farthest-side,transparent calc(100% - 9px),#000 calc(100% - 8px));}
+  #zoneRing,#pwRing{position:absolute;inset:-13px;border-radius:50%;pointer-events:none;
+    -webkit-mask:radial-gradient(farthest-side,transparent calc(100% - 12px),#000 calc(100% - 11px));
+    mask:radial-gradient(farthest-side,transparent calc(100% - 12px),#000 calc(100% - 11px));}
+  /* track: dark ring with a brighter band marking the sweet zone */
   #zoneRing{background:conic-gradient(
-    rgba(0,0,0,.5) 0deg calc(var(--s0)*360deg),
-    rgba(242,200,92,.95) calc(var(--s0)*360deg) calc(var(--s1)*360deg),
-    rgba(0,0,0,.5) calc(var(--s1)*360deg) 360deg);}
-  #zoneRing::after{content:'';position:absolute;inset:0;border-radius:50%;
+    rgba(14,6,3,.78) 0deg calc(var(--s0)*360deg),
+    rgba(242,200,92,.35) calc(var(--s0)*360deg) calc(var(--s1)*360deg),
+    rgba(14,6,3,.78) calc(var(--s1)*360deg) 360deg);
+    box-shadow:0 3px 10px rgba(0,0,0,.45);}
+  /* fill: solid GOLD sweep, glowing */
+  #pwRing{background:conic-gradient(#ffd76a calc(var(--pw)*360deg), transparent 0);
+    filter:drop-shadow(0 0 7px rgba(255,215,106,.85));}
+  /* perfect tick rides on top of everything */
+  #pwRing::after{content:'';position:absolute;inset:0;border-radius:50%;
+    -webkit-mask:radial-gradient(farthest-side,transparent calc(100% - 12px),#000 calc(100% - 11px));
+    mask:radial-gradient(farthest-side,transparent calc(100% - 12px),#000 calc(100% - 11px));
     background:conic-gradient(transparent 0deg calc(var(--p0)*360deg),#fff calc(var(--p0)*360deg) calc(var(--p1)*360deg),transparent calc(var(--p1)*360deg) 360deg);}
-  #pwRing{background:conic-gradient(rgba(255,255,255,.92) calc(var(--pw)*360deg), transparent 0);mix-blend-mode:overlay;}
   #slamBtn{position:absolute;inset:0;border-radius:50%;border:none;cursor:pointer;pointer-events:auto;touch-action:none;
     display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;
     font-family:var(--display);font-weight:900;letter-spacing:2px;color:var(--cream);
@@ -170,7 +177,7 @@
     <div class="secret">Old bar wisdom: throw it end-on — the cap's edge off the counter bounces highest and truest. Flat corks skid long; a 45° catch is anyone's guess.</div>
     <button id="startBtn">🍷 POP OFF</button>
     <div id="menuBest">BEST 0</div>
-    <div class="brand">CORKS v0.3.0 · BIG RUN STUDIOS</div>
+    <div class="brand">CORKS v0.4.0 · BIG RUN STUDIOS</div>
   </div>
 
   <div id="over">
@@ -188,12 +195,13 @@ import * as THREE from './lib/three.module.js';
 
 /* ================================================================== CFG */
 const CFG = {
-  ver:'0.3.0',
+  ver:'0.4.0',
   corks:10,
   // --- world scale: 1 unit = 1 cm
   corkR:1.15, corkL:4.6,
   island:{ xHalf:60, zFront:16, zBack:-70, topH:4, cabH:36 },
   glass:{ rimR:4.5, rimY:17.8, bowlBotY:8.2, stemR:0.55, baseR:4.0, baseTop:0.75, wineY:12.4 },
+  rocks:{ rimY:8.6, innerR:2.9, outerR:3.35, whiskeyY:4.5 },   // two lowball glasses — easier, cheaper targets
   gravity:650,
   bounceRest:0.45,       // counter restitution after the first (aimed) bounce
   rollFric:0.88,
@@ -215,7 +223,8 @@ const CFG = {
   perfectHalf:[0.016,0.008],
   powerLo:0.45,          // impact speed = Vsolve*(powerLo + k*m), k solved so m=sweetC → 1.0
   // --- scoring
-  pts:{ nearMin:50, nearMax:200, nearDist:10, glass:250, stem:300, rim:500, in:1500, rimIn:2000, perfectIn:2500 },
+  pts:{ nearMin:50, nearMax:200, nearDist:10, glass:250, stem:300, rim:500, in:1500, rimIn:2000, perfectIn:2500,
+        whiskeyIn:750, whiskeyPerfect:1000, whiskeyHit:150 },
   comboMax:5,
   // --- feel
   slowmo:0.26, slowmoRecover:1.6,   // timeScale on splash-in, eases back at this rate/s
@@ -455,6 +464,31 @@ const wineSurf=new THREE.Mesh(new THREE.CircleGeometry(4.5,40),
 wineSurf.rotation.x=-Math.PI/2; wineSurf.position.y=GLA.wineY; glassGrp.add(wineSurf);
 const glassWob={a:0,v:0};
 
+/* ------------------------------------------------ whiskey rocks glasses */
+const RK=CFG.rocks;
+const rocksGrps=[], rocksPos=[{x:-11,z:-28},{x:10,z:-38}];
+{
+  const wallGeo=new THREE.CylinderGeometry(RK.outerR,RK.outerR-0.25,RK.rimY,28,1,true);
+  const wallMat=new THREE.MeshPhysicalMaterial({color:0xffffff,metalness:0,roughness:0.05,
+    transmission:0.92,thickness:0.5,ior:1.45,transparent:true,side:THREE.DoubleSide,envMapIntensity:1.3});
+  const baseMat=new THREE.MeshPhysicalMaterial({color:0xf4f0e8,metalness:0,roughness:0.06,
+    transparent:true,opacity:0.55,envMapIntensity:1.3});
+  const whiskeyMat=new THREE.MeshPhysicalMaterial({color:0x5e3006,roughness:0.08,clearcoat:1,clearcoatRoughness:0.08});
+  const surfMat=new THREE.MeshPhysicalMaterial({color:0x7e400a,emissive:0x1c0a02,roughness:0.05,clearcoat:1,envMapIntensity:1.2});
+  for(let i=0;i<2;i++){
+    const g=new THREE.Group();
+    const wall=new THREE.Mesh(wallGeo,wallMat); wall.position.y=RK.rimY/2; wall.castShadow=true; g.add(wall);
+    const base=new THREE.Mesh(new THREE.CylinderGeometry(RK.outerR-0.25,RK.outerR-0.3,1.5,28),baseMat);
+    base.position.y=0.75; g.add(base);
+    const wk=new THREE.Mesh(new THREE.CylinderGeometry(RK.innerR-0.05,RK.innerR-0.2,RK.whiskeyY-1.5,28),whiskeyMat);
+    wk.position.y=1.5+(RK.whiskeyY-1.5)/2; g.add(wk);
+    const surf=new THREE.Mesh(new THREE.CircleGeometry(RK.innerR-0.05,28),surfMat);
+    surf.rotation.x=-Math.PI/2; surf.position.y=RK.whiskeyY; g.add(surf);
+    g.position.set(rocksPos[i].x,0,rocksPos[i].z);
+    world.add(g); rocksGrps.push(g);
+  }
+}
+
 /* ------------------------------------------------ cork */
 const corkTex=corkTexture();
 const corkSideMat=new THREE.MeshStandardMaterial({map:corkTex,roughness:0.85});
@@ -513,20 +547,22 @@ function ringAt(x,y,z,scale=1){
   r.t=0; r.m.visible=true; r.m.position.set(x,y,z); r.base=scale;
 }
 const drops=[];
+const dropWineMat=new THREE.MeshPhysicalMaterial({color:0x8a1220,roughness:0.05,clearcoat:1,envMapIntensity:1.5});
+const dropAmberMat=new THREE.MeshPhysicalMaterial({color:0xa8631a,roughness:0.05,clearcoat:1,envMapIntensity:1.5});
 {
   const dgeo=new THREE.SphereGeometry(1,8,6);
-  const dmat=new THREE.MeshPhysicalMaterial({color:0x8a1220,roughness:0.05,clearcoat:1,envMapIntensity:1.5});
   for(let i=0;i<30;i++){
-    const d=new THREE.Mesh(dgeo,dmat); d.visible=false; world.add(d);
+    const d=new THREE.Mesh(dgeo,dropWineMat); d.visible=false; world.add(d);
     drops.push({m:d,live:false,v:new THREE.Vector3(),t:0});
   }
 }
-function splashAt(x,y,z,big){
+function splashAt(x,y,z,big,amber=false){
   const n=big?26:12;
   let used=0;
   for(const d of drops){
     if(used>=n) break; if(d.live) continue;
     used++; d.live=true; d.t=0;
+    d.m.material=amber?dropAmberMat:dropWineMat;
     d.m.visible=true; d.m.position.set(x+rnd(-1,1),y,z+rnd(-1,1));
     d.m.scale.setScalar(rnd(0.18,0.55)*(big?1.2:0.8));
     const a=rnd(0,Math.PI*2), sp=rnd(8,42);
@@ -547,7 +583,8 @@ const S={
   quality:'', phaseT:0,
   corkScale:1, bounce:null,
   vel:new THREE.Vector3(), spinAxis:new THREE.Vector3(1,0,0), spin:0,
-  prevY:0, inGlass:false, rimHit:false, glassHit:false, stemHit:false, evaluated:false,
+  prevY:0, inGlass:false, inWhiskey:0, whiskeyHit:false, floatY:12.4,
+  rimHit:false, glassHit:false, stemHit:false, evaluated:false,
   flightT:0, settleT:0, resT:0, resDelay:1,
   timeScale:1, hitStopT:0, shake:0,
   lastRes:null, best:+localStorage.corks_best||0,
@@ -588,6 +625,10 @@ function setupShot(i){
   // difficulty: first 3 corks are dead ahead; then the glass + tee wander
   if(i<3){ glassPos.x=0; glassPos.z=-34; }
   else{ glassPos.x=rnd(-1,1)*(4+7*t); glassPos.z=rnd(-30,-42); }
+  // rocks glasses flank the wine, one near-left one far-right (jittered, never overlapping)
+  rocksPos[0].x=clamp(glassPos.x-(10+rnd(0,4)),-26,26); rocksPos[0].z=clamp(glassPos.z+rnd(2,7),-44,-24);
+  rocksPos[1].x=clamp(glassPos.x+(9+rnd(0,4)),-26,26);  rocksPos[1].z=clamp(glassPos.z-rnd(0,5),-44,-24);
+  for(let k=0;k<2;k++) rocksGrps[k].position.set(rocksPos[k].x,0,rocksPos[k].z);
   S.hold.x=0; S.hold.y=13;   // tilt carries over — the player's grip is theirs
   S.corkScale=i>=4?rnd(0.92,1.1):1;
   S.meterTime=lerp(CFG.meterTime[0],CFG.meterTime[1],t);
@@ -602,7 +643,8 @@ function setupShot(i){
   W.style.setProperty('--pw',0);
   // reset shot state
   S.m=0; S.meterT=0; S.quality=''; S.bounce=null;
-  S.inGlass=false; S.rimHit=false; S.glassHit=false; S.stemHit=false; S.evaluated=false;
+  S.inGlass=false; S.inWhiskey=0; S.whiskeyHit=false; S.floatY=GLA.wineY;
+  S.rimHit=false; S.glassHit=false; S.stemHit=false; S.evaluated=false;
   S.flightT=0; S.settleT=0; S.shotClosest=Infinity;
   S.phase='place'; S.phaseT=0;
   cork.visible=true; cork.scale.setScalar(S.corkScale);
@@ -707,6 +749,13 @@ function evaluate(reason){
     else{ pts=P.in; label='IN THE GLASS!'; cls='big'; SFX.inWin(); }
     pts*=S.combo;
     if(S.combo>1) label+=` ×${S.combo}`;
+  }else if(S.inWhiskey){
+    S.combo=Math.min(S.combo+1,CFG.comboMax); S.bestCombo=Math.max(S.bestCombo,S.combo);
+    S.landed++;
+    if(S.quality==='perfect'){ pts=P.whiskeyPerfect; label='PERFECT — WHISKEY!'; cls='big'; S.perfects++; SFX.perfect(); }
+    else{ pts=P.whiskeyIn; label='IN THE WHISKEY!'; cls='big'; SFX.inWin(); }
+    pts*=S.combo;
+    if(S.combo>1) label+=` ×${S.combo}`;
   }else{
     S.combo=0;
     const d=S.shotClosest;
@@ -714,6 +763,7 @@ function evaluate(reason){
     if(S.rimHit){ pts=P.rim; label='RIM SHOT!'; cls='big'; }
     else if(S.stemHit){ pts=P.stem; label='OFF THE STEM'; cls='dim'; SFX.near(); }
     else if(S.glassHit){ pts=P.glass; label='CLINK!'; cls='dim'; SFX.near(); }
+    else if(S.whiskeyHit){ pts=P.whiskeyHit; label='TINK!'; cls='dim'; SFX.near(); }
     else if(d<=P.nearDist){ pts=Math.round(lerp(P.nearMax,P.nearMin,d/P.nearDist)); label='CLOSE!'; cls='dim'; SFX.near(); }
     else{ pts=0; label='MISS'; cls='dim'; SFX.miss(); }
   }
@@ -743,11 +793,15 @@ function corkPhysics(dt){
 
   const gx=glassPos.x,gz=glassPos.z;
   const hd=Math.hypot(p.x-gx,p.z-gz);
-  // closest approach to the glass opening
-  const dRim=Math.sqrt((p.x-gx)**2+(p.z-gz)**2+(p.y-GLA.rimY)**2);
-  if(!S.inGlass&&dRim<S.shotClosest) S.shotClosest=dRim;
+  // closest approach to any glass opening
+  if(!S.inGlass&&!S.inWhiskey){
+    let dRim=Math.sqrt((p.x-gx)**2+(p.z-gz)**2+(p.y-GLA.rimY)**2);
+    for(const gp of rocksPos)
+      dRim=Math.min(dRim,Math.sqrt((p.x-gp.x)**2+(p.z-gp.z)**2+(p.y-RK.rimY)**2));
+    if(dRim<S.shotClosest) S.shotClosest=dRim;
+  }
 
-  if(!S.inGlass){
+  if(!S.inGlass&&!S.inWhiskey){
     // enter through the opening
     if(v.y<0&&S.prevY-R>=GLA.rimY&&p.y-R<GLA.rimY&&hd<GLA.rimR-R*0.55){
       S.inGlass=true; SFX.clink();
@@ -785,7 +839,7 @@ function corkPhysics(dt){
     else if(p.y-R<GLA.baseTop&&hd<GLA.baseR+R&&v.y<0){
       p.y=GLA.baseTop+R; v.y=Math.abs(v.y)*0.4; S.stemHit=true; SFX.stem();
     }
-  }else{
+  }else if(S.inGlass){
     // contained inside the bowl
     const ir=Math.max(glassR(p.y)-0.45,0.8);
     if(hd>ir-R*0.6){
@@ -802,6 +856,39 @@ function corkPhysics(dt){
       S.phase='float'; S.floatT=0;
       evaluate('in');
       return;
+    }
+  }
+
+  // whiskey rocks glasses — squat cylinders, cheaper landings
+  if(!S.inGlass){
+    for(let i=0;i<2;i++){
+      const gp=rocksPos[i], hd2=Math.hypot(p.x-gp.x,p.z-gp.z);
+      if(!S.inWhiskey){
+        if(v.y<0&&S.prevY-R>=RK.rimY&&p.y-R<RK.rimY&&hd2<RK.innerR-R*0.5){
+          S.inWhiskey=i+1; S.floatY=RK.whiskeyY; SFX.clink();
+        }
+        else if(p.y<RK.rimY+R*0.5&&p.y>0.4&&hd2<RK.outerR+R&&hd2>RK.innerR-R*0.5){
+          const nx=(p.x-gp.x)/(hd2||1),nz=(p.z-gp.z)/(hd2||1);
+          p.x=gp.x+nx*(RK.outerR+R); p.z=gp.z+nz*(RK.outerR+R);
+          const vn=v.x*nx+v.z*nz; if(vn<0){ v.x-=1.5*vn*nx; v.z-=1.5*vn*nz; }
+          v.multiplyScalar(0.75); S.whiskeyHit=true; SFX.clink();
+        }
+      }else if(S.inWhiskey===i+1){
+        if(hd2>RK.innerR-R*0.6){
+          const nx=(p.x-gp.x)/(hd2||1),nz=(p.z-gp.z)/(hd2||1);
+          p.x=gp.x+nx*(RK.innerR-R*0.6); p.z=gp.z+nz*(RK.innerR-R*0.6);
+          const vn=v.x*nx+v.z*nz; if(vn>0){ v.x-=1.3*vn*nx; v.z-=1.3*vn*nz; }
+          SFX.bounce();
+        }
+        if(p.y-R*0.4<=RK.whiskeyY&&v.y<0){
+          splashAt(p.x,RK.whiskeyY+0.3,p.z,true,true);
+          SFX.splash();
+          S.timeScale=CFG.slowmo;
+          S.phase='float'; S.floatT=0;
+          evaluate('inWhiskey');
+          return;
+        }
+      }
     }
   }
   if(S.rimClipCD) S.rimClipCD=Math.max(0,S.rimClipCD-dt);
@@ -847,7 +934,7 @@ function update(dt){
     r.m.scale.set(s,s,s); r.m.material.opacity=0.75*(1-r.t); r.m.visible=r.t<1; } }
   for(const d of drops){ if(!d.live) continue; d.t+=dt; d.v.y-=CFG.gravity*dt;
     d.m.position.addScaledVector(d.v,dt);
-    if(d.t>1.1||d.m.position.y<GLA.wineY-1&&Math.hypot(d.m.position.x-glassPos.x,d.m.position.z-glassPos.z)<4.5){ d.live=false; d.m.visible=false; } }
+    if(d.t>1.1||d.m.position.y<0.4||(d.m.position.y<GLA.wineY-1&&Math.hypot(d.m.position.x-glassPos.x,d.m.position.z-glassPos.z)<4.5)){ d.live=false; d.m.visible=false; } }
   // cork squash recovery
   cork.scale.x+=(S.corkScale-cork.scale.x)*Math.min(1,dt*14);
   cork.scale.y+=(S.corkScale-cork.scale.y)*Math.min(1,dt*14);
@@ -905,7 +992,7 @@ function update(dt){
     // bob in the wine
     S.floatT+=dt;
     const p=cork.position;
-    p.y+=((GLA.wineY+0.55)-p.y)*Math.min(1,dt*6);
+    p.y+=((S.floatY+0.55)-p.y)*Math.min(1,dt*6);
     p.y+=Math.sin(S.floatT*5)*0.05;
     tmpQ.setFromAxisAngle(S.spinAxis,S.spin*dt); cork.quaternion.premultiply(tmpQ);
     S.spin*=Math.pow(0.02,dt);
@@ -935,13 +1022,14 @@ function update(dt){
 }
 
 /* ==================================================== aim + input */
+function wrapA(t){ return ((t+180)%360+360)%360-180; }   // corks are symmetric — angles wrap freely
 function setTilt(t){
-  S.tilt=clamp(t,-90,90);
+  S.tilt=wrapA(t);
   $('knobBar').style.transform=`rotate(${-S.tilt}deg)`;
   if(S.phase==='aim') holdCork();
 }
 function setYaw(t){
-  S.yaw=clamp(t,-90,90);
+  S.yaw=wrapA(t);
   $('knobYBar').style.transform=`rotate(${-S.yaw}deg)`;
   if(S.phase==='aim') holdCork();
 }
@@ -979,20 +1067,24 @@ app.addEventListener('pointermove',e=>{
 });
 function endPt(e){ input.pts.delete(e.pointerId); if(e.pointerId===input.moveId) input.moveId=null; }
 addEventListener('pointerup',endPt); addEventListener('pointercancel',endPt);
-/* attitude knobs (bottom-left): TILT = screen roll, YAW = fore/aft swing */
-function bindKnob(el,setter){
-  function drag(e){
-    if(S.state!=='run'||S.phase!=='aim') return;
-    const r=el.getBoundingClientRect();
-    const a=Math.atan2(e.clientY-(r.top+r.height/2),e.clientX-(r.left+r.width/2))*180/Math.PI;
-    let t=-a; if(t>90) t=180-t; if(t<-90) t=-180-t;   // mirror the left half so any grab works
-    setter(t); showHint(false);
-  }
-  el.addEventListener('pointerdown',e=>{ e.preventDefault(); e.stopPropagation(); el.setPointerCapture(e.pointerId); drag(e); });
-  el.addEventListener('pointermove',e=>{ if(el.hasPointerCapture(e.pointerId)) drag(e); });
+/* attitude knobs (bottom-left): TILT = screen roll, YAW = fore/aft swing.
+   Clock-style: grab anywhere and wind the hand around — pure relative rotation, no snap. */
+function bindKnob(el,get,set){
+  let last=null;
+  const ang=e=>{ const r=el.getBoundingClientRect();
+    return Math.atan2(e.clientY-(r.top+r.height/2),e.clientX-(r.left+r.width/2))*180/Math.PI; };
+  el.addEventListener('pointerdown',e=>{ e.preventDefault(); e.stopPropagation(); el.setPointerCapture(e.pointerId); last=ang(e); });
+  el.addEventListener('pointermove',e=>{
+    if(last===null||!el.hasPointerCapture(e.pointerId)) return;
+    if(S.state!=='run'||S.phase!=='aim'){ last=ang(e); return; }
+    const a=ang(e); let d=a-last; if(d>180)d-=360; if(d<-180)d+=360; last=a;
+    set(get()-d); showHint(false);      // hand follows the finger around the dial
+  });
+  const drop=()=>{ last=null; };
+  el.addEventListener('pointerup',drop); el.addEventListener('pointercancel',drop);
 }
-bindKnob($('knob'),setTilt);
-bindKnob($('knobY'),setYaw);
+bindKnob($('knob'),()=>S.tilt,setTilt);
+bindKnob($('knobY'),()=>S.yaw,setYaw);
 addEventListener('wheel',e=>{
   if(S.state!=='run'||S.phase!=='aim') return;
   const d=(e.deltaY||e.deltaX)*0.12;
@@ -1082,7 +1174,9 @@ window.__game={
     corkPos:{x:+cork.position.x.toFixed(2),y:+cork.position.y.toFixed(2),z:+cork.position.z.toFixed(2)},
     vel:{x:+S.vel.x.toFixed(1),y:+S.vel.y.toFixed(1),z:+S.vel.z.toFixed(1)},
     glass:{x:glassPos.x,z:glassPos.z,rimY:GLA.rimY,rimR:GLA.rimR,wineY:GLA.wineY},
-    bounce:S.bounce,inGlass:S.inGlass,rimHit:S.rimHit,glassHit:S.glassHit,stemHit:S.stemHit,
+    rocks:rocksPos.map(r=>({...r})),
+    bounce:S.bounce,inGlass:S.inGlass,inWhiskey:S.inWhiskey,whiskeyHit:S.whiskeyHit,
+    rimHit:S.rimHit,glassHit:S.glassHit,stemHit:S.stemHit,
     shotClosest:S.shotClosest,lastRes:S.lastRes,sweet:[S.sweetLo,S.sweetHi],perfHalf:S.perfHalf }; },
   step(dt=0.016){ update(dt); },
   pause(v=true){ paused=v; },
