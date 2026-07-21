@@ -140,6 +140,11 @@
     padding:5px 4px;border-bottom:1px solid rgba(185,143,62,.28);font-variant-numeric:tabular-nums;}
   .brk b{color:var(--ink);font-weight:900;}
   .brk.neg b{color:var(--red);}
+  #resLine{display:none;margin:2px 0 10px;padding:9px 10px;border-radius:9px;
+    background:rgba(185,143,62,.10);box-shadow:inset 0 0 0 1px rgba(185,143,62,.35);}
+  #resLineLbl{font-family:var(--display);font-weight:700;font-size:10px;letter-spacing:2px;color:#9a7420;margin-bottom:5px;}
+  #resLineMoves{font-weight:800;font-size:clamp(13px,3.9vw,16px);line-height:1.55;color:var(--ink);letter-spacing:.3px;}
+  #resLineMoves b{color:#9a7420;font-weight:900;margin-right:1px;}
   #resTotal{font-weight:900;font-size:clamp(30px,10vw,46px);color:var(--ink);margin:12px 0 4px;font-variant-numeric:tabular-nums;}
   #resBest{font-family:var(--display);font-weight:700;font-size:11px;letter-spacing:2px;color:#9a7420;height:16px;margin-bottom:10px;}
   #resBtns{display:flex;gap:12px;justify-content:center;margin-top:6px;}
@@ -204,7 +209,7 @@
       <button class="gbtn" id="btnPlay">PLAY</button>
       <div id="best">BEST <b id="bestV">0</b></div>
       <button class="sbtn" id="btnArcade">← ARCADE</button>
-      <div id="brand">CRASHARCADE · MATE IN FIVE v0.1.3</div>
+      <div id="brand">CRASHARCADE · MATE IN FIVE v0.1.4</div>
     </div>
   </div>
 
@@ -212,6 +217,10 @@
     <div class="card marble cut">
       <div id="resTitle" class="win">CHECKMATE!</div>
       <div id="resSub">MATE ON MOVE 2</div>
+      <div id="resLine">
+        <div id="resLineLbl">✦ ONE WINNING LINE ✦</div>
+        <div id="resLineMoves"></div>
+      </div>
       <div id="resBrk">
         <div class="brk"><span>BASE × MULTIPLIER</span><b id="brkBase">2,000 × 4</b></div>
         <div class="brk"><span>TIME BONUS</span><b id="brkTime">+7,300</b></div>
@@ -250,7 +259,7 @@ window.THREE=THREE; // console diagnostics
 /* =========================================================================
    CFG — all balance values
    ========================================================================= */
-const VERSION='0.1.3';
+const VERSION='0.1.4';
 const CFG={
   roundTime:120,          // seconds
   maxMoves:5,
@@ -853,6 +862,7 @@ const ui={hud:$('hud'),botBar:$('botBar'),menu:$('menu'),result:$('result'),prom
   btnBack:$('btnBack'),btnUndo:$('btnUndo'),btnHint:$('btnHint'),btnMute:$('btnMute'),hintBadge:$('hintBadge'),
   resTitle:$('resTitle'),resSub:$('resSub'),resBrk:$('resBrk'),brkBase:$('brkBase'),brkTime:$('brkTime'),
   brkHintRow:$('brkHintRow'),brkHint:$('brkHint'),resTotal:$('resTotal'),resBest:$('resBest'),
+  resLine:$('resLine'),resLineMoves:$('resLineMoves'),
   btnMenu:$('btnMenu'),btnNext:$('btnNext'),btnPlay:$('btnPlay'),btnArcade:$('btnArcade'),bestV:$('bestV'),muteIco:$('muteIco')};
 const fmt=n=>Math.round(n).toLocaleString('en-US');
 
@@ -982,6 +992,42 @@ function toMenu(){
   camGo({az:-0.35,el:0.52,dist:planDist*1.15,look:new THREE.Vector3(0,0.5,-2)},1.2);
 }
 
+/* ---------------- SAN (for the winning-line readout) ---------------- */
+const PL={[CH.KING]:'K',[CH.QUEEN]:'Q',[CH.ROOK]:'R',[CH.BISHOP]:'B',[CH.KNIGHT]:'N',[CH.PAWN]:''};
+function sanLine(fen,ucis){
+  const t=new CH.Game();t.loadFEN(fen);
+  const out=[];
+  for(const u of ucis){
+    const ms=t.legal();
+    const m=ms.find(x=>t.uci(x)===u);
+    if(!m)break;
+    let str;
+    if(m.castle)str=m.castle==='k'?'O-O':'O-O-O';
+    else{
+      const pt=CH.T(m.piece);
+      let dis='';
+      if(pt!==CH.PAWN){
+        const twins=ms.filter(x=>x!==m&&CH.T(x.piece)===pt&&x.to===m.to&&x.from!==m.from);
+        if(twins.length){
+          const sameFile=twins.some(x=>CH.fileOf(x.from)===CH.fileOf(m.from));
+          const sameRank=twins.some(x=>CH.rankOf(x.from)===CH.rankOf(m.from));
+          if(!sameFile)dis='abcdefgh'[CH.fileOf(m.from)];
+          else if(!sameRank)dis=''+(CH.rankOf(m.from)+1);
+          else dis=CH.ALG(m.from);
+        }
+      }
+      str=PL[pt]+dis
+        +(m.capt?((pt===CH.PAWN?'abcdefgh'[CH.fileOf(m.from)]:'')+'x'):'')
+        +CH.ALG(m.to)
+        +(m.promo?'='+PL[CH.T(m.promo)]:'');
+    }
+    t.make(m);
+    const st=t.legal().length===0&&t.inCheck()?'#':(t.inCheck()?'+':'');
+    out.push(str+st);
+  }
+  return out;
+}
+
 /* ---------------- outcomes ---------------- */
 let finalScore=0,mateMove=0,lastWin=false;
 function showResult(win,reason){
@@ -996,11 +1042,21 @@ function showResult(win,reason){
     ui.brkHintRow.style.display=hintUsed?'flex':'none';
     if(best<finalScore){best=finalScore;store.set('m5_best',''+best);ui.resBest.textContent='NEW BEST!';}
     else ui.resBest.textContent='';
+    ui.resLine.style.display='none';
   }else{
     ui.resTitle.textContent=reason;ui.resTitle.className='lose';
     ui.resSub.textContent='NO POINTS BANKED';
     ui.resBrk.style.display='none';
     ui.resBest.textContent='';
+    if(curPuzzle&&curPuzzle.line&&curPuzzle.line.length){
+      const san=sanLine(curPuzzle.fen,curPuzzle.line);
+      let html='';
+      for(let i=0;i<san.length;i+=2){
+        html+='<b>'+(i/2+1)+'.</b>'+san[i]+(san[i+1]?' '+san[i+1]:'')+'  ';
+      }
+      ui.resLineMoves.innerHTML=html.trim();
+      ui.resLine.style.display='block';
+    }else ui.resLine.style.display='none';
   }
   // count-up
   const target=win?finalScore:0;
