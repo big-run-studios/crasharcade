@@ -187,7 +187,7 @@
     <div class="tag">Drag anywhere to steer 🛞 &nbsp;Double-tap to throw 📦 &nbsp;Cash out 💰</div>
     <button id="startBtn">START ROUTE</button>
     <div id="menuBest"></div>
-    <div class="brand" id="brand">EXPRESS DELIVERY v0.3.2 · BIG RUN STUDIOS</div>
+    <div class="brand" id="brand">EXPRESS DELIVERY v0.3.3 · BIG RUN STUDIOS</div>
   </div>
 
   <div id="over">
@@ -205,7 +205,7 @@ import * as THREE from './lib/three.module.js';
 
 /* ================================================================== CFG */
 const CFG = {
-  ver:'0.3.2',
+  ver:'0.3.3',
   // --- vehicle
   baseSpeed:8.5,          // forward m/s at run start
   speedGrowth:0.09,       // m/s gained per second
@@ -1662,10 +1662,13 @@ function updatePackages(dt){
     p.x+=p.vx*dt; p.y+=p.vy*dt; p.z+=p.vz*dt;
     const gy=groundYPkg(p.x,p.z), rest=gy+t.h*0.5;
     const sp=Math.hypot(p.vx,p.vz);
-    // door prism: a volume in FRONT of the target's door — any part of a package inside it scores
+    // door prism: a volume in FRONT of the target's door — any part of a package inside it scores.
+    // Bank shots count too: touching down anywhere on the doorstep/doormat floor zone = door.
     if(p.kind==='package' && p.target && !p.target.scored && !p.target.missed){
-      const w=p.target.zones.wall, el=p.target.elev;
+      const w=p.target.zones.wall, el=p.target.elev, ds=p.target.zones.doorstep;
       if(p.x+t.r>w.x-1.2 && p.x-t.r<w.x+0.3 && Math.abs(p.z-p.target.hz)<1.0+t.r && p.y-t.r<el+2.6 && p.y+t.r>el){
+        scoreDelivery(p,'door');
+      } else if(p.x+t.r>ds.x0 && p.x-t.r<ds.x1 && p.z+t.r>ds.z0 && p.z-t.r<ds.z1 && p.y-t.r<el+1.05){
         scoreDelivery(p,'door');
       }
     }
@@ -1876,7 +1879,7 @@ function updateVehicle(dt){
     if(veh.y<=g.y){
       veh.y=g.y; veh.air=false; veh.pump=false;
       if(veh.vy<-4){ SFX.land(); S.shake=Math.min(S.shake+0.35,0.8); }
-      if(veh.airT>1.15) slowMo();
+      // (long-air landing slow-mo removed — it broke the flow; revisit later)
       veh.vy=0;
     }
   } else {
