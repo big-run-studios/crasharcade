@@ -203,7 +203,7 @@
     <div class="tag">Drag anywhere to steer 🛞 &nbsp;Double-tap to throw 📦 &nbsp;Cash out 💰</div>
     <button id="startBtn">START ROUTE</button>
     <div id="menuBest"></div>
-    <div class="brand" id="brand">EXPRESS DELIVERY v0.3.6 · BIG RUN STUDIOS</div>
+    <div class="brand" id="brand">EXPRESS DELIVERY v0.3.7 · BIG RUN STUDIOS</div>
   </div>
 
   <div id="over">
@@ -221,7 +221,7 @@ import * as THREE from './lib/three.module.js';
 
 /* ================================================================== CFG */
 const CFG = {
-  ver:'0.3.6',
+  ver:'0.3.7',
   // --- vehicle
   baseSpeed:8.5,          // forward m/s at run start
   speedGrowth:0.09,       // m/s gained per second
@@ -654,7 +654,8 @@ function spawnSpecial(forceName){
   const spec=forceName?SPECIALS.find(s=>s.name===forceName.toUpperCase())||pick(SPECIALS):pick(SPECIALS);
   const z=veh.z-rnd(42,62), idx=Math.max(0,Math.floor(-z/CFG.CH));
   const rec=world.chunks.get(idx); if(!rec) return null;
-  const x=(Math.random()<0.5?-1:1)*rnd(4.5,7.5)+roadX(z);
+  let x=(Math.random()<0.5?-1:1)*rnd(4.5,7.5)+roadX(z);
+  if(onRamp(x,z,2)) x=(x>roadX(z)?1:-1)*8.5+roadX(z);      // legends step aside from ramps
   const grp=spec.build();
   grp.position.set(x,roadY(z),z);
   grp.rotation.y=rnd(0,Math.PI*2);
@@ -872,6 +873,14 @@ function buildPit(x,z){
   return {grp:g,tape,x,z,w:W,d:D,filled:false};
 }
 
+/* nothing spawns INSIDE a ramp — in front of or behind is fine */
+function onRamp(x,z,m=1.4){
+  for(const r of world.ramps){
+    if(Math.abs(x-r.x)<r.wid/2+m && z<r.z0+m && z>r.z0-r.len-m) return true;
+  }
+  return false;
+}
+
 /* ==================================================== ramps */
 function buildRamp(x,z){
   // wedge rising toward -Z (direction of travel). Low edge at z0=z, top at z-len.
@@ -945,6 +954,7 @@ function genChunk(idx){
 
   const addProp=(kind,x,z)=>{
     const ox=x+roadX(z);
+    if(onRamp(ox,z)) return null;                    // never spawn inside a ramp
     const p=buildProp(kind); p.position.set(ox,roadY(z),z); grp.add(p);
     const pr={kind,grp:p,x:ox,z,rad:p.userData.rad,h:p.userData.h,sfx:p.userData.sfx,dead:false,
       pts:CFG.propPts[kind]||25,decor:(kind==='gnome'||kind==='flamingo'||kind==='birdbath')};
@@ -953,6 +963,7 @@ function genChunk(idx){
   };
   const addTarget=(mult,x,z)=>{                    // stunt bullseye: hit it with anything thrown
     const ox=x+roadX(z), oy=roadY(z);
+    if(onRamp(ox,z)) return null;
     const g2=new THREE.Group();
     g2.add(cyl(M.trunk,0.09,1.5,0,0.75,0));
     const board=new THREE.Group();
@@ -970,6 +981,31 @@ function genChunk(idx){
     const tb={grp:g2,x:ox,z,y:oy+2.0,mult,dead:false};
     rec.tboards.push(tb); world.tboards.push(tb);
   };
+
+  // --- ramps FIRST, so nothing else can spawn inside them
+  if(section==='hood' && idx>=CFG.rampStartChunk && idx%CFG.rampEveryChunks===2){
+    rampCounter++;
+    const rz=zc+6;
+    const rx=(rampCounter%2===0?rnd(1.4,2.4):rnd(-2.2,-0.5))+roadX(rz);
+    const ramp=buildRamp(rx,rz);
+    ramp.grp.position.y=roadY(rz); ramp.elev=roadY(rz);
+    grp.add(ramp.grp); rec.ramps.push(ramp); world.ramps.push(ramp);
+    const truck=rampCounter%2===1;                          // a car/truck parked just past the lip — the hop clears it
+    const car=buildCar(truck);
+    const cz=ramp.z0-ramp.len-(truck?rnd(5.5,6.5):rnd(2.5,4));
+    car.position.set(ramp.x,roadY(cz),cz); car.rotation.y=truck?Math.PI:0;
+    grp.add(car);
+    addSolid(rec,{kind:truck?'truck':'car',x:ramp.x,z:cz,rad:truck?1.6:1.3,halfX:truck?1.05:0.95,halfZ:truck?2.9:2.1,grp:car});
+  }
+  if(section==='stunt'){
+    for(let i=0;i<2;i++){
+      const rz2=zc+CH/2-5-i*13;
+      const rx2=pick([-3.4,-1.4,1.2,3.2])+roadX(rz2);
+      const ramp=buildRamp(rx2,rz2);
+      ramp.grp.position.y=roadY(rz2); ramp.elev=roadY(rz2);
+      grp.add(ramp.grp); rec.ramps.push(ramp); world.ramps.push(ramp);
+    }
+  }
 
   if(section==='hood'){
   // --- houses (right = deliverable, left = scenery)
@@ -999,12 +1035,14 @@ function genChunk(idx){
   // --- parked cars / delivery trucks on the left lane edge (SOLID, in play)
   if(idx>2 && Math.random()<0.35+dT*0.3){
     const truck=dist>500 && Math.random()<0.3;
-    const car=buildCar(truck);
     const cz=zc+rnd(-6,6);
     const cx2=(truck?rnd(1.6,2.2):-rnd(2.2,2.7))+roadX(cz);   // trucks park on the RIGHT lane to block sight lines
-    car.position.set(cx2,roadY(cz),cz); car.rotation.y=truck?Math.PI:0;
-    grp.add(car);
-    addSolid(rec,{kind:truck?'truck':'car',x:cx2,z:cz,rad:truck?1.6:1.3,halfX:truck?1.05:0.95,halfZ:truck?2.9:2.1,grp:car});
+    if(!onRamp(cx2,cz,3.5)){
+      const car=buildCar(truck);
+      car.position.set(cx2,roadY(cz),cz); car.rotation.y=truck?Math.PI:0;
+      grp.add(car);
+      addSolid(rec,{kind:truck?'truck':'car',x:cx2,z:cz,rad:truck?1.6:1.3,halfX:truck?1.05:0.95,halfZ:truck?2.9:2.1,grp:car});
+    }
   }
 
   // --- destructible props
@@ -1019,7 +1057,7 @@ function genChunk(idx){
   if(Math.random()<0.35) addProp('doghouse',rnd(8,10),hzR+rnd(-6,-3));
   if(dist>150 && Math.random()<0.25+dT*0.35) addProp('cone',rnd(-2.5,3),zc+rnd(-9,9));
   if(dist>250 && Math.random()<0.2+dT*0.3) addProp('barrier',rnd(-1.5,2.5),zc+rnd(-9,9));
-  if(dist>180 && Math.random()<0.3){ const s=addProp('sprinkler',rnd(6.6,9),hzR+rnd(-5,5)); s.sprk={t:rnd(0,4)}; }
+  if(dist>180 && Math.random()<0.3){ const s=addProp('sprinkler',rnd(6.6,9),hzR+rnd(-5,5)); if(s) s.sprk={t:rnd(0,4)}; }
   // LEFT side: pickup land — lots of ammo, so you weave left to load up, right to throw
   const nLeft=rndi(2,3+Math.round(dT*2));
   for(let i=0;i<nLeft;i++) addProp(pick(['can','bin','news','toy','cone','gnome','bike','flamingo']),-rnd(4.2,5.6),zc+rnd(-11,11));
@@ -1029,10 +1067,13 @@ function genChunk(idx){
   if(dist>CFG.pitStart && Math.random()<CFG.pitChance){
     const side=Math.random()<0.6?1:-1;
     const pz=zc+rnd(-8,8);
-    const pit=buildPit(side*rnd(4.4,5.3)+roadX(pz),pz);
-    pit.grp.position.y=roadY(pz);
-    grp.add(pit.grp); rec.pits.push(pit); world.pits.push(pit);
-    addSolid(rec,{kind:'pit',pit,x:pit.x,z:pit.z,halfX:pit.w/2+0.1,halfZ:pit.d/2+0.1,rad:1});   // invisible crash geometry
+    const px2=side*rnd(4.4,5.3)+roadX(pz);
+    if(!onRamp(px2,pz,2.5)){
+      const pit=buildPit(px2,pz);
+      pit.grp.position.y=roadY(pz);
+      grp.add(pit.grp); rec.pits.push(pit); world.pits.push(pit);
+      addSolid(rec,{kind:'pit',pit,x:pit.x,z:pit.z,halfX:pit.w/2+0.1,halfZ:pit.d/2+0.1,rad:1});   // invisible crash geometry
+    }
   }
 
   // --- pedestrians & dogs
@@ -1057,14 +1098,7 @@ function genChunk(idx){
   } // end hood
 
   if(section==='stunt'){
-    // STUNT PARK: ramps everywhere, loop arches, bullseyes, loose ammo
-    for(let i=0;i<2;i++){
-      const rz2=zc+CH/2-5-i*13;
-      const rx2=pick([-3.4,-1.4,1.2,3.2])+roadX(rz2);
-      const ramp=buildRamp(rx2,rz2);
-      ramp.grp.position.y=roadY(rz2); ramp.elev=roadY(rz2);
-      grp.add(ramp.grp); rec.ramps.push(ramp); world.ramps.push(ramp);
-    }
+    // STUNT PARK: loop arches, bullseyes, loose ammo (ramps were placed first, up top)
     if(Math.random()<0.45){                               // loop-the-loop arch over the route
       const loop=new THREE.Mesh(new THREE.TorusGeometry(3.6,0.42,8,24),M.red);
       loop.position.set(roadX(zc),roadY(zc)+3.4,zc); loop.castShadow=true;
@@ -1094,22 +1128,6 @@ function genChunk(idx){
     const wallRec={z:wz,passed:false};
     rec.walls.push(wallRec); world.walls.push(wallRec);
     addTarget(5,rnd(6,8),zc+9);
-  }
-
-  // --- ramps, each with a car/truck parked just past the lip — the hop clears it
-  if(section==='hood' && idx>=CFG.rampStartChunk && idx%CFG.rampEveryChunks===2){
-    rampCounter++;
-    const rz=zc+6;
-    const rx=(rampCounter%2===0?rnd(1.4,2.4):rnd(-2.2,-0.5))+roadX(rz);
-    const ramp=buildRamp(rx,rz);
-    ramp.grp.position.y=roadY(rz); ramp.elev=roadY(rz);
-    grp.add(ramp.grp); rec.ramps.push(ramp); world.ramps.push(ramp);
-    const truck=rampCounter%2===1;
-    const car=buildCar(truck);
-    const cz=ramp.z0-ramp.len-(truck?rnd(5.5,6.5):rnd(2.5,4));
-    car.position.set(ramp.x,roadY(cz),cz); car.rotation.y=truck?Math.PI:0;
-    grp.add(car);
-    addSolid(rec,{kind:truck?'truck':'car',x:ramp.x,z:cz,rad:truck?1.6:1.3,halfX:truck?1.05:0.95,halfZ:truck?2.9:2.1,grp:car});
   }
 
   world.grp.add(grp);
