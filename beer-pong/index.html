@@ -270,7 +270,7 @@
     <div class="secret">Swipe up to throw — speed is power, a curved swipe bends the ball, a soft release floats a drop shot. Every cup feeds the <b style="color:#ffd75e">pot</b>; a lone cup glows purple — an <b style="color:#c98aff">island</b>, worth 3×. Run out of balls and the pot is <b style="color:#ff4b3a">gone</b> — tap <b style="color:#39ffa0">CASH OUT</b> any time to bank it.</div>
     <button id="startBtn">🏓 RACK ’EM</button>
     <div id="menuBest">BEST 0</div>
-    <div class="brand">CRASHARCADE · BEER PONG v0.1.20</div>
+    <div class="brand">CRASHARCADE · BEER PONG v0.1.21</div>
   </div>
 
   <div id="over">
@@ -324,7 +324,7 @@ import * as THREE from './lib/three.module.js';
 
 /* ================================================================== CFG */
 const CFG = {
-  ver:'0.1.20',
+  ver:'0.1.21',
   // --- world scale: 1 unit = 1 cm
   ballR:2.3,
   lane:{ half:50, zFront:44, zBack:-216 },
@@ -343,11 +343,12 @@ const CFG = {
   swipeNorm:{spd:4.6,len:0.62},              // a natural thumb flick (~1600px/s) = make-band center; full power needs a genuine rip
   elevBase:50, elevAccel:-11, elevSoft:7,    // deg: base + accel·acc + soft·(1−pow)
   aimK:0.55, aimMaxDeg:38,
-  // spin needs INTENT: even careful strokes arc a little, so turn readings inside
-  // the dead cone are zero — straight throws stay dead straight at any cup. Cone
-  // sized for POINTER-FINGER play (straighter than thumb strokes): a lazy ~20° drift
-  // reads 0, a light 46° flick ~0.1, a committed hook ~0.4, a hard wrap ~0.95.
-  curveTurnGain:12, curveDead:0.22, curveExp:1.2,
+  // spin only on DRAMATIC intent. Two defenses against phantom curve:
+  // (1) the lift-off tail (last curveSkipMs of the stroke) is excluded — finger
+  //     release smears sideways and read as a late hook, sending straight swipes right;
+  // (2) a big dead cone: anything short of a committed wrap = exactly zero spin.
+  // ladder (swipeCalc): smear/flick46 = 0 · hook69 ≈ 0.15 · wrap100 ≈ 0.68 · wrap130 = 1
+  curveTurnGain:18, curveDead:0.4, curveExp:1.2, curveSkipMs:36, curveMinSeg:3,
   assist:0.35, assistR:8,                    // proximity-scaled nudge toward a near-missed mouth — never a snap
   // --- pity assist: consecutive misses (max 3) escalate help so nobody rage-quits.
   // Launch assist strengthens/widens, and close shots get steered in FROM THE AIR:
@@ -840,7 +841,11 @@ function computeSwipe(pts){
   if(pts.length<3) return null;
   const p0=pts[0], pe=pts[pts.length-1];
   const T=(pe.t-p0.t)/1000; if(T<0.03) return null;
-  const dx=pe.x-p0.x, dy=pe.y-p0.y;
+  // trim the lift-off tail: the last curveSkipMs of contact smears sideways as the
+  // finger peels off the glass — folding it into AIM sent dead-straight swipes right
+  let end=pts.length-1; while(end>2&&pe.t-pts[end].t<CFG.curveSkipMs) end--;
+  const pa=pts[end];
+  const dx=pa.x-p0.x, dy=pa.y-p0.y;                     // aim from the committed stroke, not the peel-off
   if(-dy<24) return null;                               // must be an upward swipe
   let len=0; for(let i=1;i<pts.length;i++) len+=Math.hypot(pts[i].x-pts[i-1].x,pts[i].y-pts[i-1].y);
   // release speed: the last ~90ms of the gesture
@@ -854,16 +859,16 @@ function computeSwipe(pts){
   const lenN=clamp(len/(H*CFG.swipeNorm.len),0,1);
   const pow=clamp(0.7*spdN+0.3*lenN,0.06,1);
   // spin = the direction the stroke TURNS, weighted toward release — how the hand
-  // wraps the ball. (Bow-vs-chord was mirrored for the natural hook gesture: a flick
-  // right at the end bows the path LEFT of its chord, so curves bounced the wrong way.)
-  // + = turning right (screen y is down), late turns count most.
+  // wraps the ball. + = turning right (screen y is down), late turns count most —
+  // but the lift-off tail is EXCLUDED (release smear reads as a phantom late hook),
+  // and tiny jitter segments are skipped.
   let turn=0,wsum=0;
-  for(let i=2;i<pts.length;i++){
+  for(let i=2;i<=end;i++){
     const ax=pts[i-1].x-pts[i-2].x, ay=pts[i-1].y-pts[i-2].y;
     const bx=pts[i].x-pts[i-1].x, by=pts[i].y-pts[i-1].y;
     const la=Math.hypot(ax,ay), lb=Math.hypot(bx,by);
-    if(la<1||lb<1) continue;
-    const w=i/pts.length;
+    if(la<CFG.curveMinSeg||lb<CFG.curveMinSeg) continue;
+    const w=i/end;
     turn+=((ax*by-ay*bx)/(la*lb))*w; wsum+=w;
   }
   const raw=clamp(wsum?(turn/wsum)*CFG.curveTurnGain:0,-1.6,1.6);
