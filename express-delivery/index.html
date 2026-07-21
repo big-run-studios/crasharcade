@@ -187,7 +187,7 @@
     <div class="tag">Drag anywhere to steer 🛞 &nbsp;Double-tap to throw 📦 &nbsp;Cash out 💰</div>
     <button id="startBtn">START ROUTE</button>
     <div id="menuBest"></div>
-    <div class="brand" id="brand">EXPRESS DELIVERY v0.3.0 · BIG RUN STUDIOS</div>
+    <div class="brand" id="brand">EXPRESS DELIVERY v0.3.1 · BIG RUN STUDIOS</div>
   </div>
 
   <div id="over">
@@ -205,7 +205,7 @@ import * as THREE from './lib/three.module.js';
 
 /* ================================================================== CFG */
 const CFG = {
-  ver:'0.3.0',
+  ver:'0.3.1',
   // --- vehicle
   baseSpeed:8.5,          // forward m/s at run start
   speedGrowth:0.09,       // m/s gained per second
@@ -371,9 +371,15 @@ const SFX={
   glass:()=>{auNoise(0.28,3400,1.1,0.42); auTone(1800,600,0.22,'square',0.12);},
   connect:()=>{auTone(700,1050,0.14,'sine',0.22); auTone(1050,1400,0.18,'sine',0.18,0.09);},
 };
+/* run music: "Pixel Riot" — an <audio> element so iOS Silent Mode doesn't gag it */
+const BGM=new Audio('pixel-riot.mp3');
+BGM.loop=true; BGM.volume=0.55; BGM.preload='auto';
+function bgmPlay(){ BGM.muted=AU.muted; BGM.currentTime=0; BGM.play().catch(()=>{}); }
+function bgmStop(){ BGM.pause(); }
 function setMute(m){
   AU.muted=m; localStorage.ed_mute=m?'1':'0';
   if(AU.master) AU.master.gain.value=m?0:0.8;
+  BGM.muted=m;
   const t=m?'🔇':'🔊'; $('muteBtn').textContent=t; $('muteBtn2').textContent=t;
 }
 
@@ -2089,10 +2095,11 @@ function startRun(){
   setRackPackage(0);
   ensureChunks(); updateTargets();
   camera.position.set(1.1,6.4,8.6);
+  bgmPlay();
   $('menu').style.display='none'; $('over').classList.remove('show'); $('hud').style.display='';
 }
 function endRun(cashed){
-  S.state='over';
+  S.state='over'; bgmStop();
   S.banked=cashed?S.pot:0;
   const best=Math.max(Number(localStorage.ed_best||0),S.banked);
   localStorage.ed_best=best;
@@ -2116,7 +2123,7 @@ function endRun(cashed){
   $('over').classList.add('show'); $('hud').style.display='none';
 }
 function toMenu(){
-  S.state='menu'; clearPopups();
+  S.state='menu'; clearPopups(); bgmStop();
   $('over').classList.remove('show'); $('hud').style.display='none'; $('menu').style.display='';
   $('menuBest').textContent=Number(localStorage.ed_best||0)>0?'BEST BANKED: '+fmt(localStorage.ed_best):'';
   Object.assign(veh,{x:0,y:0,z:veh.z,vx:0,vy:0,dead:false,air:false});
@@ -2205,6 +2212,7 @@ window.__game={
   crashNow(){ doCrash(); },
   target(){ return world.curTarget; },
   spawnSpecial,
+  bgm:BGM,
   ents(){ return {props:world.props,peds:world.peds,dogs:world.dogs,solids:world.solids,ramps:world.ramps,pits:world.pits,
     specials:world.specials,tboards:world.tboards,walls:world.walls,packages:world.packages,houses:world.houses}; },
   zones(){ return world.curTarget?world.curTarget.zones:null; },
