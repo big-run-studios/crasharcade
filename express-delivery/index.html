@@ -187,7 +187,7 @@
     <div class="tag">Drag anywhere to steer 🛞 &nbsp;Double-tap to throw 📦 &nbsp;Cash out 💰</div>
     <button id="startBtn">START ROUTE</button>
     <div id="menuBest"></div>
-    <div class="brand" id="brand">EXPRESS DELIVERY v0.2.0 · BIG RUN STUDIOS</div>
+    <div class="brand" id="brand">EXPRESS DELIVERY v0.2.1 · BIG RUN STUDIOS</div>
   </div>
 
   <div id="over">
@@ -205,7 +205,7 @@ import * as THREE from './lib/three.module.js';
 
 /* ================================================================== CFG */
 const CFG = {
-  ver:'0.2.0',
+  ver:'0.2.1',
   // --- vehicle
   baseSpeed:8.5,          // forward m/s at run start
   speedGrowth:0.075,      // m/s gained per second
@@ -234,8 +234,8 @@ const CFG = {
   // --- sidewalk pits (taped-off dug-outs; driving in = crash, filling one = points)
   pitStart:120, pitChance:0.3,
   windowPenalty:2500,     // breaking a house window costs this
-  // --- delivery zone base points: ANY touch on the door = full score; porch = half door
-  zonePts:{ property:250, walkway:500, porch:5000, door:10000 },
+  // --- delivery zone base points: ANY touch in the door prism = full score; porch = half door
+  zonePts:{ property:250, walkway:500, porch:1000, door:2000 },
   tierUpAt:1000,          // deliveries scoring >= this base advance the package tier
   // --- destruction base points
   propPts:{ gnome:750, flamingo:750, birdbath:750, can:500, bin:500, mailbox:1000, cone:250,
@@ -287,6 +287,8 @@ const CFG = {
   // --- world layout
   CH:26,                  // chunk length (one house lot per chunk per side)
   roadHalf:3.6, walkIn:3.8, walkOut:6.0, houseX:12.8,
+  // --- road wander: gentle yaw (lateral) + pitch (elevation) so a straight line still needs steering
+  curveAmpX:2.2, curveAmpX2:1.1, curveAmpY:0.5,
   // --- feel
   camYawDeg:22.5,         // run camera orbits this far around the hero toward the delivery (right) side
   camSpring:30, camDamp:11,  // critically-damped lateral follow — ramps up, no snap
@@ -303,6 +305,9 @@ const clamp=(v,a,b)=>v<a?a:v>b?b:v, lerp=(a,b,t)=>a+(b-a)*t, rnd=(a,b)=>a+Math.r
 const rndi=(a,b)=>Math.floor(rnd(a,b+1)), pick=a=>a[Math.floor(Math.random()*a.length)];
 const fmt=n=>Math.round(n).toLocaleString('en-US');
 const $=id=>document.getElementById(id);
+// the road's centerline offset (yaw) and elevation (pitch) at a given z
+function roadX(z){ return CFG.curveAmpX*Math.sin(z*0.018)+CFG.curveAmpX2*Math.sin(z*0.043); }
+function roadY(z){ return CFG.curveAmpY*(Math.sin(z*0.02)+0.6*Math.sin(z*0.011)); }
 
 /* ================================================================== audio */
 const AU={ctx:null,master:null,muted:localStorage.ed_mute==='1'};
@@ -574,31 +579,65 @@ function buildHouse(hz,side,isLot){
   const win2=bx(M.window,0.1,0.9,1.1,CFG.houseX-0.02,1.9,W*0.28,false);
   g.add(win1); g.add(win2);
   g.userData.wins=[{mesh:win1,dz:-W*0.28},{mesh:win2,dz:W*0.28}];
-  // porch: slab + steps + posts + awning
+  // porch: open slab + step — no columns, no awning, so the door prism reads clean
   const porch=bx(M.porch,2.0,0.45,3.6,CFG.houseX-1.0,0.225,0);
   porch.receiveShadow=true; g.add(porch);
   g.add(bx(M.porch,0.7,0.15,2.2,CFG.houseX-2.3,0.075,0));         // step
-  g.add(bx(M.white,0.14,2.0,0.14,CFG.houseX-1.85,1.45,-1.6)); g.add(bx(M.white,0.14,2.0,0.14,CFG.houseX-1.85,1.45,1.6));
-  g.add(prism(roof,2.6,0.8,4.0,CFG.houseX-1.0,2.45,0));
   // doormat (glows when this is the target)
   const mat=bx(M.mat,0.9,0.51,1.3,CFG.houseX-1.15,0.225,0,false);
   g.add(mat); g.userData.mat=mat;
   // walkway strip lawn->porch
   const wkw=bx(M.walkway,CFG.houseX-2.0-CFG.walkOut,0.06,1.4,(CFG.walkOut+CFG.houseX-2.0)/2,0.03,0,false);
   wkw.receiveShadow=true; g.add(wkw);
-  if(side<0) g.scale.x=-1;                    // mirror for the left side
+  if(side<0) g.rotation.y=Math.PI;            // rotate (not negative-scale) — keeps roof normals right-side-out
   g.position.z=hz;
   return g;
 }
-/* nested scoring zones for a right-side target house at hz (world coords) */
-function houseZones(hz){
-  const hx=CFG.houseX;
+/* white picket fence line along a lot's street edge, with a gate at the walkway */
+let picketTex=null;
+function picketMat(){
+  if(!picketTex){
+    const c=document.createElement('canvas'); c.width=128; c.height=64;
+    const x2=c.getContext('2d');
+    x2.fillStyle='#f4f1e6';
+    for(let i=0;i<8;i++){
+      x2.fillRect(i*16+4,12,8,52);
+      x2.beginPath(); x2.moveTo(i*16+4,12); x2.lineTo(i*16+8,2); x2.lineTo(i*16+12,12); x2.fill();  // picket tips
+    }
+    x2.fillRect(0,22,128,6); x2.fillRect(0,44,128,6);                                              // rails
+    picketTex=new THREE.CanvasTexture(c);
+    picketTex.wrapS=THREE.RepeatWrapping;
+  }
+  const m=new THREE.MeshLambertMaterial({map:picketTex,transparent:true,alphaTest:0.4,side:THREE.DoubleSide});
+  return m;
+}
+const gateMat=new THREE.MeshLambertMaterial({color:0xe0c890,side:THREE.DoubleSide});
+function buildFence(fx,elev,hz,z0,z1){
+  const g=new THREE.Group();
+  const seg=(za,zb)=>{
+    const len=zb-za; if(len<=0.2) return;
+    const m=picketMat(); m.map=picketTex.clone(); m.map.wrapS=THREE.RepeatWrapping; m.map.repeat.set(len/1.3,1); m.map.needsUpdate=true;
+    const p=new THREE.Mesh(new THREE.PlaneGeometry(len,0.62),m);
+    p.rotation.y=Math.PI/2; p.position.set(fx,elev+0.34,(za+zb)/2);
+    g.add(p);
+  };
+  seg(z0,hz-0.75); seg(hz+0.75,z1);
+  const gate=new THREE.Mesh(new THREE.PlaneGeometry(1.5,0.56),gateMat);      // gate where the walkway meets the sidewalk
+  gate.rotation.y=Math.PI/2; gate.position.set(fx,elev+0.3,hz);
+  g.add(gate);
+  const post1=bx(M.white,0.1,0.7,0.1,fx,elev+0.35,hz-0.8), post2=bx(M.white,0.1,0.7,0.1,fx,elev+0.35,hz+0.8);
+  g.add(post1); g.add(post2);
+  return g;
+}
+/* nested scoring zones for a right-side target house at hz (world coords, shifted by the road curve) */
+function houseZones(hz,off=0){
+  const hx=CFG.houseX+off, w0=CFG.walkOut+off;
   return {
     doormat:{x0:hx-1.6,x1:hx-0.7,z0:hz-0.65,z1:hz+0.65},
     doorstep:{x0:hx-2.0,x1:hx,z0:hz-1.2,z1:hz+1.2},
     porch:{x0:hx-2.0,x1:hx,z0:hz-1.8,z1:hz+1.8},
-    walkway:{x0:CFG.walkOut,x1:hx-2.0,z0:hz-0.7,z1:hz+0.7},
-    property:{x0:CFG.walkOut,x1:hx+6.5,z0:hz-6.5,z1:hz+6.5},
+    walkway:{x0:w0,x1:hx-2.0,z0:hz-0.7,z1:hz+0.7},
+    property:{x0:w0,x1:hx+6.5,z0:hz-6.5,z1:hz+6.5},
     porchRect:{x0:hx-2.0,x1:hx,z0:hz-1.8,z1:hz+1.8,h:0.45},
     wall:{x:hx,z0:hz-5.2,z1:hz+5.2,h:3.4},
   };
@@ -666,49 +705,61 @@ function genChunk(idx){
   const CH=CFG.CH;
   const rec={grp,props:[],solids:[],peds:[],dogs:[],ramps:[],pits:[],house:null};
 
-  // --- ground slabs
-  const road=bx(M.asphalt,CFG.roadHalf*2,0.05,CH,0,-0.02,zc,false); road.receiveShadow=true; grp.add(road);
-  for(let s of [-1,1]){
-    const curb=bx(M.curb,0.25,0.14,CH,s*(CFG.roadHalf+0.1),0.05,zc,false); curb.receiveShadow=true; grp.add(curb);
-    const walk=bx(M.walk,CFG.walkOut-CFG.walkIn,0.08,CH,s*(CFG.walkIn+CFG.walkOut)/2,0.02,zc,false); walk.receiveShadow=true; grp.add(walk);
-    const lawn=bx(idx%2?M.grass:M.grass2,14,0.06,CH,s*(CFG.walkOut+7),-0.01,zc,false); lawn.receiveShadow=true; grp.add(lawn);
+  // --- ground slabs in 4 sub-segments so the road can wander (yaw) and roll (pitch)
+  const SEG=4, SL=CH/SEG;
+  for(let si=0;si<SEG;si++){
+    const sz=zc-CH/2+SL*(si+0.5), ox=roadX(sz), oy=roadY(sz);
+    const road=bx(M.asphalt,CFG.roadHalf*2+0.7,0.05,SL+0.7,ox,oy-0.02,sz,false); road.receiveShadow=true; grp.add(road);
+    for(let s of [-1,1]){
+      const curb=bx(M.curb,0.25,0.14,SL+0.7,ox+s*(CFG.roadHalf+0.1),oy+0.05,sz,false); curb.receiveShadow=true; grp.add(curb);
+      const walk=bx(M.walk,CFG.walkOut-CFG.walkIn+0.3,0.08,SL+0.7,ox+s*(CFG.walkIn+CFG.walkOut)/2,oy+0.02,sz,false); walk.receiveShadow=true; grp.add(walk);
+      const lawn=bx(idx%2?M.grass:M.grass2,14.6,0.06,SL+0.7,ox+s*(CFG.walkOut+7),oy-0.01,sz,false); lawn.receiveShadow=true; grp.add(lawn);
+    }
   }
-  for(let i=0;i<4;i++) grp.add(bx(M.stripe,0.18,0.02,2.2,0,0.02,zc-CH/2+3+i*7,false));
+  for(let i=0;i<4;i++){ const dz=zc-CH/2+3+i*7; grp.add(bx(M.stripe,0.18,0.02,2.2,roadX(dz),roadY(dz)+0.02,dz,false)); }
 
   const dist=idx*CH, dT=densityT(dist);
 
   // --- houses (right = deliverable, left = scenery)
-  const hzR=zc+rnd(-3,3);
-  const houseR=buildHouse(hzR,1,true); grp.add(houseR);
+  const hzR=zc+rnd(-3,3), offR=roadX(hzR), elevR=roadY(hzR);
+  const houseR=buildHouse(hzR,1,true); houseR.position.x=offR; houseR.position.y=elevR; grp.add(houseR);
   houseCounter++;
   const isTarget=idx>=0 && ((houseCounter%2===0) || dist>700);   // every other house early, every house late; never behind the start
-  const hrec={hz:hzR,zones:houseZones(hzR),grp:houseR,scored:false,missed:false,isTarget,chunkIdx:idx,tier:0,
-    wins:houseR.userData.wins.map(w=>({mesh:w.mesh,z:hzR+w.dz,broken:false}))};
+  const hrec={hz:hzR,off:offR,elev:elevR,zones:houseZones(hzR,offR),grp:houseR,scored:false,missed:false,isTarget,chunkIdx:idx,tier:0,
+    wins:houseR.userData.wins.map(w=>({mesh:w.mesh,z:hzR+w.dz,broken:false})),
+    fence:{x:CFG.walkOut+offR+0.15,z0:hzR-6.5,z1:hzR+6.5,h:0.62}};
+  grp.add(buildFence(hrec.fence.x,elevR,hzR,hrec.fence.z0,hrec.fence.z1));     // picket fence + gate: throws go up and over
   world.houses.push(hrec); rec.house=hrec;
   if(isTarget) world.targetQueue.push(hrec);
-  if(idx%3!==2){ const houseL=buildHouse(zc+rnd(-3,3),-1,false); grp.add(houseL); rec.lhz=houseL.position.z; world.lhouses.push(rec.lhz); }
+  if(idx%3!==2){ const hzL=zc+rnd(-3,3); const houseL=buildHouse(hzL,-1,false);
+    houseL.position.x=roadX(hzL); houseL.position.y=roadY(hzL); grp.add(houseL);
+    rec.lhz=hzL; world.lhouses.push(rec.lhz); }
 
   // --- trees between lots (SOLID, on lawn edges — outside the drivable lane)
   if(idx%2===0){
-    const t=buildTree(); t.position.set(rnd(8,10),0,zc-CH/2+rnd(1,3)); grp.add(t);
+    const tz=zc-CH/2+rnd(1,3);
+    const t=buildTree(); t.position.set(rnd(8,10)+roadX(tz),roadY(tz),tz); grp.add(t);
     addSolid(rec,{kind:'tree',x:t.position.x,z:t.position.z,rad:0.5,grp:t});
-    const t2=buildTree(); t2.position.set(-rnd(8,11),0,zc+rnd(-4,4)); grp.add(t2);
+    const tz2=zc+rnd(-4,4);
+    const t2=buildTree(); t2.position.set(-rnd(8,11)+roadX(tz2),roadY(tz2),tz2); grp.add(t2);
   }
 
   // --- parked cars / delivery trucks on the left lane edge (SOLID, in play)
   if(idx>2 && Math.random()<0.35+dT*0.3){
     const truck=dist>500 && Math.random()<0.3;
     const car=buildCar(truck);
-    const cx2=truck?rnd(1.6,2.2):-rnd(2.2,2.7);      // trucks park on the RIGHT lane to block sight lines
-    car.position.set(cx2,0,zc+rnd(-6,6)); car.rotation.y=truck?Math.PI:0;
+    const cz=zc+rnd(-6,6);
+    const cx2=(truck?rnd(1.6,2.2):-rnd(2.2,2.7))+roadX(cz);   // trucks park on the RIGHT lane to block sight lines
+    car.position.set(cx2,roadY(cz),cz); car.rotation.y=truck?Math.PI:0;
     grp.add(car);
-    addSolid(rec,{kind:truck?'truck':'car',x:cx2,z:car.position.z,rad:truck?1.6:1.3,halfZ:truck?3.2:2.2,grp:car});
+    addSolid(rec,{kind:truck?'truck':'car',x:cx2,z:cz,rad:truck?1.6:1.3,halfX:truck?1.05:0.95,halfZ:truck?2.9:2.1,grp:car});
   }
 
   // --- destructible props
   const addProp=(kind,x,z)=>{
-    const p=buildProp(kind); p.position.set(x,groundYStatic(x,z,hrec),z); grp.add(p);
-    const pr={kind,grp:p,x,z,rad:p.userData.rad,h:p.userData.h,sfx:p.userData.sfx,dead:false,
+    const ox=x+roadX(z);
+    const p=buildProp(kind); p.position.set(ox,roadY(z),z); grp.add(p);
+    const pr={kind,grp:p,x:ox,z,rad:p.userData.rad,h:p.userData.h,sfx:p.userData.sfx,dead:false,
       pts:CFG.propPts[kind]||25,decor:(kind==='gnome'||kind==='flamingo'||kind==='birdbath')};
     rec.props.push(pr); world.props.push(pr);
     return pr;
@@ -733,7 +784,9 @@ function genChunk(idx){
   // taped-off dug-out sidewalk sections (crash if you drive in — or fill them for points)
   if(dist>CFG.pitStart && Math.random()<CFG.pitChance){
     const side=Math.random()<0.6?1:-1;
-    const pit=buildPit(side*rnd(4.4,5.3),zc+rnd(-8,8));
+    const pz=zc+rnd(-8,8);
+    const pit=buildPit(side*rnd(4.4,5.3)+roadX(pz),pz);
+    pit.grp.position.y=roadY(pz);
     grp.add(pit.grp); rec.pits.push(pit); world.pits.push(pit);
   }
 
@@ -742,15 +795,15 @@ function genChunk(idx){
   for(let i=0;i<nPed;i++){
     const jog=dist>CFG.joggerStart && Math.random()<0.35;
     const m=buildPed(jog); const side=Math.random()<0.65?1:-1;
-    const x=side*rnd(4.3,5.6), z=zc+rnd(-10,10);
-    m.position.set(x,0,z); grp.add(m);
+    const z=zc+rnd(-10,10), x=side*rnd(4.3,5.6)+roadX(z);
+    m.position.set(x,roadY(z),z); grp.add(m);
     const ped={grp:m,x,z,side,dir:Math.random()<0.5?1:-1,speed:jog?CFG.jogSpeed:CFG.pedSpeed,jog,
       state:'walk',t:rnd(0,2),vel:new THREE.Vector3(),ang:new THREE.Vector3(),spin:0,rad:0.36,h:1.5,dead:false};
     rec.peds.push(ped); world.peds.push(ped);
   }
   if(dist>CFG.dogStart && Math.random()<0.25+dT*0.3){
-    const m=buildDog(); const x=rnd(6.5,8.5), z=zc+rnd(-8,8);
-    m.position.set(x,0,z); m.rotation.y=-Math.PI/2; grp.add(m);
+    const m=buildDog(); const z=zc+rnd(-8,8), x=rnd(6.5,8.5)+roadX(z);
+    m.position.set(x,roadY(z),z); m.rotation.y=-Math.PI/2; grp.add(m);
     const dog={grp:m,x,z,homeX:x,homeZ:z,state:'idle',t:0,vel:new THREE.Vector3(),ang:new THREE.Vector3(),
       rad:0.4,h:0.8,dead:false,vx:0,vz:0};
     rec.dogs.push(dog); world.dogs.push(dog);
@@ -759,14 +812,17 @@ function genChunk(idx){
   // --- ramps, each with a car/truck parked just past the lip — the hop clears it
   if(idx>=CFG.rampStartChunk && idx%CFG.rampEveryChunks===2){
     rampCounter++;
-    const rx=rampCounter%2===0?rnd(1.4,2.4):rnd(-2.2,-0.5);
-    const ramp=buildRamp(rx,zc+6);
+    const rz=zc+6;
+    const rx=(rampCounter%2===0?rnd(1.4,2.4):rnd(-2.2,-0.5))+roadX(rz);
+    const ramp=buildRamp(rx,rz);
+    ramp.grp.position.y=roadY(rz); ramp.elev=roadY(rz);
     grp.add(ramp.grp); rec.ramps.push(ramp); world.ramps.push(ramp);
     const truck=rampCounter%2===1;
     const car=buildCar(truck);
-    car.position.set(rx,0,ramp.z0-ramp.len-(truck?rnd(5.5,6.5):rnd(2.5,4))); car.rotation.y=truck?Math.PI:0;
+    const cz=ramp.z0-ramp.len-(truck?rnd(5.5,6.5):rnd(2.5,4));
+    car.position.set(ramp.x,roadY(cz),cz); car.rotation.y=truck?Math.PI:0;
     grp.add(car);
-    addSolid(rec,{kind:truck?'truck':'car',x:rx,z:car.position.z,rad:truck?1.6:1.3,halfZ:truck?3.2:2.2,grp:car});
+    addSolid(rec,{kind:truck?'truck':'car',x:ramp.x,z:cz,rad:truck?1.6:1.3,halfX:truck?1.05:0.95,halfZ:truck?2.9:2.1,grp:car});
   }
 
   world.grp.add(grp);
@@ -1063,7 +1119,8 @@ function updateFlying(dt){
     f.t+=dt;
     f.vy-=CFG.pkgGravity*dt;
     f.x+=f.vx*dt; f.y+=f.vy*dt; f.z+=f.vz*dt;
-    if(f.y<0.15){ f.y=0.15; f.vy*=-0.35; f.vx*=0.6; f.vz*=0.6; f.ax*=0.5; f.az*=0.5; }
+    const fgy=roadY(f.z)+0.15;
+    if(f.y<fgy){ f.y=fgy; f.vy*=-0.35; f.vx*=0.6; f.vz*=0.6; f.ax*=0.5; f.az*=0.5; }
     f.grp.position.set(f.x,f.y,f.z);
     f.grp.rotation.x+=f.ax*dt; f.grp.rotation.y+=f.ay*dt; f.grp.rotation.z+=f.az*dt;
     // chain reaction: a fast flying prop can smash others
@@ -1103,8 +1160,9 @@ function updateTumbled(c,dt){
     c.t+=dt; c.vel.y-=CFG.pkgGravity*dt;
     c.grp.position.x+=c.vel.x*dt; c.grp.position.y+=c.vel.y*dt; c.grp.position.z+=c.vel.z*dt;
     c.grp.rotation.x+=c.ang.x*dt; c.grp.rotation.y+=c.ang.y*dt; c.grp.rotation.z+=c.ang.z*dt;
-    if(c.grp.position.y<0 && c.vel.y<0){
-      c.grp.position.y=0; c.state='down'; c.t=0;
+    const cgy=roadY(c.grp.position.z);
+    if(c.grp.position.y<cgy && c.vel.y<0){
+      c.grp.position.y=cgy; c.state='down'; c.t=0;
       c.grp.rotation.set(-Math.PI/2*Math.sign(c.ang.x||1),c.grp.rotation.y,0);
     }
     return true;
@@ -1133,7 +1191,7 @@ function updatePeds(dt){
       if(p.t<=0 && Math.random()<0.3){ p.state='look'; p.t=0.7; continue; }   // telegraphed pause before u-turn
       if(p.t<=0) p.t=rnd(1.5,4);
       p.z+=p.dir*p.speed*dt;
-      p.grp.position.z=p.z;
+      p.grp.position.z=p.z; p.grp.position.y=roadY(p.z);
       p.grp.rotation.y=p.dir>0?0:Math.PI;
       const sw=Math.sin(S.t*(p.jog?16:9))* (p.jog?0.7:0.45);
       p.grp.userData.legs[0].rotation.x=sw; p.grp.userData.legs[1].rotation.x=-sw;
@@ -1172,7 +1230,7 @@ function updateDogs(dt){
       const sw=Math.sin(S.t*12)*0.6; d.grp.userData.legs.forEach((l,i)=>l.rotation.x=i%2?sw:-sw);
       if(Math.hypot(d.homeX-d.x,d.homeZ-d.z)<0.5) d.state='idle';
     }
-    d.grp.position.set(d.x,d.grp.position.y,d.z);
+    d.grp.position.set(d.x,d.dead?d.grp.position.y:roadY(d.z),d.z);
   }
 }
 function updateSprinklers(dt){
@@ -1213,7 +1271,7 @@ function updateTargets(){
 function updateMarker(){
   const m=$('marker'), t=world.curTarget;
   if(!t||S.state!=='run'){ m.style.opacity=0; return; }
-  _v.set(CFG.houseX-1.2,3.1,t.hz).project(camera);
+  _v.set(t.zones.wall.x-1.2,t.elev+3.1,t.hz).project(camera);
   if(_v.z>1){ m.style.opacity=0; return; }
   let x=(_v.x*0.5+0.5)*innerWidth, y=(-_v.y*0.5+0.5)*innerHeight;
   y=Math.max(y,90);                                        // clamp when the house is still far ahead
@@ -1228,7 +1286,7 @@ function connectPkg(p,aff,x,y,z,parent){
   popupPts(pts,aff[0],'#8affc4');
   comboAction(); SFX.connect(); S.lastDestroyT=S.t;
   scene.remove(p.grp);
-  p.grp.rotation.set(0,0,0); p.grp.position.set(x,y,z);
+  p.grp.rotation.set(0,0,0); p.grp.position.set(x,y+roadY(z),z);
   (parent&&parent.parent?parent:scene).add(p.grp);         // chunk groups sit at the origin, so world coords carry over
   const child=p.grp.children[0];
   if(child&&child.userData&&child.userData.legs&&p.kind==='ped')
@@ -1241,9 +1299,9 @@ const CONNECT_Y={bench:0.75,doghouse:0.55,mailbox:1.3,birdbath:0.8,hedge:0.95,ca
 function groundYPkg(x,z){
   for(const h of world.houses){
     const p=h.zones.porchRect;
-    if(x>=p.x0&&x<=p.x1&&z>=p.z0&&z<=p.z1) return p.h;
+    if(x>=p.x0&&x<=p.x1&&z>=p.z0&&z<=p.z1) return h.elev+p.h;
   }
-  return 0;
+  return roadY(z);
 }
 function toss(){
   if(S.state!=='run'||veh.cd>0||veh.dead) return false;
@@ -1331,19 +1389,32 @@ function updatePackages(dt){
     p.x+=p.vx*dt; p.y+=p.vy*dt; p.z+=p.vz*dt;
     const gy=groundYPkg(p.x,p.z), rest=gy+t.h*0.5;
     const sp=Math.hypot(p.vx,p.vz);
-    // house wall — windows break (costly!), the target's door scores, the rest BONK
+    // door prism: a volume in FRONT of the target's door — any part of a package inside it scores
+    if(p.kind==='package' && p.target && !p.target.scored && !p.target.missed){
+      const w=p.target.zones.wall, el=p.target.elev;
+      if(p.x+t.r>w.x-1.2 && p.x-t.r<w.x+0.3 && Math.abs(p.z-p.target.hz)<1.0+t.r && p.y-t.r<el+2.6 && p.y+t.r>el){
+        scoreDelivery(p,'door');
+      }
+    }
+    // picket fences: low throws rattle off — get the package up and over
+    for(const h of world.houses){
+      const f=h.fence;
+      if(f && p.vx>0 && p.x+t.r>f.x && p.x-t.r<f.x+0.35 && p.z>f.z0 && p.z<f.z1 && p.y-t.r<h.elev+f.h){
+        p.x=f.x-t.r; p.vx=-Math.abs(p.vx)*0.3; SFX.wood();
+        popup(p.x,p.y+0.5,p.z,'FENCED','','#e8dcc8');
+      }
+    }
+    // house wall — windows break (costly!), the rest BONK
     for(const h of world.houses){
       const w=h.zones.wall;
-      if(Math.abs(p.z-h.hz)<5.4 && p.x>w.x-t.r && p.y<w.h && p.vx>0){
+      if(Math.abs(p.z-h.hz)<5.4 && p.x>w.x-t.r && p.y<h.elev+w.h && p.vx>0){
         let win=null;
-        for(const wn of h.wins) if(!wn.broken && Math.abs(p.z-wn.z)<0.8 && p.y>1.3 && p.y<2.5) win=wn;
+        for(const wn of h.wins) if(!wn.broken && Math.abs(p.z-wn.z)<0.8 && p.y>h.elev+1.3 && p.y<h.elev+2.5) win=wn;
         if(win){
           win.broken=true; win.mesh.material=M.winBroken;
           S.pot=Math.max(0,S.pot-CFG.windowPenalty);
           popupPts(-CFG.windowPenalty,'WINDOW!','#ff6a5a');
           SFX.glass(); S.shake=Math.min(S.shake+0.25,0.7);
-        } else if(p.kind==='package' && h===p.target && !h.scored && !h.missed && Math.abs(p.z-h.hz)<0.9 && p.y<2.7){
-          scoreDelivery(p,'door');                         // packages connect with doors
         } else {
           SFX.card();
           popup(p.x,p.y+0.5,p.z,'BONK','','#ffd0a8');
@@ -1352,8 +1423,9 @@ function updatePackages(dt){
       }
     }
     for(const lz of world.lhouses){                        // left houses: wall bounce only (no delivery zones)
-      if(Math.abs(p.z-lz)<5.4 && p.x<-(CFG.houseX)+t.r && p.y<3.4 && p.vx<0){
-        p.x=-(CFG.houseX)+t.r; p.vx=Math.abs(p.vx)*0.35; SFX.card();
+      const wx=-CFG.houseX+roadX(lz);
+      if(Math.abs(p.z-lz)<5.4 && p.x<wx+t.r && p.y<roadY(lz)+3.4 && p.vx<0){
+        p.x=wx+t.r; p.vx=Math.abs(p.vx)*0.35; SFX.card();
         popup(p.x,p.y+0.5,p.z,'BONK','','#ffd0a8');
       }
     }
@@ -1387,7 +1459,7 @@ function updatePackages(dt){
       if(connected) continue;
       for(const pit of world.pits){
         if(pit.filled) continue;
-        if(Math.abs(pit.z-p.z)<pit.d/2 && Math.abs(pit.x-p.x)<pit.w/2 && p.y<0.8){
+        if(Math.abs(pit.z-p.z)<pit.d/2 && Math.abs(pit.x-p.x)<pit.w/2 && p.y<roadY(pit.z)+0.8){
           const aff=AFF.pit;
           if(aff){ pit.filled=true; pit.tape.visible=false; connectPkg(p,aff,pit.x,CONNECT_Y.pit,pit.z,pit.grp.parent); connected=true; }
           break;
@@ -1450,12 +1522,13 @@ function updatePackages(dt){
 
 /* ==================================================== vehicle physics */
 function rampGroundY(x,z){
+  const base=roadY(z);
   for(const r of world.ramps){
     if(Math.abs(x-r.x)>r.wid/2) continue;
     const p=(r.z0-z)/r.len;                                 // 0 at the lip, 1 at the top
-    if(p>=0&&p<=1) return {y:r.h*p,slope:r.slope,p};
+    if(p>=0&&p<=1) return {y:(r.elev||0)+r.h*p,slope:r.slope,p};
   }
-  return {y:0,slope:0,p:-1};
+  return {y:base,slope:0,p:-1};
 }
 function doCrash(){
   if(veh.dead) return;
@@ -1487,8 +1560,9 @@ function updateVehicle(dt){
   const accel=CFG.steerAccel*(veh.air?CFG.airSteer:1);
   veh.vx=lerp(veh.vx,veh.wheel*CFG.steerMax,Math.min(1,accel*dt));
   veh.x+=veh.vx*dt;
-  if(veh.x<CFG.laneMin){ veh.x=CFG.laneMin; veh.vx=Math.abs(veh.vx)*0.3; }
-  if(veh.x>CFG.laneMax){ veh.x=CFG.laneMax; veh.vx=-Math.abs(veh.vx)*0.3; }
+  const roff=roadX(veh.z);                                  // lane bounds ride the curve — straight lines drift off-lane
+  if(veh.x<roff+CFG.laneMin){ veh.x=roff+CFG.laneMin; veh.vx=Math.abs(veh.vx)*0.3; }
+  if(veh.x>roff+CFG.laneMax){ veh.x=roff+CFG.laneMax; veh.vx=-Math.abs(veh.vx)*0.3; }
   veh.z-=veh.speed*dt;
   // ramps & gravity
   const g=rampGroundY(veh.x,veh.z);
@@ -1544,10 +1618,10 @@ function updateVehicle(dt){
         veh.speed*=0.9; S.shake=Math.min(S.shake+0.2,0.7);
       }
     }
-    // ONLY cars/trucks (and open pits) can crash you
+    // ONLY cars/trucks (and open pits) can crash you — tight hitboxes, no phantom clips
     if(!veh.air) for(const s of world.solids){
-      const hz=s.halfZ||s.rad;
-      if(Math.abs(s.z-veh.z)<hz+0.8 && Math.abs(s.x-veh.x)<s.rad+0.55){
+      const hz=(s.halfZ||s.rad)+0.45, hx=(s.halfX||s.rad)+0.35;
+      if(Math.abs(s.z-veh.z)<hz && Math.abs(s.x-veh.x)<hx){
         const canCrash=s.kind==='car'||s.kind==='truck';
         if(canCrash && veh.speed>CFG.crashSpeed){ doCrash(); break; }
         // minor: shove out sideways, bleed speed, break combo
