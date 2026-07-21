@@ -187,7 +187,7 @@
     <div class="tag">Drag anywhere to steer 🛞 &nbsp;Double-tap to throw 📦 &nbsp;Cash out 💰</div>
     <button id="startBtn">START ROUTE</button>
     <div id="menuBest"></div>
-    <div class="brand" id="brand">EXPRESS DELIVERY v0.2.1 · BIG RUN STUDIOS</div>
+    <div class="brand" id="brand">EXPRESS DELIVERY v0.3.0 · BIG RUN STUDIOS</div>
   </div>
 
   <div id="over">
@@ -205,11 +205,12 @@ import * as THREE from './lib/three.module.js';
 
 /* ================================================================== CFG */
 const CFG = {
-  ver:'0.2.1',
+  ver:'0.3.0',
   // --- vehicle
   baseSpeed:8.5,          // forward m/s at run start
-  speedGrowth:0.075,      // m/s gained per second
-  maxSpeed:20,
+  speedGrowth:0.09,       // m/s gained per second
+  maxSpeed:32,            // with wall boosts the ceiling is lethal — runs can't realistically pass ~3 min
+  wallBoost:5,            // extra m/s permanently gained each time you thread a stunt wall
   steerMax:6.8,           // max lateral m/s at full wheel lock
   steerAccel:7.5,         // how fast lateral velocity chases the wheel (1/s)
   steerReturn:5.5,        // wheel spring back to center (1/s)
@@ -289,6 +290,14 @@ const CFG = {
   roadHalf:3.6, walkIn:3.8, walkOut:6.0, houseX:12.8,
   // --- road wander: gentle yaw (lateral) + pitch (elevation) so a straight line still needs steering
   curveAmpX:2.2, curveAmpX2:1.1, curveAmpY:0.5,
+  // --- sections: neighborhood → stunt track → wall gap → faster neighborhood → …
+  hoodChunks:22, stuntChunks:13,          // cycle = hood + stunt + 1 wall chunk
+  wallGapHalf:1.25,                       // ~3 scooters wide
+  targetPts:1000,                         // bullseye base — multiplied by the board's shown multiplier
+  // --- legendary spawns: after 30s, every 5s there's a 1-in-20 roll
+  specialAfter:30, specialEvery:5, specialOdds:0.05, specialMax:2,
+  specialPts:2500,                        // scooping one up
+  specialConnectPts:5000,                 // a thrown legend connects with ANY receptor
   // --- feel
   camYawDeg:22.5,         // run camera orbits this far around the hero toward the delivery (right) side
   camSpring:30, camDamp:11,  // critically-damped lateral follow — ramps up, no snap
@@ -476,6 +485,185 @@ function buildDog(){
   [[-0.22,0.12],[-0.22,-0.12],[0.22,0.12],[0.22,-0.12]].forEach(p=>{ const l=bx(fur,0.09,0.24,0.09,p[0],0.12,p[1]); legs.push(l); g.add(l); });
   g.userData={legs,tail,head};
   return g;
+}
+
+/* ==================================================== legendary spawns (20 icons) */
+const lm=c=>new THREE.MeshLambertMaterial({color:c});
+function biped(bodyC,headC,h,wide=0.5){    // shared torso/head/arms/legs base
+  const g=new THREE.Group(), b=lm(bodyC);
+  g.add(bx(b,wide,h*0.38,wide*0.6,0,h*0.5,0));
+  g.add(sph(lm(headC),h*0.13,0,h*0.78,0));
+  g.add(bx(b,wide*0.24,h*0.3,wide*0.24,-wide*0.62,h*0.48,0)); g.add(bx(b,wide*0.24,h*0.3,wide*0.24,wide*0.62,h*0.48,0));
+  g.add(bx(b,wide*0.28,h*0.32,wide*0.28,-wide*0.25,h*0.16,0)); g.add(bx(b,wide*0.28,h*0.32,wide*0.28,wide*0.25,h*0.16,0));
+  return g;
+}
+const SPECIALS=[
+  {name:'GIRAFFE',h:4.4,rad:0.8,build(){ const g=new THREE.Group(),y=lm(0xf0c04a),o=lm(0xb87830);
+    g.add(bx(y,0.9,0.8,1.6,0,2.0,0));
+    [[-0.35,0.6],[0.35,0.6],[-0.35,-0.6],[0.35,-0.6]].forEach(p=>g.add(bx(y,0.22,1.6,0.22,p[0],0.8,p[1])));
+    const neck=bx(y,0.3,2.0,0.3,0,3.3,0.6); neck.rotation.x=0.25; g.add(neck);
+    g.add(bx(y,0.34,0.34,0.7,0,4.25,1.05));
+    g.add(bx(o,0.06,0.25,0.06,-0.1,4.5,0.9)); g.add(bx(o,0.06,0.25,0.06,0.1,4.5,0.9));
+    for(let i=0;i<6;i++) g.add(bx(o,0.22,0.22,0.05,rnd(-0.4,0.4),rnd(1.7,2.3),0.81,false));
+    return g; }},
+  {name:'GREY ALIEN',h:1.7,rad:0.4,build(){ const g=biped(0x9aa8b0,0xb8c4cc,1.5,0.42);
+    const head=sph(lm(0xb8c4cc),0.32,0,1.45,0); head.scale.y=0.8; g.add(head);
+    g.add(sph(lm(0x0a0a12),0.09,-0.13,1.48,0.22)); g.add(sph(lm(0x0a0a12),0.09,0.13,1.48,0.22));
+    return g; }},
+  {name:'T-REX',h:3.2,rad:0.9,build(){ const g=new THREE.Group(),gr=lm(0x4a8a3a);
+    g.add(bx(gr,1.0,1.1,1.8,0,1.6,0));
+    const tail=bx(gr,0.5,0.5,1.8,0,1.3,-1.6); tail.rotation.x=-0.25; g.add(tail);
+    g.add(bx(gr,0.85,0.8,1.2,0,2.6,0.9));
+    g.add(bx(M.white,0.7,0.14,0.9,0,2.32,1.1,false));
+    g.add(bx(gr,0.2,0.35,0.2,-0.45,1.9,0.8)); g.add(bx(gr,0.2,0.35,0.2,0.45,1.9,0.8));
+    g.add(bx(gr,0.4,1.1,0.5,-0.35,0.55,0)); g.add(bx(gr,0.4,1.1,0.5,0.35,0.55,0));
+    g.add(sph(lm(0xffe14d),0.09,-0.3,2.75,1.3)); g.add(sph(lm(0xffe14d),0.09,0.3,2.75,1.3));
+    return g; }},
+  {name:'TIN ROBOT',h:2.1,rad:0.5,build(){ const g=new THREE.Group(),s=lm(0xb8c0cc);
+    g.add(bx(s,0.85,0.95,0.6,0,0.95,0));
+    g.add(bx(s,0.55,0.5,0.5,0,1.75,0));
+    g.add(sph(lm(0x34e1ff),0.08,-0.13,1.8,0.26)); g.add(sph(lm(0x34e1ff),0.08,0.13,1.8,0.26));
+    g.add(bx(s,0.05,0.3,0.05,0,2.15,0)); g.add(sph(lm(0xff4444),0.07,0,2.32,0));
+    g.add(bx(s,0.2,0.8,0.2,-0.62,0.95,0)); g.add(bx(s,0.2,0.8,0.2,0.62,0.95,0));
+    g.add(bx(s,0.26,0.5,0.26,-0.22,0.25,0)); g.add(bx(s,0.26,0.5,0.26,0.22,0.25,0));
+    return g; }},
+  {name:'UNICORN',h:2.2,rad:0.7,build(){ const g=new THREE.Group(),w=lm(0xf6f2ff),p=lm(0xff7ab8);
+    g.add(bx(w,0.7,0.7,1.5,0,1.1,0));
+    [[-0.25,0.55],[0.25,0.55],[-0.25,-0.55],[0.25,-0.55]].forEach(q=>g.add(bx(w,0.2,0.75,0.2,q[0],0.38,q[1])));
+    const neck=bx(w,0.3,0.7,0.3,0,1.7,0.6); neck.rotation.x=0.35; g.add(neck);
+    g.add(bx(w,0.3,0.3,0.6,0,2.05,0.85));
+    g.add(cone(lm(0xffd82e),0.07,0.45,0,2.4,0.85));
+    g.add(bx(p,0.12,0.55,0.5,0,1.75,0.25,false));
+    g.add(bx(p,0.12,0.5,0.14,0,1.0,-0.82));
+    return g; }},
+  {name:'YETI',h:2.5,rad:0.6,build(){ const g=biped(0xf0f4f8,0xf0f4f8,2.4,0.85);
+    g.add(bx(lm(0x6a7684),0.34,0.3,0.05,0,1.95,0.27,false));
+    return g; }},
+  {name:'GIANT DUCK',h:1.9,rad:0.8,build(){ const g=new THREE.Group(),y=lm(0xffd82e);
+    const b=sph(y,0.85,0,0.85,0); b.scale.z=1.25; g.add(b);
+    g.add(sph(y,0.42,0,1.6,0.55));
+    g.add(bx(lm(0xff8a2e),0.3,0.12,0.5,0,1.55,1.0));
+    g.add(sph(lm(0x111),0.06,-0.16,1.7,0.85)); g.add(sph(lm(0x111),0.06,0.16,1.7,0.85));
+    return g; }},
+  {name:'SNOWMAN',h:2.1,rad:0.6,build(){ const g=new THREE.Group();
+    g.add(sph(M.white,0.75,0,0.6,0)); g.add(sph(M.white,0.55,0,1.45,0)); g.add(sph(M.white,0.38,0,2.05,0));
+    g.add(cone(lm(0xff8a2e),0.08,0.4,0,2.05,0.5));
+    g.add(cyl(lm(0x1a1a22),0.3,0.3,0,2.45,0)); g.add(cyl(lm(0x1a1a22),0.42,0.06,0,2.3,0));
+    return g; }},
+  {name:'GNOME KING',h:2.3,rad:0.55,build(){ const g=new THREE.Group();
+    g.add(cyl(lm(0x3a5ac8),0.5,1.1,0,0.55,0));
+    g.add(bx(M.white,0.5,0.5,0.2,0,1.15,0.3));
+    g.add(sph(M.skin,0.33,0,1.5,0.05));
+    g.add(cone(lm(0xd8362a),0.4,0.9,0,2.0,0));
+    return g; }},
+  {name:'UFO',h:1.8,rad:1.1,build(){ const g=new THREE.Group();
+    const sc=sph(lm(0x9aa8bc),1.1,0,1.0,0); sc.scale.y=0.3; g.add(sc);
+    const dm=sph(lm(0x8ae8ff),0.5,0,1.25,0); dm.scale.y=0.7; g.add(dm);
+    for(let i=0;i<6;i++){ const a=i/6*Math.PI*2; g.add(sph(lm(0xffe14d),0.09,Math.cos(a)*0.85,0.95,Math.sin(a)*0.85)); }
+    return g; }},
+  {name:'WIZARD',h:2.2,rad:0.5,build(){ const g=new THREE.Group(),p=lm(0x7a4ad8);
+    g.add(cone(p,0.5,1.5,0,0.75,0));
+    g.add(sph(M.skin,0.24,0,1.62,0.05));
+    g.add(bx(M.white,0.3,0.4,0.14,0,1.38,0.2));
+    g.add(cone(p,0.3,0.7,0,2.0,0));
+    g.add(bx(M.trunk,0.07,1.6,0.07,0.5,0.8,0.1)); g.add(sph(lm(0x34e1ff),0.12,0.5,1.65,0.1));
+    return g; }},
+  {name:'KNIGHT',h:2.1,rad:0.5,build(){ const g=biped(0xb8c0cc,0xb8c0cc,2.0,0.55);
+    g.add(bx(lm(0x22262e),0.4,0.1,0.06,0,1.62,0.24,false));
+    g.add(bx(lm(0xd8362a),0.08,0.4,0.08,0,2.2,0));
+    g.add(bx(lm(0xd8d8e0),0.08,0.9,0.08,0.42,1.3,0.15)); g.add(bx(M.trunk,0.2,0.08,0.08,0.42,0.95,0.15));
+    return g; }},
+  {name:'PIRATE',h:2.0,rad:0.5,build(){ const g=biped(0x8a2222,0xe8b088,1.9,0.55);
+    g.add(bx(lm(0x1a1a22),0.6,0.16,0.4,0,1.62,0));
+    g.add(bx(lm(0x1a1a22),0.16,0.06,0.02,-0.08,1.5,0.26,false));
+    g.add(bx(M.trunk,0.1,0.4,0.1,0.14,0.1,0));
+    return g; }},
+  {name:'MUMMY',h:2.0,rad:0.5,build(){ const g=biped(0xe8e0c8,0xe8e0c8,1.9,0.55);
+    for(let i=0;i<4;i++) g.add(bx(lm(0xc8bea0),0.56,0.06,0.35,0,0.45+i*0.35,0,false));
+    const a1=bx(lm(0xe8e0c8),0.14,0.5,0.14,-0.3,1.35,0.35); a1.rotation.x=-1.3; g.add(a1);
+    const a2=bx(lm(0xe8e0c8),0.14,0.5,0.14,0.3,1.35,0.35); a2.rotation.x=-1.3; g.add(a2);
+    return g; }},
+  {name:'NINJA',h:1.9,rad:0.45,build(){ const g=biped(0x1a1a22,0x1a1a22,1.8,0.5);
+    g.add(bx(M.skin,0.26,0.09,0.05,0,1.45,0.24,false));
+    g.add(bx(lm(0xd8362a),0.55,0.08,0.35,0,0.95,0,false));
+    return g; }},
+  {name:'ASTRONAUT',h:2.0,rad:0.5,build(){ const g=biped(0xf0f0f4,0xf0f0f4,1.9,0.6);
+    g.add(sph(lm(0xffc233),0.3,0,1.5,0.08));
+    g.add(bx(lm(0xc8ccd4),0.5,0.6,0.25,0,1.0,-0.35));
+    return g; }},
+  {name:'GORILLA',h:2.3,rad:0.7,build(){ const g=new THREE.Group(),d=lm(0x2e2e34);
+    g.add(bx(d,1.2,1.1,0.8,0,1.2,0));
+    g.add(sph(d,0.4,0,2.0,0.1)); g.add(bx(lm(0x8a8a90),0.5,0.3,0.1,0,1.85,0.42,false));
+    g.add(bx(lm(0x6a6a72),0.7,0.6,0.1,0,1.15,0.42,false));
+    g.add(bx(d,0.3,1.3,0.3,-0.8,0.75,0)); g.add(bx(d,0.3,1.3,0.3,0.8,0.75,0));
+    g.add(bx(d,0.35,0.6,0.35,-0.35,0.3,0)); g.add(bx(d,0.35,0.6,0.35,0.35,0.3,0));
+    return g; }},
+  {name:'PENGUIN',h:1.9,rad:0.55,build(){ const g=new THREE.Group();
+    const b=sph(lm(0x1a1e2a),0.7,0,0.95,0); b.scale.y=1.3; g.add(b);
+    const w=sph(M.white,0.5,0,0.85,0.3); w.scale.y=1.1; g.add(w);
+    g.add(sph(lm(0x1a1e2a),0.32,0,1.8,0.05));
+    const beak=cone(lm(0xff8a2e),0.08,0.3,0,1.78,0.42); beak.rotation.x=Math.PI/2; g.add(beak);
+    g.add(bx(lm(0xff8a2e),0.24,0.06,0.3,-0.15,0.03,0.1)); g.add(bx(lm(0xff8a2e),0.24,0.06,0.3,0.15,0.03,0.1));
+    return g; }},
+  {name:'DRAGON',h:2.6,rad:0.8,build(){ const g=new THREE.Group(),gr=lm(0x3a9a5a);
+    g.add(bx(gr,0.8,0.8,1.6,0,1.3,0));
+    const tail=bx(gr,0.35,0.35,1.4,0,1.1,-1.4); tail.rotation.x=-0.2; g.add(tail);
+    g.add(bx(gr,0.5,0.5,0.9,0,2.1,0.9));
+    for(let i=0;i<4;i++) g.add(cone(lm(0xd8362a),0.12,0.3,0,1.85+i*0.0,0-i*0.45));
+    const w1=bx(lm(0x2a7a44),1.4,0.06,0.8,-0.9,1.9,0); w1.rotation.z=0.5; g.add(w1);
+    const w2=bx(lm(0x2a7a44),1.4,0.06,0.8,0.9,1.9,0); w2.rotation.z=-0.5; g.add(w2);
+    [[-0.28,0.5],[0.28,0.5],[-0.28,-0.5],[0.28,-0.5]].forEach(q=>g.add(bx(gr,0.22,0.9,0.22,q[0],0.45,q[1])));
+    return g; }},
+  {name:'TEDDY BEAR',h:2.2,rad:0.65,build(){ const g=new THREE.Group(),br=lm(0x9a6a3e);
+    const b=sph(br,0.75,0,0.95,0); b.scale.y=1.15; g.add(b);
+    g.add(sph(lm(0xd8b088),0.4,0,1.0,0.55));
+    g.add(sph(br,0.5,0,1.95,0));
+    g.add(sph(br,0.2,-0.42,2.3,0)); g.add(sph(br,0.2,0.42,2.3,0));
+    g.add(sph(lm(0xd8b088),0.22,0,1.9,0.42));
+    g.add(bx(br,0.28,0.6,0.28,-0.6,1.1,0.2)); g.add(bx(br,0.28,0.6,0.28,0.6,1.1,0.2));
+    g.add(bx(br,0.32,0.5,0.32,-0.3,0.25,0.1)); g.add(bx(br,0.32,0.5,0.32,0.3,0.25,0.1));
+    return g; }},
+];
+const starMat=new THREE.MeshLambertMaterial({color:0xffd82e,emissive:0xcc9a00,emissiveIntensity:0.85});
+function spawnSpecial(forceName){
+  if(world.specials.length>=CFG.specialMax&&!forceName) return null;
+  const spec=forceName?SPECIALS.find(s=>s.name===forceName.toUpperCase())||pick(SPECIALS):pick(SPECIALS);
+  const z=veh.z-rnd(42,62), idx=Math.max(0,Math.floor(-z/CFG.CH));
+  const rec=world.chunks.get(idx); if(!rec) return null;
+  const x=(Math.random()<0.5?-1:1)*rnd(4.5,7.5)+roadX(z);
+  const grp=spec.build();
+  grp.position.set(x,roadY(z),z);
+  grp.rotation.y=rnd(0,Math.PI*2);
+  grp.traverse(o=>{o.castShadow=true;});
+  const marker=new THREE.Mesh(new THREE.OctahedronGeometry(0.34),starMat);
+  marker.position.set(0,spec.h+0.8,0); grp.add(marker);
+  rec.grp.add(grp);
+  const sp={grp,marker,x,z,name:spec.name,h:spec.h,rad:spec.rad,dead:false};
+  rec.specials.push(sp); world.specials.push(sp);
+  return sp;
+}
+function updateSpecials(dt){
+  for(const sp of world.specials){
+    if(sp.dead) continue;
+    sp.marker.rotation.y+=3.5*dt;
+    sp.marker.position.y=sp.h+0.8+Math.sin(S.t*2.6)*0.16;
+  }
+}
+function pickupSpecial(sp){
+  const pts=award(CFG.specialPts,'destroy');
+  popupPts(pts,'★ '+sp.name+' ★','#ffd82e');
+  comboAction(); SFX.bonus(); S.lastDestroyT=S.t; S.legends++;
+  sp.dead=true;
+  world.specials=world.specials.filter(x=>x!==sp);
+  sp.grp.remove(sp.marker);
+  const mesh=sp.grp, wp=new THREE.Vector3(); mesh.getWorldPosition(wp);
+  if(mesh.parent) mesh.parent.remove(mesh);
+  const scl=Math.min(1,0.6/sp.h);
+  mesh.scale.setScalar(scl); mesh.rotation.set(0,rnd(-0.4,0.4),0);
+  stackGrp.add(mesh);
+  stackGrp.updateWorldMatrix(true,false);
+  const start=stackGrp.worldToLocal(wp.clone());
+  pickups.push({kind:'special',specialName:sp.name,h:sp.h,scl,sfx:'wood',mesh,pos:start.clone(),start:start.clone(),target:slotPos(pickups.length),t:0});
 }
 
 /* ==================================================== prop builders (all breakable) */
@@ -692,6 +880,7 @@ const world={
   lhouses:[],                   // left-side house z centers (wall bounce only)
   targetQueue:[], curTarget:null,
   props:[], solids:[], peds:[], dogs:[], ramps:[], pits:[], flying:[], packages:[],
+  specials:[], tboards:[], walls:[],
 };
 scene.add(world.grp);
 let houseCounter=0, rampCounter=0;
@@ -703,23 +892,62 @@ function genChunk(idx){
   const grp=new THREE.Group();
   const zc=-(idx+0.5)*CFG.CH;                 // chunk center (travel is -Z)
   const CH=CFG.CH;
-  const rec={grp,props:[],solids:[],peds:[],dogs:[],ramps:[],pits:[],house:null};
+  const rec={grp,props:[],solids:[],peds:[],dogs:[],ramps:[],pits:[],specials:[],tboards:[],walls:[],house:null};
+  const cyc=CFG.hoodChunks+CFG.stuntChunks+1, cpos=((idx%cyc)+cyc)%cyc;
+  const section=idx<CFG.hoodChunks?'hood':(cpos<CFG.hoodChunks?'hood':(cpos<CFG.hoodChunks+CFG.stuntChunks?'stunt':'wall'));
+  rec.section=section;
 
   // --- ground slabs in 4 sub-segments so the road can wander (yaw) and roll (pitch)
   const SEG=4, SL=CH/SEG;
   for(let si=0;si<SEG;si++){
     const sz=zc-CH/2+SL*(si+0.5), ox=roadX(sz), oy=roadY(sz);
-    const road=bx(M.asphalt,CFG.roadHalf*2+0.7,0.05,SL+0.7,ox,oy-0.02,sz,false); road.receiveShadow=true; grp.add(road);
-    for(let s of [-1,1]){
-      const curb=bx(M.curb,0.25,0.14,SL+0.7,ox+s*(CFG.roadHalf+0.1),oy+0.05,sz,false); curb.receiveShadow=true; grp.add(curb);
-      const walk=bx(M.walk,CFG.walkOut-CFG.walkIn+0.3,0.08,SL+0.7,ox+s*(CFG.walkIn+CFG.walkOut)/2,oy+0.02,sz,false); walk.receiveShadow=true; grp.add(walk);
-      const lawn=bx(idx%2?M.grass:M.grass2,14.6,0.06,SL+0.7,ox+s*(CFG.walkOut+7),oy-0.01,sz,false); lawn.receiveShadow=true; grp.add(lawn);
+    if(section==='hood'){
+      const road=bx(M.asphalt,CFG.roadHalf*2+0.7,0.05,SL+0.7,ox,oy-0.02,sz,false); road.receiveShadow=true; grp.add(road);
+      for(let s of [-1,1]){
+        const curb=bx(M.curb,0.25,0.14,SL+0.7,ox+s*(CFG.roadHalf+0.1),oy+0.05,sz,false); curb.receiveShadow=true; grp.add(curb);
+        const walk=bx(M.walk,CFG.walkOut-CFG.walkIn+0.3,0.08,SL+0.7,ox+s*(CFG.walkIn+CFG.walkOut)/2,oy+0.02,sz,false); walk.receiveShadow=true; grp.add(walk);
+        const lawn=bx(idx%2?M.grass:M.grass2,14.6,0.06,SL+0.7,ox+s*(CFG.walkOut+7),oy-0.01,sz,false); lawn.receiveShadow=true; grp.add(lawn);
+      }
+    } else {
+      // stunt park: one wide concrete apron, asphalt strip down the middle
+      const apron=bx(M.walkway,26,0.05,SL+0.7,ox,oy-0.03,sz,false); apron.receiveShadow=true; grp.add(apron);
+      const strip=bx(M.asphalt,CFG.roadHalf*2+0.7,0.06,SL+0.7,ox,oy-0.02,sz,false); strip.receiveShadow=true; grp.add(strip);
+      const dirt=bx(M.soil,44,0.04,SL+0.7,ox,oy-0.05,sz,false); dirt.receiveShadow=true; grp.add(dirt);
     }
   }
   for(let i=0;i<4;i++){ const dz=zc-CH/2+3+i*7; grp.add(bx(M.stripe,0.18,0.02,2.2,roadX(dz),roadY(dz)+0.02,dz,false)); }
 
   const dist=idx*CH, dT=densityT(dist);
 
+  const addProp=(kind,x,z)=>{
+    const ox=x+roadX(z);
+    const p=buildProp(kind); p.position.set(ox,roadY(z),z); grp.add(p);
+    const pr={kind,grp:p,x:ox,z,rad:p.userData.rad,h:p.userData.h,sfx:p.userData.sfx,dead:false,
+      pts:CFG.propPts[kind]||25,decor:(kind==='gnome'||kind==='flamingo'||kind==='birdbath')};
+    rec.props.push(pr); world.props.push(pr);
+    return pr;
+  };
+  const addTarget=(mult,x,z)=>{                    // stunt bullseye: hit it with anything thrown
+    const ox=x+roadX(z), oy=roadY(z);
+    const g2=new THREE.Group();
+    g2.add(cyl(M.trunk,0.09,1.5,0,0.75,0));
+    const board=new THREE.Group();
+    board.add(cyl(M.red,0.8,0.12)); board.add(cyl(M.white,0.55,0.16)); board.add(cyl(M.red,0.3,0.2));
+    board.rotation.x=Math.PI/2; board.position.y=2.0;
+    g2.add(board);
+    const cv=document.createElement('canvas'); cv.width=128; cv.height=64;
+    const c3=cv.getContext('2d'); c3.font='900 46px Orbitron,sans-serif'; c3.textAlign='center'; c3.textBaseline='middle';
+    c3.strokeStyle='rgba(0,0,0,.75)'; c3.lineWidth=8; c3.strokeText('×'+mult,64,32);
+    c3.fillStyle='#ffe14d'; c3.fillText('×'+mult,64,32);
+    const spr=new THREE.Sprite(new THREE.SpriteMaterial({map:new THREE.CanvasTexture(cv),transparent:true}));
+    spr.scale.set(1.7,0.85,1); spr.position.y=3.2; g2.add(spr);
+    g2.position.set(ox,oy,z);
+    grp.add(g2);
+    const tb={grp:g2,x:ox,z,y:oy+2.0,mult,dead:false};
+    rec.tboards.push(tb); world.tboards.push(tb);
+  };
+
+  if(section==='hood'){
   // --- houses (right = deliverable, left = scenery)
   const hzR=zc+rnd(-3,3), offR=roadX(hzR), elevR=roadY(hzR);
   const houseR=buildHouse(hzR,1,true); houseR.position.x=offR; houseR.position.y=elevR; grp.add(houseR);
@@ -756,14 +984,6 @@ function genChunk(idx){
   }
 
   // --- destructible props
-  const addProp=(kind,x,z)=>{
-    const ox=x+roadX(z);
-    const p=buildProp(kind); p.position.set(ox,roadY(z),z); grp.add(p);
-    const pr={kind,grp:p,x:ox,z,rad:p.userData.rad,h:p.userData.h,sfx:p.userData.sfx,dead:false,
-      pts:CFG.propPts[kind]||25,decor:(kind==='gnome'||kind==='flamingo'||kind==='birdbath')};
-    rec.props.push(pr); world.props.push(pr);
-    return pr;
-  };
   // RIGHT side: delivery land — receptors, sparse pickups (throw from here)
   addProp('mailbox',rnd(6.2,6.6),hzR+rnd(2.5,4));                     // by the curb at every house
   if(Math.random()<0.4) addProp(pick(['can','bin']),rnd(4.2,5.4),hzR+rnd(-7,-5));
@@ -788,6 +1008,7 @@ function genChunk(idx){
     const pit=buildPit(side*rnd(4.4,5.3)+roadX(pz),pz);
     pit.grp.position.y=roadY(pz);
     grp.add(pit.grp); rec.pits.push(pit); world.pits.push(pit);
+    addSolid(rec,{kind:'pit',pit,x:pit.x,z:pit.z,halfX:pit.w/2+0.1,halfZ:pit.d/2+0.1,rad:1});   // invisible crash geometry
   }
 
   // --- pedestrians & dogs
@@ -809,8 +1030,50 @@ function genChunk(idx){
     rec.dogs.push(dog); world.dogs.push(dog);
   }
 
+  } // end hood
+
+  if(section==='stunt'){
+    // STUNT PARK: ramps everywhere, loop arches, bullseyes, loose ammo
+    for(let i=0;i<2;i++){
+      const rz2=zc+CH/2-5-i*13;
+      const rx2=pick([-3.4,-1.4,1.2,3.2])+roadX(rz2);
+      const ramp=buildRamp(rx2,rz2);
+      ramp.grp.position.y=roadY(rz2); ramp.elev=roadY(rz2);
+      grp.add(ramp.grp); rec.ramps.push(ramp); world.ramps.push(ramp);
+    }
+    if(Math.random()<0.45){                               // loop-the-loop arch over the route
+      const loop=new THREE.Mesh(new THREE.TorusGeometry(3.6,0.42,8,24),M.red);
+      loop.position.set(roadX(zc),roadY(zc)+3.4,zc); loop.castShadow=true;
+      grp.add(loop);
+    }
+    const nT=rndi(1,2);
+    for(let i=0;i<nT;i++) addTarget(pick([2,3,5]),pick([-1,1])*rnd(5.5,8),zc+rnd(-9,9));
+    for(let i=0;i<3;i++) addProp(pick(['can','cone','toy','news','bin']),pick([-1,1])*rnd(3.5,6.5),zc+rnd(-10,10));
+  }
+
+  if(section==='wall'){
+    // THE WALL: solid concrete across the route with a 3-scooter gap — thread it or total it
+    const wz=zc, wy=roadY(wz), wx=roadX(wz);
+    const gapX=wx+rnd(-2.2,2.2);
+    const conc=new THREE.MeshLambertMaterial({color:0x8a8d94});
+    const mkWall=(x0,x1)=>{
+      if(x1-x0<0.5) return;
+      const w=bx(conc,x1-x0,4.2,1.2,(x0+x1)/2,wy+2.1,wz); grp.add(w);
+      addSolid(rec,{kind:'wall',x:(x0+x1)/2,z:wz,halfX:(x1-x0)/2,halfZ:0.7,rad:1});
+    };
+    mkWall(wx-11,gapX-CFG.wallGapHalf);
+    mkWall(gapX+CFG.wallGapHalf,wx+11);
+    const st=new THREE.MeshLambertMaterial({color:0xffd82e});
+    grp.add(bx(st,0.25,4.2,1.26,gapX-CFG.wallGapHalf+0.1,wy+2.1,wz,false));
+    grp.add(bx(st,0.25,4.2,1.26,gapX+CFG.wallGapHalf-0.1,wy+2.1,wz,false));
+    const arr=cone(st,0.55,1.0,gapX,wy+5.2,wz); arr.rotation.x=Math.PI; grp.add(arr);
+    const wallRec={z:wz,passed:false};
+    rec.walls.push(wallRec); world.walls.push(wallRec);
+    addTarget(5,pick([-1,1])*rnd(6,8),zc+9);
+  }
+
   // --- ramps, each with a car/truck parked just past the lip — the hop clears it
-  if(idx>=CFG.rampStartChunk && idx%CFG.rampEveryChunks===2){
+  if(section==='hood' && idx>=CFG.rampStartChunk && idx%CFG.rampEveryChunks===2){
     rampCounter++;
     const rz=zc+6;
     const rx=(rampCounter%2===0?rnd(1.4,2.4):rnd(-2.2,-0.5))+roadX(rz);
@@ -843,6 +1106,9 @@ function dropChunk(idx){
   world.dogs=world.dogs.filter(d=>!rec.dogs.includes(d));
   world.ramps=world.ramps.filter(r=>!rec.ramps.includes(r));
   world.pits=world.pits.filter(p=>!rec.pits.includes(p));
+  world.specials=world.specials.filter(s=>!rec.specials.includes(s));
+  world.tboards=world.tboards.filter(t=>!rec.tboards.includes(t));
+  world.walls=world.walls.filter(w=>!rec.walls.includes(w));
   if(rec.house){ world.houses=world.houses.filter(h=>h!==rec.house); world.targetQueue=world.targetQueue.filter(h=>h!==rec.house); }
   world.chunks.delete(idx);
 }
@@ -855,6 +1121,7 @@ function clearWorld(){
   for(const idx of [...world.chunks.keys()]) dropChunk(idx);
   world.packages.forEach(p=>scene.remove(p.grp)); world.packages.length=0;
   world.flying.length=0; world.targetQueue.length=0; world.curTarget=null; world.houses.length=0; world.lhouses.length=0; world.pits.length=0;
+  world.specials.length=0; world.tboards.length=0; world.walls.length=0;
   houseCounter=0; rampCounter=0;
 }
 
@@ -1307,7 +1574,7 @@ function toss(){
   if(S.state!=='run'||veh.cd>0||veh.dead) return false;
   veh.cd=CFG.cooldown;
   const t=CFG.tiers[veh.tier];
-  let grp,kind='package',itH=0.4;
+  let grp,kind='package',itH=0.4,specialName=null;
   if(pickups.length){
     // throw the OLDEST pickup instead of a boxed package; the tower re-sorts with tweens
     const it=pickups.shift();
@@ -1315,7 +1582,7 @@ function toss(){
     grp=new THREE.Group();
     it.mesh.position.set(0,-it.h*it.scl*0.5,0); it.mesh.rotation.set(0,0,0);
     grp.add(it.mesh);
-    kind=it.kind; itH=it.h*it.scl;
+    kind=it.kind; itH=it.h*it.scl; specialName=it.specialName||null;
     retargetStack();
   } else {
     grp=buildPackageMesh(veh.tier);
@@ -1336,7 +1603,7 @@ function toss(){
     vy:t.up,
     vz:-veh.speed*CFG.inherit + dz*t.lat + fz*CFG.throwFwd,
     ax:rnd(-5,5),ay:rnd(-3,3),az:rnd(-5,5),
-    tier:veh.tier,kind,itH,target:world.curTarget,thrownAir:veh.air,hits:0,settleT:0,done:false,t:0};
+    tier:veh.tier,kind,itH,specialName,target:world.curTarget,thrownAir:veh.air,hits:0,settleT:0,done:false,t:0};
   world.packages.push(pkg);
   // rack empties + arm swing
   if(veh.rackMesh) veh.rackMesh.scale.setScalar(0.01);
@@ -1441,14 +1708,30 @@ function updatePackages(dt){
       } else { p.vy=0; }
     }
     const grounded=p.y<=rest+0.01;
-    // hit things — affinity connections first, smashes otherwise
+    // stunt bullseyes: anything thrown can ring them
+    for(const tb of world.tboards){
+      if(tb.dead) continue;
+      if(Math.abs(tb.z-p.z)<0.7+t.r && Math.abs(tb.x-p.x)<0.9+t.r && Math.abs(p.y-tb.y)<0.9+t.r){
+        tb.dead=true;
+        const pts=award(CFG.targetPts*tb.mult,'destroy');
+        popupPts(pts,'BULLSEYE ×'+tb.mult,'#ff8af0');
+        comboAction(); SFX.connect(); slowMo(); S.lastDestroyT=S.t;
+        world.flying.push({grp:tb.grp,x:tb.x,y:tb.grp.position.y,z:tb.z,vx:p.vx*0.4,vy:4.5,vz:p.vz*0.4,
+          ax:rnd(-6,6),ay:rnd(-6,6),az:rnd(-6,6),t:0,rad:0.8,chained:true});
+        world.tboards=world.tboards.filter(x=>x!==tb);
+        p.vx*=0.6; p.vz*=0.6; p.hits++;
+        break;
+      }
+    }
+    // hit things — affinity connections first, smashes otherwise (legends connect with EVERYTHING)
     if(sp>2 || Math.abs(p.vy)>2){
       const AFF=CFG.affinity[p.kind]||{};
+      const affOf=k=>p.kind==='special'?[(p.specialName||'LEGEND')+'!',CFG.specialConnectPts]:AFF[k];
       let connected=false;
       for(const pr of world.props){
         if(pr.dead) continue;
         if(Math.abs(pr.z-p.z)<pr.rad+t.r && Math.abs(pr.x-p.x)<pr.rad+t.r && p.y-t.r<pr.h){
-          const aff=AFF[pr.kind];
+          const aff=affOf(pr.kind);
           if(aff){ connectPkg(p,aff,pr.x,CONNECT_Y[pr.kind]||pr.h+0.2,pr.z,pr.grp.parent); connected=true; break; }
           smash(pr,new THREE.Vector3(p.vx*t.impact,0,p.vz*t.impact),'pkg');
           p.vx*=0.7; p.vz*=0.7; p.hits++;
@@ -1460,14 +1743,15 @@ function updatePackages(dt){
       for(const pit of world.pits){
         if(pit.filled) continue;
         if(Math.abs(pit.z-p.z)<pit.d/2 && Math.abs(pit.x-p.x)<pit.w/2 && p.y<roadY(pit.z)+0.8){
-          const aff=AFF.pit;
+          const aff=affOf('pit');
           if(aff){ pit.filled=true; pit.tape.visible=false; connectPkg(p,aff,pit.x,CONNECT_Y.pit,pit.z,pit.grp.parent); connected=true; }
           break;
         }
       }
       if(connected) continue;
       for(const s of world.solids){
-        const aff=AFF.car;
+        if(s.kind!=='car'&&s.kind!=='truck') continue;
+        const aff=affOf('car');
         if(!aff) break;
         const hz=s.halfZ||s.rad;
         if(Math.abs(s.z-p.z)<hz && Math.abs(s.x-p.x)<s.rad+t.r && p.y<(s.kind==='truck'?2.6:1.5)){
@@ -1478,7 +1762,7 @@ function updatePackages(dt){
       for(const c of world.peds){
         if(c.dead) continue;
         if(Math.hypot(c.grp.position.x-p.x,c.grp.position.z-p.z)<c.rad+t.r && p.y<c.h+t.r){
-          const aff=AFF.ped;
+          const aff=affOf('ped');
           tumbleChar(c,new THREE.Vector3(p.vx,0,p.vz),aff?0:CFG.pedPts,false);
           if(aff){ connectPkg(p,aff,c.grp.position.x+0.4,CONNECT_Y.ped,c.grp.position.z,c.grp.parent); connected=true; break; }
           p.vx*=0.6; p.vz*=0.6; p.hits++;
@@ -1488,7 +1772,7 @@ function updatePackages(dt){
       for(const c of world.dogs){
         if(c.dead) continue;
         if(Math.hypot(c.x-p.x,c.z-p.z)<c.rad+t.r && p.y<c.h+t.r){
-          const aff=AFF.dog;
+          const aff=affOf('dog');
           tumbleChar(c,new THREE.Vector3(p.vx,0,p.vz),aff?0:CFG.dogPts,true);
           if(aff){ connectPkg(p,aff,c.x+0.4,CONNECT_Y.dog,c.z,c.grp.parent); connected=true; break; }
           p.vx*=0.6; p.vz*=0.6; p.hits++;
@@ -1508,7 +1792,7 @@ function updatePackages(dt){
         if(p.kind==='package'){ resolveDelivery(p); }
         else {
           // settling on any porch can be a connection too (people get SENT HOME, gnomes find HOMES…)
-          const aff=CFG.affinity[p.kind]&&CFG.affinity[p.kind].porch;
+          const aff=p.kind==='special'?[(p.specialName||'LEGEND')+'!',CFG.specialConnectPts]:(CFG.affinity[p.kind]&&CFG.affinity[p.kind].porch);
           if(aff) for(const h of world.houses){
             const r=h.zones.porchRect;
             if(p.x>=r.x0&&p.x<=r.x1&&p.z>=r.z0&&p.z<=r.z1){ connectPkg(p,aff,p.x,CONNECT_Y.porch,p.z,h.grp.parent); break; }
@@ -1530,25 +1814,40 @@ function rampGroundY(x,z){
   }
   return {y:base,slope:0,p:-1};
 }
-function doCrash(){
+function doCrash(style){
   if(veh.dead) return;
-  veh.dead=true;
+  veh.dead=true; veh.crashStyle=style||'tumble';
   SFX.crash(); slowMo(); S.shake=1.2;
   veh.crashT=0;
   setTimeout(()=>endRun(false),1300);
 }
 function updateVehicle(dt){
-  if(veh.dead){                                             // crash tumble
+  if(veh.dead){                                             // crash tumble (or sink, for pits)
     veh.crashT+=dt;
-    veh.grp.rotation.z+=dt*7; veh.grp.rotation.x+=dt*3;
-    veh.y=Math.max(0.4,veh.y+ (2.5-veh.crashT*6)*dt );
-    veh.z-=veh.speed*dt; veh.speed=Math.max(0,veh.speed-8*dt);
+    if(veh.crashStyle==='sink'){
+      veh.grp.rotation.x+=dt*2.5;
+      veh.y=Math.max(roadY(veh.z)-1.4,veh.y-3.2*dt);
+      veh.speed=Math.max(0,veh.speed-20*dt);
+    } else {
+      veh.grp.rotation.z+=dt*7; veh.grp.rotation.x+=dt*3;
+      veh.y=Math.max(0.4,veh.y+ (2.5-veh.crashT*6)*dt );
+      veh.speed=Math.max(0,veh.speed-8*dt);
+    }
+    veh.z-=veh.speed*dt;
     veh.grp.position.set(veh.x,veh.y,veh.z);
     return;
   }
   // speed: prescribed target, knocked down by impacts, recovers
-  const target=Math.min(CFG.baseSpeed+CFG.speedGrowth*S.runT,CFG.maxSpeed);
-  veh.speed=Math.min(target,veh.speed+2.6*dt);
+  const target=Math.min(CFG.baseSpeed+CFG.speedGrowth*S.runT+CFG.wallBoost*S.boosts,CFG.maxSpeed);
+  veh.speed=Math.min(target,veh.speed+(S.boosts>0?5:2.6)*dt);
+  // threading a stunt wall = permanent speed boost
+  for(const w of world.walls){
+    if(!w.passed && veh.z<w.z-1.5){
+      w.passed=true; S.boosts++;
+      popup(0,0,0,'⚡ FULL THROTTLE ⚡','big','#ffd82e');
+      SFX.cash(); slowMo(); S.shake=Math.min(S.shake+0.3,0.8);
+    }
+  }
   S.runT+=dt; S.dist+=veh.speed*dt;
   // wheel: player input or spring back
   if(input.wheelActive||input.forceWheel!==null){
@@ -1618,21 +1917,23 @@ function updateVehicle(dt){
         veh.speed*=0.9; S.shake=Math.min(S.shake+0.2,0.7);
       }
     }
-    // ONLY cars/trucks (and open pits) can crash you — tight hitboxes, no phantom clips
+    for(const sp of world.specials){
+      if(sp.dead) continue;
+      if(Math.hypot(sp.x-veh.x,sp.z-veh.z)<sp.rad+0.8) pickupSpecial(sp);
+    }
+    // ONLY cars/trucks, walls, and open pits can crash you — tight hitboxes, no phantom clips
     if(!veh.air) for(const s of world.solids){
       const hz=(s.halfZ||s.rad)+0.45, hx=(s.halfX||s.rad)+0.35;
       if(Math.abs(s.z-veh.z)<hz && Math.abs(s.x-veh.x)<hx){
+        if(s.kind==='pit'){ if(s.pit.filled) continue; doCrash('sink'); break; }
+        if(s.kind==='wall'){ doCrash(); break; }
         const canCrash=s.kind==='car'||s.kind==='truck';
         if(canCrash && veh.speed>CFG.crashSpeed){ doCrash(); break; }
         // minor: shove out sideways, bleed speed, break combo
-        veh.x=s.x+(veh.x>s.x?1:-1)*(s.rad+0.6); veh.vx=0;
+        veh.x=s.x+(veh.x>s.x?1:-1)*((s.halfX||s.rad)+0.6); veh.vx=0;
         veh.speed*=CFG.minorSlow; S.shake=Math.min(S.shake+0.3,0.8);
         SFX.bump(); comboBreak();
       }
-    }
-    if(!veh.air) for(const pit of world.pits){
-      if(pit.filled) continue;
-      if(Math.abs(pit.z-veh.z)<pit.d/2 && Math.abs(pit.x-veh.x)<pit.w/2+0.2){ doCrash(); break; }
     }
   }
   // immobilized failsafe
@@ -1778,6 +2079,7 @@ function startRun(){
   clearWorld();
   Object.assign(S,{state:'run',pot:0,deliveryScore:0,destroyScore:0,combo:0,comboT:0,comboMult:1,bestCombo:1,
     perfects:0,deliveries:0,biggestTier:-1,dist:0,banked:0,timeScale:1,slowT:0,shake:0,runT:0,
+    boosts:0,specialRoll:0,legends:0,
     mailboxInCombo:false,decorInCombo:0,lastDestroyT:-9});
   Object.assign(veh,{x:0,y:0,z:0,vx:0,vy:0,speed:CFG.baseSpeed,air:false,wheel:0,cd:0,tier:0,
     stuckT:0,airT:0,dead:false,prevGy:0,prevSlope:0,crashT:0});
@@ -1804,6 +2106,8 @@ function endRun(cashed){
     ['Destruction points',fmt(S.destroyScore)],
     ['Best combo','×'+S.bestCombo],
     ['Door hits',S.perfects],
+    ['Walls threaded',S.boosts],
+    ['Legends found',S.legends],
     ['Biggest delivery',S.biggestTier>=0?CFG.tiers[S.biggestTier].name:'—'],
     ['Distance',Math.round(S.dist)+'m'],
     ['Best banked',fmt(best)],
@@ -1837,6 +2141,15 @@ function update(dt){
     updatePeds(dt);
     updateDogs(dt);
     updateSprinklers(dt);
+    updateSpecials(dt);
+    // legendary spawn roll: after 30s, every 5s there's a 1-in-20 chance
+    if(S.runT>CFG.specialAfter&&!veh.dead){
+      S.specialRoll+=dt;
+      if(S.specialRoll>=CFG.specialEvery){
+        S.specialRoll=0;
+        if(Math.random()<CFG.specialOdds) spawnSpecial();
+      }
+    }
     // combo drain
     if(S.comboT>0){ S.comboT-=dt; if(S.comboT<=0) comboBreak(); }
   } else {
@@ -1877,6 +2190,8 @@ window.__game={
     pickups:pickups.length,
     packages:world.packages.length,props:world.props.length,peds:world.peds.length,
     dogs:world.dogs.length,ramps:world.ramps.length,pits:world.pits.length,
+    specials:world.specials.length,tboards:world.tboards.length,walls:world.walls.length,boosts:S.boosts,
+    section:(world.chunks.get(Math.max(0,Math.floor(-veh.z/CFG.CH)))||{}).section,
     target:world.curTarget?{hz:world.curTarget.hz,scored:world.curTarget.scored}:null}; },
   step(dt=0.016){ update(dt); },
   pause(v=true){ paused=v; },
@@ -1889,7 +2204,9 @@ window.__game={
   cashNow(){ if(S.state==='run'){ endRun(true); } },
   crashNow(){ doCrash(); },
   target(){ return world.curTarget; },
-  ents(){ return {props:world.props,peds:world.peds,dogs:world.dogs,solids:world.solids,ramps:world.ramps,pits:world.pits,packages:world.packages,houses:world.houses}; },
+  spawnSpecial,
+  ents(){ return {props:world.props,peds:world.peds,dogs:world.dogs,solids:world.solids,ramps:world.ramps,pits:world.pits,
+    specials:world.specials,tboards:world.tboards,walls:world.walls,packages:world.packages,houses:world.houses}; },
   zones(){ return world.curTarget?world.curTarget.zones:null; },
   cfg:CFG,
   input:()=>({active:input.wheelActive,val:input.wheelVal,wheel:veh.wheel}),
