@@ -64,21 +64,18 @@
   #slamWrap{position:absolute;right:clamp(14px,4vw,30px);bottom:calc(clamp(16px,4vw,34px) + env(safe-area-inset-bottom));
     width:clamp(104px,28vw,138px);height:clamp(104px,28vw,138px);touch-action:none;}
 
-  /* ---------- attitude knobs (tilt + fore/aft yaw) ---------- */
-  .knob{position:absolute;bottom:calc(clamp(26px,5vw,44px) + env(safe-area-inset-bottom));
-    width:clamp(68px,17vw,88px);height:clamp(68px,17vw,88px);border-radius:50%;touch-action:none;cursor:grab;
-    background:radial-gradient(120% 130% at 50% 25%,rgba(74,32,18,.88),rgba(24,10,5,.92));
-    border:2px solid rgba(242,200,92,.55);box-shadow:0 5px 14px rgba(0,0,0,.5),inset 0 0 12px rgba(0,0,0,.5);
-    display:flex;align-items:center;justify-content:center;}
-  #knob{left:clamp(14px,4vw,30px);}
-  #knobY{left:calc(clamp(14px,4vw,30px) + clamp(68px,17vw,88px) + 12px);}
-  .knobBar{width:64%;height:27%;border-radius:999px;pointer-events:none;position:relative;
-    background:linear-gradient(180deg,#e0ba82,#c69a5e 55%,#a87e46);
-    border:1.5px solid rgba(60,30,10,.65);box-shadow:0 2px 6px rgba(0,0,0,.5);
-    transform:rotate(0deg);}
-  #knobYBar::after{content:'';position:absolute;right:2px;top:50%;transform:translateY(-50%);
-    width:26%;height:72%;border-radius:50%;background:#7a2a3a;}  /* stained end marks which way it leans */
-  .knobLbl{position:absolute;left:50%;transform:translateX(-50%);bottom:-20px;pointer-events:none;
+  /* ---------- move slider (hand left/right) ---------- */
+  #moveWrap{position:absolute;left:clamp(14px,4vw,30px);
+    right:calc(clamp(14px,4vw,30px) + clamp(104px,28vw,138px) + 20px);
+    bottom:calc(clamp(42px,10vw,72px) + env(safe-area-inset-bottom));height:44px;touch-action:none;cursor:grab;}
+  #moveTrack{position:absolute;left:6px;right:6px;top:50%;height:10px;transform:translateY(-50%);border-radius:999px;
+    background:rgba(22,10,5,.72);border:1.5px solid rgba(242,200,92,.45);
+    box-shadow:inset 0 2px 6px rgba(0,0,0,.5);}
+  #moveThumb{position:absolute;left:50%;top:50%;width:36px;height:36px;border-radius:50%;pointer-events:none;
+    transform:translate(-50%,-50%);
+    background:radial-gradient(120% 140% at 50% 25%,#ffe9a8,#f2c85c 58%,#c98d24);
+    border:2px solid rgba(255,255,255,.5);box-shadow:0 4px 10px rgba(0,0,0,.5),0 0 12px rgba(242,200,92,.45);}
+  #moveLbl{position:absolute;left:50%;transform:translateX(-50%);bottom:-14px;pointer-events:none;
     font-family:var(--display);font-weight:700;font-size:10px;letter-spacing:2.5px;color:#d8bf98;text-shadow:0 1px 3px rgba(0,0,0,.6);}
   #zoneRing,#pwRing{position:absolute;inset:-13px;border-radius:50%;pointer-events:none;
     -webkit-mask:radial-gradient(farthest-side,transparent calc(100% - 12px),#000 calc(100% - 11px));
@@ -161,9 +158,8 @@
       <span class="chip" id="corkChip">CORK 1/10</span>
       <div id="miniRow"><button class="mini" id="muteBtn">🔊</button><button class="mini" id="homeBtn">🏠</button></div>
     </div>
-    <div id="hint">DRAG TO MOVE · TILT + YAW THE CORK · TAP SLAM ×2</div>
-    <div id="knob" class="knob"><div id="knobBar" class="knobBar"></div><div class="knobLbl">TILT</div></div>
-    <div id="knobY" class="knob"><div id="knobYBar" class="knobBar"></div><div class="knobLbl">YAW</div></div>
+    <div id="hint">DRAG TO SPIN THE CORK · SLIDE TO MOVE · TAP SLAM ×2</div>
+    <div id="moveWrap"><div id="moveTrack"></div><div id="moveThumb"></div><div id="moveLbl">MOVE</div></div>
     <div id="slamWrap" style="--pw:0;--s0:.76;--s1:.89;--p0:.82;--p1:.845;">
       <div id="zoneRing"></div>
       <div id="pwRing"></div>
@@ -177,7 +173,7 @@
     <div class="secret">Old bar wisdom: throw it end-on — the cap's edge off the counter bounces highest and truest. Flat corks skid long; a 45° catch is anyone's guess.</div>
     <button id="startBtn">🍷 POP OFF</button>
     <div id="menuBest">BEST 0</div>
-    <div class="brand">CORKS v0.4.0 · BIG RUN STUDIOS</div>
+    <div class="brand">CORKS v0.5.0 · BIG RUN STUDIOS</div>
   </div>
 
   <div id="over">
@@ -195,7 +191,7 @@ import * as THREE from './lib/three.module.js';
 
 /* ================================================================== CFG */
 const CFG = {
-  ver:'0.4.0',
+  ver:'0.5.0',
   corks:10,
   // --- world scale: 1 unit = 1 cm
   corkR:1.15, corkL:4.6,
@@ -581,7 +577,7 @@ const S={
   hold:{x:0,y:13},         // hand position on the front-facing plane
   m:0, meterT:0, meterTime:1, sweetLo:0.87, sweetHi:1.02, perfHalf:0.016,
   quality:'', phaseT:0,
-  corkScale:1, bounce:null,
+  corkScale:1, bounce:null, newLayout:false,
   vel:new THREE.Vector3(), spinAxis:new THREE.Vector3(1,0,0), spin:0,
   prevY:0, inGlass:false, inWhiskey:0, whiskeyHit:false, floatY:12.4,
   rimHit:false, glassHit:false, stemHit:false, evaluated:false,
@@ -620,16 +616,22 @@ function holdCork(){  // pinch the cork under the palm at the current tilt + yaw
   _qy.setFromAxisAngle(_Y,S.yaw*Math.PI/180);
   cork.quaternion.copy(_qy).multiply(_qz);        // screen tilt first, then swing the ends fore/aft
 }
-function setupShot(i){
-  const t=i/(CFG.corks-1);
-  // difficulty: first 3 corks are dead ahead; then the glass + tee wander
-  if(i<3){ glassPos.x=0; glassPos.z=-34; }
-  else{ glassPos.x=rnd(-1,1)*(4+7*t); glassPos.z=rnd(-30,-42); }
+function placeGlasses(randomize){
+  // glasses only move after a LANDING — misses leave the table alone so the player can zero in
+  if(!randomize){ glassPos.x=0; glassPos.z=-34; }
+  else{
+    const t=S.corkIdx/(CFG.corks-1);
+    glassPos.x=rnd(-1,1)*(4+7*t); glassPos.z=rnd(-30,-42);
+  }
   // rocks glasses flank the wine, one near-left one far-right (jittered, never overlapping)
   rocksPos[0].x=clamp(glassPos.x-(10+rnd(0,4)),-26,26); rocksPos[0].z=clamp(glassPos.z+rnd(2,7),-44,-24);
   rocksPos[1].x=clamp(glassPos.x+(9+rnd(0,4)),-26,26);  rocksPos[1].z=clamp(glassPos.z-rnd(0,5),-44,-24);
   for(let k=0;k<2;k++) rocksGrps[k].position.set(rocksPos[k].x,0,rocksPos[k].z);
-  S.hold.x=0; S.hold.y=13;   // tilt carries over — the player's grip is theirs
+}
+function setupShot(i){
+  const t=i/(CFG.corks-1);
+  if(S.newLayout){ placeGlasses(true); S.newLayout=false; }
+  S.hold.y=13;   // grip, aim and slider all carry over — the setup is the player's to keep
   S.corkScale=i>=4?rnd(0.92,1.1):1;
   S.meterTime=lerp(CFG.meterTime[0],CFG.meterTime[1],t);
   const sh=lerp(CFG.sweetHalf[0],CFG.sweetHalf[1],t);
@@ -663,7 +665,8 @@ function startRun(){
   S.landed=0; S.perfects=0; S.closest=Infinity; S.timeScale=1;
   $('menu').style.display='none'; $('over').classList.remove('show'); $('hud').style.display='';
   $('scoreVal').textContent='0'; comboShow();
-  glassPos.x=0; glassPos.z=-34;
+  S.newLayout=false; placeGlasses(false);
+  setHoldX(S.hold.x);
   setupShot(0);
   showHint(true);
   bgmPlay();
@@ -767,6 +770,7 @@ function evaluate(reason){
     else if(d<=P.nearDist){ pts=Math.round(lerp(P.nearMax,P.nearMin,d/P.nearDist)); label='CLOSE!'; cls='dim'; SFX.near(); }
     else{ pts=0; label='MISS'; cls='dim'; SFX.miss(); }
   }
+  if(S.inGlass||S.inWhiskey) S.newLayout=true;   // sink one → the table resets next cork
   S.score+=pts; S.lastRes={pts,label,quality:S.quality,inGlass:S.inGlass,reason};
   $('scoreVal').textContent=fmt(S.score);
   comboShow();
@@ -1025,66 +1029,48 @@ function update(dt){
 function wrapA(t){ return ((t+180)%360+360)%360-180; }   // corks are symmetric — angles wrap freely
 function setTilt(t){
   S.tilt=wrapA(t);
-  $('knobBar').style.transform=`rotate(${-S.tilt}deg)`;
   if(S.phase==='aim') holdCork();
 }
 function setYaw(t){
   S.yaw=wrapA(t);
-  $('knobYBar').style.transform=`rotate(${-S.yaw}deg)`;
   if(S.phase==='aim') holdCork();
 }
-function worldPerPx(){  // world units per CSS pixel at the hold plane
-  const dist=camera.position.z-CFG.hold.z;
-  return 2*dist*Math.tan(camera.fov*Math.PI/360)/innerHeight;
+function setHoldX(x){
+  S.hold.x=clamp(x,-CFG.hold.xMax,CFG.hold.xMax);
+  $('moveThumb').style.left=(50+50*S.hold.x/CFG.hold.xMax)+'%';
 }
-const input={pts:new Map(),moveId:null,baseX:0,baseY:0,sx:0,sy:0,twist0:0,tilt0:0};
+/* drag anywhere = spin the cork like a trackball: left/right rolls it sideways, up/down leans it fore/aft */
+const ROT_SENS=0.4;   // degrees per pixel
+const input={id:null,lx:0,ly:0};
 const app=$('app');
 app.addEventListener('pointerdown',e=>{
   if(S.state!=='run') return;
-  if(e.target.closest('#slamBtn')||e.target.closest('.mini')||e.target.closest('.knob')) return;
-  input.pts.set(e.pointerId,{x:e.clientX,y:e.clientY});
-  if(input.pts.size===1){
-    input.moveId=e.pointerId; input.sx=e.clientX; input.sy=e.clientY;
-    input.baseX=S.hold.x; input.baseY=S.hold.y;
-  }else if(input.pts.size===2){   // second finger — twist to tilt
-    const [p1,p2]=[...input.pts.values()];
-    input.twist0=Math.atan2(p2.y-p1.y,p2.x-p1.x); input.tilt0=S.tilt;
-  }
+  if(e.target.closest('#slamBtn')||e.target.closest('.mini')||e.target.closest('#moveWrap')) return;
+  if(input.id===null){ input.id=e.pointerId; input.lx=e.clientX; input.ly=e.clientY; }
 });
 app.addEventListener('pointermove',e=>{
-  if(!input.pts.has(e.pointerId)||S.state!=='run'||S.phase!=='aim') return;
-  input.pts.set(e.pointerId,{x:e.clientX,y:e.clientY});
-  if(input.pts.size>=2){
-    const [p1,p2]=[...input.pts.values()];
-    const a=Math.atan2(p2.y-p1.y,p2.x-p1.x);
-    setTilt(input.tilt0-(a-input.twist0)*180/Math.PI);
-  }else if(e.pointerId===input.moveId){
-    const s=worldPerPx();
-    S.hold.x=clamp(input.baseX+(e.clientX-input.sx)*s,-CFG.hold.xMax,CFG.hold.xMax);
-    S.hold.y=clamp(input.baseY-(e.clientY-input.sy)*s,CFG.hold.yMin,CFG.hold.yMax);
-    showHint(false);
-  }
+  if(e.pointerId!==input.id) return;
+  const dx=e.clientX-input.lx, dy=e.clientY-input.ly;
+  input.lx=e.clientX; input.ly=e.clientY;
+  if(S.state!=='run'||S.phase!=='aim') return;
+  if(dx) setTilt(S.tilt-dx*ROT_SENS);   // drag right → cork rolls clockwise
+  if(dy) setYaw(S.yaw+dy*ROT_SENS);     // drag down → pulls the low end toward you (adds forward drive)
+  if(dx||dy) showHint(false);
 });
-function endPt(e){ input.pts.delete(e.pointerId); if(e.pointerId===input.moveId) input.moveId=null; }
+function endPt(e){ if(e.pointerId===input.id) input.id=null; }
 addEventListener('pointerup',endPt); addEventListener('pointercancel',endPt);
-/* attitude knobs (bottom-left): TILT = screen roll, YAW = fore/aft swing.
-   Clock-style: grab anywhere and wind the hand around — pure relative rotation, no snap. */
-function bindKnob(el,get,set){
-  let last=null;
-  const ang=e=>{ const r=el.getBoundingClientRect();
-    return Math.atan2(e.clientY-(r.top+r.height/2),e.clientX-(r.left+r.width/2))*180/Math.PI; };
-  el.addEventListener('pointerdown',e=>{ e.preventDefault(); e.stopPropagation(); el.setPointerCapture(e.pointerId); last=ang(e); });
-  el.addEventListener('pointermove',e=>{
-    if(last===null||!el.hasPointerCapture(e.pointerId)) return;
-    if(S.state!=='run'||S.phase!=='aim'){ last=ang(e); return; }
-    const a=ang(e); let d=a-last; if(d>180)d-=360; if(d<-180)d+=360; last=a;
-    set(get()-d); showHint(false);      // hand follows the finger around the dial
-  });
-  const drop=()=>{ last=null; };
-  el.addEventListener('pointerup',drop); el.addEventListener('pointercancel',drop);
+/* move slider — slides the whole hand left/right */
+{
+  const wrap=$('moveWrap');
+  function slide(e){
+    if(S.state!=='run'||S.phase!=='aim') return;
+    const r=wrap.getBoundingClientRect();
+    const f=clamp((e.clientX-r.left-6)/(r.width-12),0,1);
+    setHoldX(lerp(-CFG.hold.xMax,CFG.hold.xMax,f)); showHint(false);
+  }
+  wrap.addEventListener('pointerdown',e=>{ e.preventDefault(); e.stopPropagation(); wrap.setPointerCapture(e.pointerId); slide(e); });
+  wrap.addEventListener('pointermove',e=>{ if(wrap.hasPointerCapture(e.pointerId)) slide(e); });
 }
-bindKnob($('knob'),()=>S.tilt,setTilt);
-bindKnob($('knobY'),()=>S.yaw,setYaw);
 addEventListener('wheel',e=>{
   if(S.state!=='run'||S.phase!=='aim') return;
   const d=(e.deltaY||e.deltaX)*0.12;
@@ -1094,15 +1080,14 @@ $('slamBtn').addEventListener('pointerdown',e=>{ e.preventDefault(); e.stopPropa
 addEventListener('keydown',e=>{
   if(e.code==='Space'){ e.preventDefault(); if(S.state==='run'&&!e.repeat) slamTap(); }
   if(S.state==='run'&&S.phase==='aim'){
-    const H=CFG.hold;
-    if(e.code==='ArrowLeft')  S.hold.x=clamp(S.hold.x-0.8,-H.xMax,H.xMax);
-    if(e.code==='ArrowRight') S.hold.x=clamp(S.hold.x+0.8,-H.xMax,H.xMax);
-    if(e.code==='ArrowUp')    S.hold.y=clamp(S.hold.y+0.8,H.yMin,H.yMax);
-    if(e.code==='ArrowDown')  S.hold.y=clamp(S.hold.y-0.8,H.yMin,H.yMax);
+    if(e.code==='ArrowLeft')  setHoldX(S.hold.x-0.8);
+    if(e.code==='ArrowRight') setHoldX(S.hold.x+0.8);
+    if(e.code==='ArrowUp')    setYaw(S.yaw-5);
+    if(e.code==='ArrowDown')  setYaw(S.yaw+5);
     if(e.code==='KeyQ') setTilt(S.tilt-5);
     if(e.code==='KeyE') setTilt(S.tilt+5);
-    if(e.code==='KeyW') setYaw(S.yaw+5);
-    if(e.code==='KeyS') setYaw(S.yaw-5);
+    if(e.code==='KeyW') setYaw(S.yaw-5);
+    if(e.code==='KeyS') setYaw(S.yaw+5);
   }
 });
 $('startBtn').addEventListener('click',()=>{ auInit(); startRun(); });
@@ -1183,7 +1168,7 @@ window.__game={
   startRun, toMenu,
   pose(x,y,tilt,yaw){  // place the held cork on the front plane (snaps the hand — no lerp wait)
     const H=CFG.hold;
-    S.hold.x=clamp(x,-H.xMax,H.xMax); S.hold.y=clamp(y,H.yMin,H.yMax);
+    setHoldX(x); S.hold.y=clamp(y,H.yMin,H.yMax);
     if(tilt!==undefined) setTilt(tilt);
     if(yaw!==undefined) setYaw(yaw);
     hand.position.set(S.hold.x,S.hold.y+3.7,H.z); holdCork();
