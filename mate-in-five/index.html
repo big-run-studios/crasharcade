@@ -187,7 +187,7 @@
         </div>
         <div class="tp marble cut" id="multP">
           <div class="lbl">MULTIPLIER</div>
-          <div class="val" id="multV">×5</div>
+          <div class="val" id="multV">×1</div>
         </div>
       </div>
       <div id="statusRow" class="marble cut"><span class="dia">✦</span><span id="statusT">WHITE TO MOVE — MATE WITHIN 5</span><span class="dia">✦</span></div>
@@ -218,7 +218,7 @@
       <button class="gbtn" id="btnPlay">PLAY</button>
       <div id="best">BEST <b id="bestV">0</b></div>
       <button class="sbtn" id="btnArcade">← ARCADE</button>
-      <div id="brand">CRASHARCADE · MATE IN FIVE v0.3.3</div>
+      <div id="brand">CRASHARCADE · MATE IN FIVE v0.4.0</div>
     </div>
   </div>
 
@@ -271,14 +271,14 @@ window.THREE=THREE; // console diagnostics
 /* =========================================================================
    CFG — all balance values
    ========================================================================= */
-const VERSION='0.3.3';
+const VERSION='0.4.0';
 const CFG={
   roundTime:120,          // seconds
   maxMoves:5,
   basePoints:2000,        // × multiplier on mate
   perSecond:100,          // × remaining whole seconds on mate
   hintPenalty:1000,
-  multByMove:[5,4,3,2,1], // multiplier if mate lands on player move 1..5
+  multByMove:[1,2,3,4,5], // multiplier if mate lands on player move 1..5 — rises: a longer forced mate is the harder feat
   aiThinkMs:380,          // search time budget for the defender
   aiDelayMs:420,          // pause before the reply starts (feels considered)
   aiDepth:7,
