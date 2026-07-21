@@ -64,17 +64,21 @@
   #slamWrap{position:absolute;right:clamp(14px,4vw,30px);bottom:calc(clamp(16px,4vw,34px) + env(safe-area-inset-bottom));
     width:clamp(104px,28vw,138px);height:clamp(104px,28vw,138px);touch-action:none;}
 
-  /* ---------- tilt knob ---------- */
-  #knob{position:absolute;left:clamp(14px,4vw,30px);bottom:calc(clamp(26px,5vw,44px) + env(safe-area-inset-bottom));
-    width:clamp(76px,20vw,96px);height:clamp(76px,20vw,96px);border-radius:50%;touch-action:none;cursor:grab;
+  /* ---------- attitude knobs (tilt + fore/aft yaw) ---------- */
+  .knob{position:absolute;bottom:calc(clamp(26px,5vw,44px) + env(safe-area-inset-bottom));
+    width:clamp(68px,17vw,88px);height:clamp(68px,17vw,88px);border-radius:50%;touch-action:none;cursor:grab;
     background:radial-gradient(120% 130% at 50% 25%,rgba(74,32,18,.88),rgba(24,10,5,.92));
     border:2px solid rgba(242,200,92,.55);box-shadow:0 5px 14px rgba(0,0,0,.5),inset 0 0 12px rgba(0,0,0,.5);
     display:flex;align-items:center;justify-content:center;}
-  #knobBar{width:64%;height:27%;border-radius:999px;pointer-events:none;
+  #knob{left:clamp(14px,4vw,30px);}
+  #knobY{left:calc(clamp(14px,4vw,30px) + clamp(68px,17vw,88px) + 12px);}
+  .knobBar{width:64%;height:27%;border-radius:999px;pointer-events:none;position:relative;
     background:linear-gradient(180deg,#e0ba82,#c69a5e 55%,#a87e46);
     border:1.5px solid rgba(60,30,10,.65);box-shadow:0 2px 6px rgba(0,0,0,.5);
     transform:rotate(0deg);}
-  #knobLbl{position:absolute;left:50%;transform:translateX(-50%);bottom:-20px;pointer-events:none;
+  #knobYBar::after{content:'';position:absolute;right:2px;top:50%;transform:translateY(-50%);
+    width:26%;height:72%;border-radius:50%;background:#7a2a3a;}  /* stained end marks which way it leans */
+  .knobLbl{position:absolute;left:50%;transform:translateX(-50%);bottom:-20px;pointer-events:none;
     font-family:var(--display);font-weight:700;font-size:10px;letter-spacing:2.5px;color:#d8bf98;text-shadow:0 1px 3px rgba(0,0,0,.6);}
   #zoneRing,#pwRing{position:absolute;inset:-9px;border-radius:50%;pointer-events:none;
     -webkit-mask:radial-gradient(farthest-side,transparent calc(100% - 9px),#000 calc(100% - 8px));
@@ -150,8 +154,9 @@
       <span class="chip" id="corkChip">CORK 1/10</span>
       <div id="miniRow"><button class="mini" id="muteBtn">🔊</button><button class="mini" id="homeBtn">🏠</button></div>
     </div>
-    <div id="hint">DRAG TO MOVE · TWIST TO TILT · TAP SLAM ×2</div>
-    <div id="knob"><div id="knobBar"></div><div id="knobLbl">TILT</div></div>
+    <div id="hint">DRAG TO MOVE · TILT + YAW THE CORK · TAP SLAM ×2</div>
+    <div id="knob" class="knob"><div id="knobBar" class="knobBar"></div><div class="knobLbl">TILT</div></div>
+    <div id="knobY" class="knob"><div id="knobYBar" class="knobBar"></div><div class="knobLbl">YAW</div></div>
     <div id="slamWrap" style="--pw:0;--s0:.76;--s1:.89;--p0:.82;--p1:.845;">
       <div id="zoneRing"></div>
       <div id="pwRing"></div>
@@ -165,7 +170,7 @@
     <div class="secret">Old bar wisdom: throw it end-on — the cap's edge off the counter bounces highest and truest. Flat corks skid long; a 45° catch is anyone's guess.</div>
     <button id="startBtn">🍷 POP OFF</button>
     <div id="menuBest">BEST 0</div>
-    <div class="brand">CORKS v0.2.0 · BIG RUN STUDIOS</div>
+    <div class="brand">CORKS v0.3.0 · BIG RUN STUDIOS</div>
   </div>
 
   <div id="over">
@@ -183,7 +188,7 @@ import * as THREE from './lib/three.module.js';
 
 /* ================================================================== CFG */
 const CFG = {
-  ver:'0.2.0',
+  ver:'0.3.0',
   corks:10,
   // --- world scale: 1 unit = 1 cm
   corkR:1.15, corkL:4.6,
@@ -535,7 +540,8 @@ const S={
   phase:'idle',            // place | aim | swing | strike | flight | float | result
   score:0, corkIdx:0,
   combo:0, bestCombo:0, landed:0, perfects:0, closest:Infinity,
-  tilt:0,                  // cork attitude in the hand, degrees: 0 = flat/horizontal, ±90 = end-cap down
+  tilt:0,                  // screen-plane roll, degrees: 0 = flat/horizontal, ±90 = end-cap down
+  yaw:0,                   // fore/aft swing of the ends, degrees: + = low end toward the player
   hold:{x:0,y:13},         // hand position on the front-facing plane
   m:0, meterT:0, meterTime:1, sweetLo:0.87, sweetHi:1.02, perfHalf:0.016,
   quality:'', phaseT:0,
@@ -550,22 +556,32 @@ const glassPos={x:0,z:-34};
 let paused=false;
 
 /* ==================================================== shot setup */
-function bounceAB(){  // first-bounce out-factors for the current cork attitude
-  const e=Math.abs(Math.sin(S.tilt*Math.PI/180));
-  return { e, a:lerp(CFG.rest[0],CFG.rest[1],e), b:lerp(CFG.fwdK[0],CFG.fwdK[1],e) };
+const _qz=new THREE.Quaternion(), _qy=new THREE.Quaternion(), _ax=new THREE.Vector3();
+const _Z=new THREE.Vector3(0,0,1), _Y=new THREE.Vector3(0,1,0);
+function attitude(){  // first-bounce out-factors from the cork's actual 3D orientation
+  _ax.set(0,1,0).applyQuaternion(cork.quaternion);
+  const V=Math.abs(_ax.y);                        // verticality: 0 = flat side slap, 1 = end-cap edge
+  const s2=Math.sin(2*Math.acos(clamp(V,0,1)));   // edge-catch strength, peaks on a 45° lean
+  let hx=0,hz=0; const hl=Math.hypot(_ax.x,_ax.z);
+  if(hl>1e-4){ const sgn=_ax.y>=0?-1:1; hx=sgn*_ax.x/hl; hz=sgn*_ax.z/hl; }   // low-end direction
+  return { V, chaos:V*(1-V)*4,
+    a:lerp(CFG.rest[0],CFG.rest[1],V), b:lerp(CFG.fwdK[0],CFG.fwdK[1],V),
+    kx:-hx*CFG.latSys*s2, kz:-hz*CFG.latSys*s2 }; // kick away from the digging end; kz<0 drives forward
 }
 function solveVd(){   // counter-impact speed whose bounce arc tops the rim at the glass
-  const {a,b}=bounceAB();
+  const {a,b,kz}=attitude();
+  const beff=Math.max(0.06,b-kz);                 // yawing the low end back saps forward drive
   const D=Math.abs(glassPos.z-CFG.hold.z);
   const dy=GLA.rimY+1.4-CFG.corkR;
-  const den=2*b*b*((a/b)*D-dy);
+  const den=2*beff*beff*((a/beff)*D-dy);
   return den>0?Math.sqrt(CFG.gravity*D*D/den):260;
 }
-function holdCork(){  // pinch the cork under the palm at the current tilt
+function holdCork(){  // pinch the cork under the palm at the current tilt + yaw
   hand.position.z=CFG.hold.z-1.6;                 // palm sits behind the cork plane so the cork stays readable
   cork.position.set(hand.position.x-0.3,hand.position.y-3.7,CFG.hold.z);
-  cork.rotation.set(0,0,(S.tilt+90)*Math.PI/180);
-  cork.quaternion.setFromEuler(cork.rotation);
+  _qz.setFromAxisAngle(_Z,(S.tilt+90)*Math.PI/180);
+  _qy.setFromAxisAngle(_Y,S.yaw*Math.PI/180);
+  cork.quaternion.copy(_qy).multiply(_qz);        // screen tilt first, then swing the ends fore/aft
 }
 function setupShot(i){
   const t=i/(CFG.corks-1);
@@ -655,17 +671,17 @@ function doStrike(m,exact){
 }
 function launchCork(){
   const q=S.quality, qm=CFG.qMul[q]*(S.exact?0:1);
-  const {e,a,b}=bounceAB();
-  const chaos=e*(1-e)*4;                       // peaks on a 45° catch — coin-flip country
+  const A=attitude(), chaos=A.chaos;           // peaks on a 45° catch — coin-flip country
   const Vs=solveVd();
   const k=(1-CFG.powerLo)/CFG.sweetC;
   const Vd=Vs*(CFG.powerLo+k*Math.min(S.m,CFG.meterMax));
   // the bounce plan — cashed in at first counter contact
   S.bounce={
     done:false,
-    a:a*(1+gauss()*(CFG.baseAB+CFG.chaosAB*chaos)*qm),
-    b:b*(1+gauss()*(CFG.baseAB+CFG.chaosAB*chaos)*qm),
-    lat:CFG.latSys*Math.sin(2*S.tilt*Math.PI/180)+gauss()*(CFG.baseLat+CFG.chaosLat*chaos)*qm,
+    a:A.a*(1+gauss()*(CFG.baseAB+CFG.chaosAB*chaos)*qm),
+    b:A.b*(1+gauss()*(CFG.baseAB+CFG.chaosAB*chaos)*qm),
+    kx:A.kx+gauss()*(CFG.baseLat+CFG.chaosLat*chaos)*qm,
+    kz:A.kz+gauss()*(CFG.baseLat+CFG.chaosLat*chaos)*qm*0.6,
   };
   // release: hand drives the cork straight down; it arrives at the counter at Vd
   const h=Math.max(1,cork.position.y-CFG.corkR*S.corkScale);
@@ -799,7 +815,7 @@ function corkPhysics(dt){
       // THE bounce — the whole shot, decided by attitude + timing
       const B=S.bounce; B.done=true;
       const Vd=Math.abs(v.y);
-      v.y=Vd*B.a; v.z=-Vd*B.b; v.x+=Vd*B.lat;   // fwd comes from the bounce alone — keeps the solver honest
+      v.y=Vd*B.a; v.z=Vd*(B.kz-B.b); v.x+=Vd*B.kx;   // fwd comes from the bounce alone — keeps the solver honest
       S.spin=-(8+Vd*0.035); S.spinAxis.set(1,0,0);      // backspin tumble off the counter
       cork.scale.set(S.corkScale*1.3,S.corkScale*0.5,S.corkScale*1.3);
       ringAt(p.x,0.25,p.z,1);
@@ -924,6 +940,11 @@ function setTilt(t){
   $('knobBar').style.transform=`rotate(${-S.tilt}deg)`;
   if(S.phase==='aim') holdCork();
 }
+function setYaw(t){
+  S.yaw=clamp(t,-90,90);
+  $('knobYBar').style.transform=`rotate(${-S.yaw}deg)`;
+  if(S.phase==='aim') holdCork();
+}
 function worldPerPx(){  // world units per CSS pixel at the hold plane
   const dist=camera.position.z-CFG.hold.z;
   return 2*dist*Math.tan(camera.fov*Math.PI/360)/innerHeight;
@@ -932,7 +953,7 @@ const input={pts:new Map(),moveId:null,baseX:0,baseY:0,sx:0,sy:0,twist0:0,tilt0:
 const app=$('app');
 app.addEventListener('pointerdown',e=>{
   if(S.state!=='run') return;
-  if(e.target.closest('#slamBtn')||e.target.closest('.mini')||e.target.closest('#knob')) return;
+  if(e.target.closest('#slamBtn')||e.target.closest('.mini')||e.target.closest('.knob')) return;
   input.pts.set(e.pointerId,{x:e.clientX,y:e.clientY});
   if(input.pts.size===1){
     input.moveId=e.pointerId; input.sx=e.clientX; input.sy=e.clientY;
@@ -958,18 +979,25 @@ app.addEventListener('pointermove',e=>{
 });
 function endPt(e){ input.pts.delete(e.pointerId); if(e.pointerId===input.moveId) input.moveId=null; }
 addEventListener('pointerup',endPt); addEventListener('pointercancel',endPt);
-/* tilt knob (bottom-left) */
-const knob=$('knob');
-function knobDrag(e){
-  if(S.state!=='run'||S.phase!=='aim') return;
-  const r=knob.getBoundingClientRect();
-  const a=Math.atan2(e.clientY-(r.top+r.height/2),e.clientX-(r.left+r.width/2))*180/Math.PI;
-  let t=-a; if(t>90) t=180-t; if(t<-90) t=-180-t;   // mirror the left half so any grab works
-  setTilt(t); showHint(false);
+/* attitude knobs (bottom-left): TILT = screen roll, YAW = fore/aft swing */
+function bindKnob(el,setter){
+  function drag(e){
+    if(S.state!=='run'||S.phase!=='aim') return;
+    const r=el.getBoundingClientRect();
+    const a=Math.atan2(e.clientY-(r.top+r.height/2),e.clientX-(r.left+r.width/2))*180/Math.PI;
+    let t=-a; if(t>90) t=180-t; if(t<-90) t=-180-t;   // mirror the left half so any grab works
+    setter(t); showHint(false);
+  }
+  el.addEventListener('pointerdown',e=>{ e.preventDefault(); e.stopPropagation(); el.setPointerCapture(e.pointerId); drag(e); });
+  el.addEventListener('pointermove',e=>{ if(el.hasPointerCapture(e.pointerId)) drag(e); });
 }
-knob.addEventListener('pointerdown',e=>{ e.preventDefault(); e.stopPropagation(); knob.setPointerCapture(e.pointerId); knobDrag(e); });
-knob.addEventListener('pointermove',e=>{ if(knob.hasPointerCapture(e.pointerId)) knobDrag(e); });
-addEventListener('wheel',e=>{ if(S.state==='run'&&S.phase==='aim') setTilt(S.tilt+e.deltaY*0.12); },{passive:true});
+bindKnob($('knob'),setTilt);
+bindKnob($('knobY'),setYaw);
+addEventListener('wheel',e=>{
+  if(S.state!=='run'||S.phase!=='aim') return;
+  const d=(e.deltaY||e.deltaX)*0.12;
+  if(e.shiftKey) setYaw(S.yaw+d); else setTilt(S.tilt+d);
+},{passive:true});
 $('slamBtn').addEventListener('pointerdown',e=>{ e.preventDefault(); e.stopPropagation(); slamTap(); });
 addEventListener('keydown',e=>{
   if(e.code==='Space'){ e.preventDefault(); if(S.state==='run'&&!e.repeat) slamTap(); }
@@ -981,6 +1009,8 @@ addEventListener('keydown',e=>{
     if(e.code==='ArrowDown')  S.hold.y=clamp(S.hold.y-0.8,H.yMin,H.yMax);
     if(e.code==='KeyQ') setTilt(S.tilt-5);
     if(e.code==='KeyE') setTilt(S.tilt+5);
+    if(e.code==='KeyW') setYaw(S.yaw+5);
+    if(e.code==='KeyS') setYaw(S.yaw-5);
   }
 });
 $('startBtn').addEventListener('click',()=>{ auInit(); startRun(); });
@@ -1048,7 +1078,7 @@ console.log('CORKS v'+CFG.ver);
 window.__game={
   get s(){ return { state:S.state,phase:S.phase,score:S.score,cork:S.corkIdx+1,combo:S.combo,
     landed:S.landed,perfects:S.perfects,bestCombo:S.bestCombo,closest:S.closest,
-    m:S.m,quality:S.quality,tilt:S.tilt,hold:{...S.hold},timeScale:S.timeScale,
+    m:S.m,quality:S.quality,tilt:S.tilt,yaw:S.yaw,hold:{...S.hold},timeScale:S.timeScale,
     corkPos:{x:+cork.position.x.toFixed(2),y:+cork.position.y.toFixed(2),z:+cork.position.z.toFixed(2)},
     vel:{x:+S.vel.x.toFixed(1),y:+S.vel.y.toFixed(1),z:+S.vel.z.toFixed(1)},
     glass:{x:glassPos.x,z:glassPos.z,rimY:GLA.rimY,rimR:GLA.rimR,wineY:GLA.wineY},
@@ -1057,20 +1087,22 @@ window.__game={
   step(dt=0.016){ update(dt); },
   pause(v=true){ paused=v; },
   startRun, toMenu,
-  pose(x,y,tilt){  // place the held cork on the front plane (snaps the hand — no lerp wait)
+  pose(x,y,tilt,yaw){  // place the held cork on the front plane (snaps the hand — no lerp wait)
     const H=CFG.hold;
     S.hold.x=clamp(x,-H.xMax,H.xMax); S.hold.y=clamp(y,H.yMin,H.yMax);
     if(tilt!==undefined) setTilt(tilt);
+    if(yaw!==undefined) setYaw(yaw);
     hand.position.set(S.hold.x,S.hold.y+3.7,H.z); holdCork();
   },
   tilt(t){ setTilt(t); },
-  aimAtGlass(){ this.pose(clamp(glassPos.x+0.3,-CFG.hold.xMax,CFG.hold.xMax),13,90); },  // end-on edge throw, drift-free
+  yaw(t){ setYaw(t); },
+  aimAtGlass(){ this.pose(clamp(glassPos.x+0.3,-CFG.hold.xMax,CFG.hold.xMax),13,90,0); },  // end-on edge throw, drift-free
   swing(){ if(S.phase==='aim') slamTap(); },
   strike(m=CFG.sweetC,exact=true){ if(S.phase==='aim') slamTap(); if(S.phase==='swing') doStrike(m,exact); },
-  shoot(x,y,tilt,m=CFG.sweetC,exact=true){ this.pose(x,y,tilt); this.strike(m,exact); },
+  shoot(x,y,tilt,yaw,m=CFG.sweetC,exact=true){ this.pose(x,y,tilt,yaw); this.strike(m,exact); },
   skip(){ if(S.phase==='result'||S.phase==='float'){ S.resT=99; corkSideMat.opacity=0.01; } },
   glassAt(x,z){ glassPos.x=x; glassPos.z=z; glassGrp.position.x=x; glassGrp.position.z=z; },
-  solveVd, bounceAB,
+  solveVd, attitude,
   cfg:CFG,
   three:()=>({scene,camera,renderer,cork,glassGrp,hand}),
 };
