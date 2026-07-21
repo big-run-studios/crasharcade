@@ -204,7 +204,7 @@
       <button class="gbtn" id="btnPlay">PLAY</button>
       <div id="best">BEST <b id="bestV">0</b></div>
       <button class="sbtn" id="btnArcade">← ARCADE</button>
-      <div id="brand">CRASHARCADE · MATE IN FIVE v0.1.0</div>
+      <div id="brand">CRASHARCADE · MATE IN FIVE v0.1.1</div>
     </div>
   </div>
 
@@ -250,7 +250,7 @@ window.THREE=THREE; // console diagnostics
 /* =========================================================================
    CFG — all balance values
    ========================================================================= */
-const VERSION='0.1.0';
+const VERSION='0.1.1';
 const CFG={
   roundTime:120,          // seconds
   maxMoves:5,
@@ -875,7 +875,7 @@ function curMult(){
   return CFG.multByMove[Math.min(movesMade,4)];
 }
 function potential(){
-  return Math.max(0,CFG.basePoints*curMult()+CFG.perSecond*Math.ceil(Math.max(0,timeLeft))-(hintUsed?CFG.hintPenalty:0));
+  return Math.max(0,CFG.basePoints*curMult()+Math.ceil(Math.max(0,timeLeft)*10)*(CFG.perSecond/10)-(hintUsed?CFG.hintPenalty:0));
 }
 function banner(txt,red){
   ui.bannerT.textContent=txt;
@@ -995,7 +995,7 @@ function showResult(win,reason){
     ui.resSub.textContent=`MATE ON MOVE ${mateMove} · ×${CFG.multByMove[mateMove-1]}`;
     ui.resBrk.style.display='block';
     ui.brkBase.textContent=`${fmt(CFG.basePoints)} × ${CFG.multByMove[mateMove-1]}`;
-    ui.brkTime.textContent='+'+fmt(CFG.perSecond*Math.floor(Math.max(0,timeLeft)));
+    ui.brkTime.textContent='+'+fmt(Math.floor(Math.max(0,timeLeft)*10)*(CFG.perSecond/10));
     ui.brkHintRow.style.display=hintUsed?'flex':'none';
     if(best<finalScore){best=finalScore;store.set('m5_best',''+best);ui.resBest.textContent='NEW BEST!';}
     else ui.resBest.textContent='';
@@ -1018,7 +1018,7 @@ function showResult(win,reason){
 function winRound(){
   roundActive=false;lastWin=true;
   mateMove=movesMade+1;
-  finalScore=Math.max(0,CFG.basePoints*CFG.multByMove[mateMove-1]+CFG.perSecond*Math.floor(Math.max(0,timeLeft))-(hintUsed?CFG.hintPenalty:0));
+  finalScore=Math.max(0,CFG.basePoints*CFG.multByMove[mateMove-1]+Math.floor(Math.max(0,timeLeft)*10)*(CFG.perSecond/10)-(hintUsed?CFG.hintPenalty:0));
   movesMade=mateMove;
   state='mateCine';
   updatePips(mateMove);updateHUD();
